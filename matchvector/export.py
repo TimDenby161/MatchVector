@@ -85,13 +85,27 @@ def export_site_data(conn, out_dir=OUT_DIR):
              from team_rank_history) x
            where rn <= %s group by team_id""", [FORM_GAMES]).fetchall())
 
+    # League each club is playing in this season (league fixtures in a current season); null for
+    # clubs relegated out of every tracked league or only seen in cups
+    current_league = dict(conn.execute(
+        """select distinct on (team_id) team_id, league_id from (
+             select f.home_team_id team_id, f.league_id, f.kickoff from fixtures f
+               join leagues l using (league_id) join league_seasons ls using (league_id, season)
+               where l.type = 'League' and ls.is_current
+             union all
+             select f.away_team_id, f.league_id, f.kickoff from fixtures f
+               join leagues l using (league_id) join league_seasons ls using (league_id, season)
+               where l.type = 'League' and ls.is_current) x
+           order by team_id, kickoff desc""").fetchall())
+
     rankings = []
     for team, lid, cur, st, lt, rel, played, last in conn.execute(
             """select team_id, league_id, current_rank, st_algo, lt_algo, reliability, played,
                       last_match from team_rankings order by lt_algo desc"""):
         team_ids.add(team)
-        rankings.append([team, lid, _r(cur, 1), _r(st, 1), _r(lt, 1), _r(rel, 0), played,
-                         last.isoformat() if last else None, _r(form.get(team), 1)])
+        rankings.append([team, current_league.get(team, lid), _r(cur, 1), _r(st, 1), _r(lt, 1), _r(rel, 0),
+                         played, last.isoformat() if last else None, _r(form.get(team), 1),
+                         1 if team in current_league else 0])
 
     teams = {t: n for t, n in conn.execute(
         "select team_id, name from teams where team_id = any(%s)", [list(team_ids)])}
@@ -112,7 +126,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     (out_dir / "rankings.json").write_text(json.dumps({
         "generated_at": generated,
         "fields": ["team", "league", "current", "st", "lt", "reliability", "played", "last_match",
-                   "form"],
+                   "form", "in_league"],
         "rankings": rankings,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d matches and %d rankings to %s", len(matches), len(rankings), out_dir)
