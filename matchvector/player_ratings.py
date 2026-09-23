@@ -40,6 +40,13 @@ Season rank (player_season_ranks), from that season's own matches
                (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
                apart instead of all sitting at ~99
     rank     = pct x club_factor(club), club = his clubs' average rank over his matches
+    keepers  = a keeper's season score is blended with his other seasons, weighted 1 for the
+               season itself and 0.5 ^ years apart for the rest: a keeper's season rating repeats
+               only ~0.28 from one season to the next (outfield ~0.55), so one season says little
+               (Donnarumma went 7.08 / 7.43 / 6.87 / 7.03 -> ranks 85 / 88 / 42 / 62)
+
+Match ratings everywhere are league-adjusted: each rating minus (that league's average rating
+for the position - the average across all leagues), so a 7.0 is compared within its league.
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
@@ -176,15 +183,36 @@ class Window:
         return role_group(self.label()) if self.apps else None
 
 
+def _rating_offsets(conn):
+    """Temp table rating_offsets(league_id, position, off): how far each league's average match
+    rating for a position (G/D/M/F) sits above the average across all leagues."""
+    conn.execute("create temp table if not exists rating_offsets (league_id int, position text, off double precision)")
+    if conn.execute("select count(*) from rating_offsets").fetchone()[0]:
+        return
+    conn.execute("""insert into rating_offsets
+                    select league_id, position, lr - pr from (
+                        select f.league_id, fp.position, sum(fp.rating * fp.minutes) / sum(fp.minutes) as lr,
+                               sum(sum(fp.rating * fp.minutes)) over (partition by fp.position)
+                                 / sum(sum(fp.minutes)) over (partition by fp.position) as pr
+                        from fixture_players fp join fixtures f using (fixture_id)
+                        where fp.rating is not null and fp.minutes > 0
+                        group by f.league_id, fp.position) t""")
+
+
+RATING = "(fp.rating - coalesce(o.off, 0))"      # league-adjusted match rating
+OFFSET_JOIN = "left join rating_offsets o on o.league_id = f.league_id and o.position = fp.position"
+
+
 def _norms(conn):
     """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes."""
     cols = ", ".join(f"sum(coalesce(fp.{c}, 0))" for c in STATS[3:])
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter()})
+    _rating_offsets(conn)
     for row in conn.execute(
             f"""select fp.player_id, f.season, fp.role, fp.position, sum(fp.minutes),
-                       sum(case when fp.rating is not null then fp.rating * fp.minutes else 0 end),
+                       sum(case when fp.rating is not null then {RATING} * fp.minutes else 0 end),
                        sum(case when fp.rating is not null then fp.minutes else 0 end), {cols}
-                from fixture_players fp join fixtures f using (fixture_id)
+                from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}
                 group by fp.player_id, f.season, fp.role, fp.position"""):
         entry = seasons[(row[0], row[1])]
         for k, v in zip(STATS, row[4:]):
@@ -241,13 +269,14 @@ def _season_ranks(conn, norms):
                where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
            group by 1, 2""", {"l": config.INJURY_MODEL_LEAGUES})}
     born = dict(conn.execute("select player_id, birth_date from players where birth_date is not null"))
+    _rating_offsets(conn)
     for row in conn.execute(
             f"""select fp.player_id, f.season, fp.team_id, fp.role, fp.position, sum(fp.minutes),
-                       sum(case when fp.rating is not null then fp.rating * fp.minutes else 0 end),
+                       sum(case when fp.rating is not null then {RATING} * fp.minutes else 0 end),
                        sum(case when fp.rating is not null then fp.minutes else 0 end), {cols},
                        sum(h.rank_before * fp.minutes),
                        sum(case when h.rank_before is not null then fp.minutes else 0 end)
-                from fixture_players fp join fixtures f using (fixture_id)
+                from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}
                 left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
                 where f.status_short in ('FT', 'AET', 'PEN')
                 group by 1, 2, 3, 4, 5"""):
@@ -324,8 +353,19 @@ def _season_ranks(conn, norms):
         final[(player, season)] = s
         club = e["club"][0] / e["club"][1] if e["club"][1] else None
         scored.append((player, season, s, pos, club, int(mins)))
+
+    # Keepers: blend each season with his other seasons, weight 0.5 ^ years apart
+    gk = defaultdict(dict)
+    for p, y, sc, pos, _, _ in scored:
+        if pos == "GK":
+            gk[p][y] = sc
+    for i, (player, season, sc, pos, club, mins) in enumerate(scored):
+        if pos == "GK":
+            w = {y: 0.5 ** abs(y - season) for y in gk[player]}
+            scored[i] = (player, season, sum(gk[player][y] * w[y] for y in w) / sum(w.values()), pos, club, mins)
+    for player, season, sc, pos, club, mins in scored:
         if mins >= 900:
-            ref[pos].append(s)
+            ref[pos].append(sc)
     for v in ref.values():
         v.sort()
 
@@ -379,8 +419,11 @@ def compute_player_ratings(conn):
            order by kickoff, fixture_id""", [config.INJURY_MODEL_LEAGUES]).fetchall()
     apps = defaultdict(list)
     cols = ", ".join(STATS[3:])
-    for r in conn.execute(f"""select fixture_id, team_id, player_id, minutes, started, position, role, rating,
-                                     {cols} from fixture_players"""):
+    _rating_offsets(conn)
+    fcols = ", ".join(f"fp.{c}" for c in STATS[3:])
+    for r in conn.execute(f"""select fp.fixture_id, fp.team_id, fp.player_id, fp.minutes, fp.started, fp.position,
+                                     fp.role, {RATING}, {fcols}
+                              from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}"""):
         apps[r[0]].append({"team": r[1], "player": r[2], "minutes": r[3], "started": r[4],
                            "position": r[5], "role": r[6], "rating": float(r[7]) if r[7] is not None else None,
                            "stats": r[8:]})

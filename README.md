@@ -83,7 +83,11 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
    - CM and AM: key passes, shots on target, passing, goals and dribbles.
    - Wingers: shots on target, key passes, goals, dribbles and assists.
    - Strikers: shots on target (28%), goals (25%), key passes and duels.
-   - Goalkeepers: match rating only. Goals conceded mostly measures the defence in front of him, and save % is mostly luck. For example, Trafford went from 41 to 96 moving from a relegated Premier League side to the Championship's best defence. Rating alone repeated best from season to season: 0.60, and 0.61 for keepers who changed club.
+   - Goalkeepers: match rating only. Goals conceded mostly measures the defence in front of him, and save % is mostly luck. For example, Trafford went from 41 to 96 moving from a relegated Premier League side to the Championship's best defence. Rating alone repeated best from season to season: 0.60, and 0.61 for keepers who changed club. A keeper's season rating only repeats at about 0.28 from one season to the next, against about 0.55 for outfield players, so each keeper season is blended with his other seasons: weight 1 for the season itself and 0.5 ^ years apart for the rest.
+   - **Match ratings are league-adjusted everywhere:** each rating has the league's average for that position taken off, and the average across all leagues added back. The adjustments are small, from −0.09 for Norwegian keepers to +0.06 for Dutch keepers.
+   - Two things were tested for keepers and not used:
+     - *API-Football's "goals prevented":* it only exists from 2024/25, and it gives the same number to both teams in a match, so it can't say whose it is.
+     - *Adjusting ratings for shots faced:* it barely moved anything and repeated no better.
    - Match rating is only 10–12% for outfield players.
    - **How the weights were checked:**
      - *Against results (2021–26):* with club rank as the baseline, match rating added nothing. Shots on target, key passes, passing volume and duels won did. Goals, assists and save % beyond those were mostly luck that evened out.
