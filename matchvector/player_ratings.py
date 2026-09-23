@@ -252,23 +252,24 @@ def _norms(conn):
 
 GK_CLUB_OFFSET = 10        # keeper rank = 100 x club / CLUB_RANK_MAX - this + GK_RATING_WEIGHT x (pct - 50)
 GK_RATING_WEIGHT = 0.2
-GK_FULL_MINUTES = 1500     # keepers with fewer minutes in a season are scaled down, up to 20% (backups)
+GK_FULL_SHARE = 0.8        # keepers playing less than this share of their club's minutes are scaled down, up to 20% (backups)
 
 
-def keeper_rank(pct, club, mins=None):
+def keeper_rank(pct, club, share=None):
     """Keepers: a keeper's rating percentile is mostly noise (season ratings repeat ~0.3, and
     regular Premier League keepers all sit within 6.8-7.05), so stretching it over the whole
     scale gave near-random ranks. The rank leans on club level instead - good clubs sign good
-    keepers - and the rating moves it by up to about +/-10. A season with few minutes (a backup)
-    is scaled down by up to 20%, so a No. 2 at a top club isn't rated as elite."""
+    keepers - and the rating moves it by up to about +/-10. A keeper who plays less than
+    GK_FULL_SHARE of his club's minutes (a backup) is scaled down by up to 20%, so a No. 2 at a
+    top club isn't rated as elite; it's a share of the games so far, so early season is fine."""
     r = 100 * min(club / CLUB_RANK_MAX, 1) - GK_CLUB_OFFSET + GK_RATING_WEIGHT * (pct - 50)
-    if mins is not None:
-        r *= min(1.0, 0.8 + 0.2 * mins / GK_FULL_MINUTES)
+    if share is not None:
+        r *= min(1.0, 0.8 + 0.2 * share / GK_FULL_SHARE)
     return min(max(r, 0), 100)
 
 
-def final_rank(pct, club, pos, mins=None):
-    return keeper_rank(pct, club, mins) if pos == "GK" else pct * club_factor(club)
+def final_rank(pct, club, pos, share=None):
+    return keeper_rank(pct, club, share) if pos == "GK" else pct * club_factor(club)
 
 
 def club_factor(club):
@@ -369,6 +370,7 @@ def _season_ranks(conn, norms):
 
     scored = []
     ref = defaultdict(list)
+    season_games = {k: e["games"] for k, e in seasons.items()}
     final = {}                 # (player, season) -> blended score, for the next season's prior
     for (player, season), e in sorted(seasons.items(), key=lambda kv: kv[0][1]):
         if (player, season) not in raw:
@@ -432,7 +434,9 @@ def _season_ranks(conn, norms):
     rows = []
     for player, season, s, pos, club, mins in scored:
         if ref.get(pos) and club:
-            rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, mins), 1), mins))
+            games = season_games.get((player, season))
+            share = min(mins / (games * 90), 1) if games else None
+            rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, share), 1), mins))
     return rows
 
 
