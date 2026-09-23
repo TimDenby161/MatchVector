@@ -80,8 +80,11 @@ STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on",
 # goals / assists / save % beyond those mostly reflected luck that evened out. So rating is a
 # small part everywhere, the lasting stats carry the weight, and goals still count for attackers.
 WEIGHTS = {
-    # no lasting keeper signal showed up, so keepers stay mostly on rating and shot-stopping
-    "GK": {"rating": .40, "save_pct": .30, "conceded": -.30},
+    # keepers on match rating alone: goals conceded mostly measures the defence in front of him
+    # (Trafford went 41 -> 96 moving from a relegated Premier League side to the Championship's
+    # best defence) and save % is mostly luck; rating alone repeated best season to season
+    # (0.60, and 0.61 for keepers who changed club, vs 0.57 / 0.61 for rating + save % + conceded)
+    "GK": {"rating": 1.0},
     "CB": {"rating": .15, "duels_pct": .20, "passes": .18, "pass_acc": .10, "tackles_int": .12,
            "blocks": .05, "goals": .05, "shots_on": .05, "discipline": -.10},
     "FB": {"rating": .12, "key_passes": .18, "passes": .15, "duels_pct": .12, "tackles_int": .10,

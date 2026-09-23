@@ -83,7 +83,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
    - CM and AM: key passes, shots on target, passing, goals and dribbles.
    - Wingers: shots on target, key passes, goals, dribbles and assists.
    - Strikers: shots on target (28%), goals (25%), key passes and duels.
-   - Goalkeepers: match rating, save rate and goals conceded.
+   - Goalkeepers: match rating only. Goals conceded mostly measures the defence in front of him, and save % is mostly luck. For example, Trafford went from 41 to 96 moving from a relegated Premier League side to the Championship's best defence. Rating alone repeated best from season to season: 0.60, and 0.61 for keepers who changed club.
    - Match rating is only 10–12% for outfield players.
    - **How the weights were checked:**
      - *Against results (2021–26):* with club rank as the baseline, match rating added nothing. Shots on target, key passes, passing volume and duels won did. Goals, assists and save % beyond those were mostly luck that evened out.
