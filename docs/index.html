@@ -281,7 +281,11 @@
   table.leaderboard.players th.col-season, table.leaderboard.players th[data-sort="rank"] { letter-spacing: 0; line-height: 1.15; }
   table.leaderboard.players td.col-season .rel-chip { min-width: 30px; padding: 2px 2px; font-weight: 700; }
   table.leaderboard.players td.col-season { color: var(--text-secondary); font-size: 12px; }
-  table.leaderboard.players th.col-s0, table.leaderboard.players td.col-s0 { padding-left: 12px; width: 46px; }
+  table.leaderboard.players th.col-s5, table.leaderboard.players td.col-s5 { padding-left: 12px; width: 46px; }
+  /* current season: last column, bold */
+  table.leaderboard.players th.col-now { color: var(--text-primary); font-weight: 800; }
+  table.leaderboard.players td.col-now { padding-right: 8px; width: 44px; }
+  table.leaderboard.players td.col-now .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
   table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 44px; }
   table.leaderboard.players .dim { color: var(--gridline); }
   /* a season estimated from the age curve (no minutes in covered leagues): outlined, not filled */
@@ -289,7 +293,7 @@
   @media (max-width: 480px) {
     table.leaderboard.players .col-s3,
     table.leaderboard.players .col-s4, table.leaderboard.players .col-s5 { display: none; }
-    table.leaderboard.players th.col-s2, table.leaderboard.players td.col-s2 { padding-right: 9px; width: 42px; }
+    table.leaderboard.players th.col-s2, table.leaderboard.players td.col-s2 { padding-left: 8px; width: 42px; }
     .pl-cell { gap: 5px; }
     .pl-cell .pl-badge { width: 16px; height: 16px; margin-right: 0; }
     .pl-cell .player-photo { width: 28px; height: 28px; }
@@ -1123,7 +1127,7 @@ function renderPlayers() {
         <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
-        ${seasons.map((y, i) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${y === seasons[0] ? "; so far" : ""}), from that season's matches only: how his season stats compare with other players' seasons in the same position (as a percentile), multiplied by his club's level that season (the square root of club rank ÷ 1200), so a perfect player at a 966 club can reach at most 90. Early in a season it leans on his previous season and moves to this season's form as games are played. A season with few minutes is filled in from his nearest full season, adjusted for how much players typically change at his age. Blank if he didn't play in these leagues that season.`, ` col-season col-s${i}`)).join("")}
+        ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season sets the base, and how his stats compare with other players in his position move it up or down (about ±15; keepers ±10). Squad players who play little are marked down. Early in a season it leans on his previous season. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
       </tr></thead>
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}" data-player="${p.id}">
@@ -1132,7 +1136,7 @@ function renderPlayers() {
             <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? `<span class="pl-where"> · ${escapeHtml(countryLeagueText(p.league))}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
-          ${seasons.map((y, i) => `<td class="num col-season col-s${i} tip-cell" data-key="${y}">${p.seasons?.[i] == null ? `<span class="dim">–</span>` : p.estimated?.includes(i) ? `<span class="est">${rankChipSmall(p.seasons[i])}</span>` : rankChipSmall(p.seasons[i])}</td>`).join("")}
+          ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => `<td class="num col-season col-s${i}${i === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[i] == null ? `<span class="dim">–</span>` : p.estimated?.includes(i) ? `<span class="est">${rankChipSmall(p.seasons[i])}</span>` : rankChipSmall(p.seasons[i])}</td>`).join("")}
         </tr>`).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
