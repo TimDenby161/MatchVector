@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
-from . import betting, config
+from . import betting, config, positions
 from .api import QuotaExhausted
 from .db import upsert
 from .player_ratings import compute_player_ratings
@@ -539,9 +539,18 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
     now = datetime.now(timezone.utc)
     for i in range(0, len(pending), batch_size):
         resp = api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size])))
-        rows, done = [], []
+        rows, done, formations = [], [], []
         for f in resp:
             fid = f["fixture"]["id"]
+            grids = {}                               # player -> (grid, role) for starters
+            for lu in f.get("lineups") or []:
+                formation = lu.get("formation")
+                if lu.get("team", {}).get("id"):
+                    formations.append({"fixture_id": fid, "team_id": lu["team"]["id"], "formation": formation})
+                for st in lu.get("startXI") or []:
+                    pl = st.get("player") or {}
+                    if pl.get("id"):
+                        grids[pl["id"]] = (pl.get("grid"), positions.role(formation, pl.get("grid")))
             for team_block in f.get("players") or []:
                 team_id = team_block["team"]["id"]
                 for p in team_block.get("players") or []:
@@ -567,12 +576,16 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
                                  "fouls_committed": g("fouls", "committed"), "fouls_drawn": g("fouls", "drawn"),
                                  "yellow_cards": g("cards", "yellow"), "red_cards": g("cards", "red"),
                                  "saves": g("goals", "saves"), "goals_conceded": g("goals", "conceded"),
-                                 "penalties_saved": g("penalty", "saved")})
+                                 "penalties_saved": g("penalty", "saved"),
+                                 "grid": grids.get(p["player"]["id"], (None, None))[0],
+                                 "role": grids.get(p["player"]["id"], (None, None))[1]})
             kickoff = datetime.fromisoformat(f["fixture"]["date"])
             if f.get("players") or now - kickoff > STATS_RETRY_WINDOW:
                 done.append(fid)
         upsert(conn, "fixture_players", _dedupe(rows, ("fixture_id", "player_id")),
                ["fixture_id", "player_id"], touch_updated_at=False)
+        upsert(conn, "fixture_formations", _dedupe(formations, ("fixture_id", "team_id")),
+               ["fixture_id", "team_id"], touch_updated_at=False)
         if done:
             conn.execute("update fixtures set players_fetched_at = now() where fixture_id = any(%s)", [done])
         conn.commit()

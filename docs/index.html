@@ -470,7 +470,7 @@ const state = {
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
-  players: null, tableView: "clubs",
+  players: null, tableView: "clubs", playerGroup: "all",
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -755,6 +755,10 @@ function formHtml(f) {
 }
 
 const POS_LABEL = { G: "GK", D: "DEF", M: "MID", F: "FWD" };
+const ROLE_GROUP = { GK: "GK", CB: "CB", LB: "FB", RB: "FB", LWB: "FB", RWB: "FB", DM: "DM", CM: "CM",
+  AM: "AM", LW: "W", RW: "W", LM: "W", RM: "W", ST: "ST" };
+const GROUP_CHIPS = [["all", "All"], ["GK", "GK"], ["CB", "CB"], ["FB", "Full-backs"], ["DM", "DM"],
+  ["CM", "CM"], ["AM", "AM"], ["W", "Wingers"], ["ST", "Strikers"]];
 function rankChipSmall(r) {
   if (r == null) return "–";
   const t = r >= 80 ? 4 : r >= 60 ? 3 : r >= 35 ? 2 : 1;
@@ -768,9 +772,12 @@ function renderPlayers() {
   const q = state.tableSearch.trim().toLowerCase();
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
                : state.players.list.filter((p) => p.league === league);
+  if (state.playerGroup !== "all") rows = rows.filter((p) => ROLE_GROUP[p.position] === state.playerGroup);
   rows = rows.slice(0, 300);
-  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No player ranks for this league (ranks cover the 10 leagues with per-match player data).</div>`; return; }
-  wrap.innerHTML = `
+  const chips = `<div class="filter-row" id="player-groups" style="margin-bottom:10px">${GROUP_CHIPS.map(([g, label]) =>
+    `<button type="button" class="filter-chip" data-group="${g}" aria-pressed="${state.playerGroup === g}">${label}</button>`).join("")}</div>`;
+  if (!rows.length) { wrap.innerHTML = chips + `<div class="empty-state">No player ranks here (ranks cover the 10 leagues with per-match player data).</div>`; return; }
+  wrap.innerHTML = chips + `
     <table class="leaderboard">
       <thead><tr><th>#</th><th>Player</th><th class="num">Pos</th><th class="num">Mins</th><th class="num">Rank</th></tr></thead>
       <tbody>${rows.map((p, i) => `
@@ -782,7 +789,7 @@ function renderPlayers() {
           <td class="num">${rankChipSmall(p.rank)}</td>
         </tr>`).join("")}</tbody>
     </table>
-    <div class="stats-note" style="margin-top:8px">Rank 0–100 from per-90 stats over each player's last 20 appearances, compared with players in the same position and adjusted for team strength. 50 = an average regular; 90 = better than 90% of regulars in his position.</div>`;
+    <div class="stats-note" style="margin-top:8px">Rank 0–100 from per-90 stats over each player's last 20 appearances. Positions come from where he has started in recent line-ups (e.g. LB, DM, RW); he's compared with regulars in the same role (left and right together) and adjusted for team strength. 50 = an average regular in that role; 90 = better than 90% of them.</div>`;
 }
 
 function renderTable() {
@@ -821,6 +828,12 @@ function renderTable() {
 
 // ------------------------------------------------------------------ stats
 const pct = (x, d = 1) => `${(100 * x).toFixed(d)}%`;
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest("#player-groups [data-group]");
+  if (!chip) return;
+  state.playerGroup = chip.dataset.group;
+  renderPlayers();
+});
 
 function renderStats() {
   const body = $("#stats-body");

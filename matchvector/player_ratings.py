@@ -5,10 +5,12 @@ that match:
 
 Player rank
     window   = the player's last WINDOW_APPS appearances within WINDOW_DAYS (any team)
+    role     = his most common starting role in the window (from line-up grids, positions.py:
+               LB, CB, DM, RW, ...); players only seen off the bench use their broad position
     metrics  = per-90 stats and ratios from the window (see WEIGHTS), each turned into a
-               z-score against players in the same position (norms: player-seasons with 900+
-               minutes across all data - a distribution, not any one player's future)
-    score    = sum(weight * z) for the player's position
+               z-score against players in the same role group (GK, CB, FB, DM, CM, AM, W, ST;
+               norms: player-seasons with 900+ minutes - a distribution, not any one player's future)
+    score    = sum(weight * z) for the player's role group
                + TEAM_WEIGHT * z(team rank before the match)   (stats come easier in weaker teams)
     score   *= minutes / (minutes + SHRINK_MINUTES)            (few minutes -> pulled to average)
     rank     = percentile of the score among regulars (900+ window minutes) in the same position
@@ -30,6 +32,7 @@ from collections import Counter, defaultdict, deque
 from datetime import timedelta
 
 from . import config
+from .positions import FALLBACK, group as role_group
 
 log = logging.getLogger(__name__)
 
@@ -43,15 +46,23 @@ STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
          "dribbles_won", "fouls_committed", "yellow_cards", "red_cards", "saves", "goals_conceded")
 
-# weight per metric by position; negative weight = lower is better
+# weight per metric by role group; negative weight = lower is better
 WEIGHTS = {
-    "F": {"rating": .35, "goals": .20, "shots_on": .10, "assists": .10, "key_passes": .08,
-          "dribbles_won": .07, "duels_pct": .05, "discipline": -.05},
-    "M": {"rating": .35, "key_passes": .12, "assists": .08, "goals": .08, "tackles_int": .10,
-          "passes": .07, "pass_acc": .06, "dribbles_won": .06, "duels_pct": .05, "discipline": -.03},
-    "D": {"rating": .40, "tackles_int": .15, "duels_pct": .12, "blocks": .05, "pass_acc": .08,
-          "passes": .07, "goals": .03, "assists": .03, "discipline": -.07},
-    "G": {"rating": .50, "save_pct": .30, "conceded": -.20},
+    "GK": {"rating": .50, "save_pct": .30, "conceded": -.20},
+    "CB": {"rating": .40, "duels_pct": .15, "tackles_int": .12, "blocks": .08, "pass_acc": .08,
+           "passes": .05, "goals": .03, "discipline": -.07},
+    "FB": {"rating": .35, "tackles_int": .12, "key_passes": .10, "assists": .08, "duels_pct": .08,
+           "dribbles_won": .07, "passes": .07, "pass_acc": .05, "discipline": -.05},
+    "DM": {"rating": .35, "tackles_int": .20, "passes": .12, "pass_acc": .10, "duels_pct": .10,
+           "key_passes": .05, "blocks": .03, "discipline": -.05},
+    "CM": {"rating": .35, "key_passes": .12, "passes": .10, "tackles_int": .10, "pass_acc": .08,
+           "assists": .08, "goals": .07, "dribbles_won": .05, "duels_pct": .05},
+    "AM": {"rating": .35, "key_passes": .15, "assists": .12, "goals": .12, "dribbles_won": .10,
+           "shots_on": .08, "duels_pct": .05, "pass_acc": .03},
+    "W": {"rating": .35, "goals": .12, "assists": .12, "key_passes": .12, "dribbles_won": .12,
+          "shots_on": .08, "duels_pct": .04, "discipline": -.03},
+    "ST": {"rating": .35, "goals": .25, "shots_on": .12, "assists": .08, "duels_pct": .07,
+           "key_passes": .06, "dribbles_won": .04, "discipline": -.03},
 }
 
 
@@ -86,18 +97,21 @@ def _row_stats(r):
 
 class Window:
     """A player's last WINDOW_APPS appearances with running sums."""
-    __slots__ = ("apps", "sums", "positions")
+    __slots__ = ("apps", "sums", "roles", "broad")
 
     def __init__(self):
-        self.apps = deque()                # (kickoff, stats dict, position)
+        self.apps = deque()                # (kickoff, stats dict, role, broad position)
         self.sums = dict.fromkeys(STATS, 0.0)
-        self.positions = Counter()
+        self.roles = Counter()             # starting roles (LB, DM, ...)
+        self.broad = Counter()             # API positions (G/D/M/F)
 
-    def add(self, kickoff, stats, position):
-        self.apps.append((kickoff, stats, position))
+    def add(self, kickoff, stats, role, broad):
+        self.apps.append((kickoff, stats, role, broad))
         for k, v in stats.items():
             self.sums[k] += v
-        self.positions[position] += 1
+        if role:
+            self.roles[role] += 1
+        self.broad[broad] += 1
         while len(self.apps) > WINDOW_APPS:
             self._pop()
 
@@ -106,34 +120,48 @@ class Window:
             self._pop()
 
     def _pop(self):
-        _, stats, position = self.apps.popleft()
+        _, stats, role, broad = self.apps.popleft()
         for k, v in stats.items():
             self.sums[k] -= v
-        self.positions[position] -= 1
+        if role:
+            self.roles[role] -= 1
+        self.broad[broad] -= 1
+
+    def label(self):
+        """Most common starting role, else the fallback group for his broad position."""
+        roles = +self.roles
+        if roles:
+            return roles.most_common(1)[0][0]
+        broad = +self.broad
+        return FALLBACK.get(broad.most_common(1)[0][0]) if broad else None
 
     def position(self):
-        return self.positions.most_common(1)[0][0] if self.apps else None
+        """Role group used for comparison (GK, CB, FB, DM, CM, AM, W, ST)."""
+        return role_group(self.label()) if self.apps else None
 
 
 def _norms(conn):
     """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes."""
     cols = ", ".join(f"sum(coalesce(fp.{c}, 0))" for c in STATS[3:])
-    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "pos": Counter()})
+    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter()})
     for row in conn.execute(
-            f"""select fp.player_id, f.season, fp.position, sum(fp.minutes),
+            f"""select fp.player_id, f.season, fp.role, fp.position, sum(fp.minutes),
                        sum(case when fp.rating is not null then fp.rating * fp.minutes else 0 end),
                        sum(case when fp.rating is not null then fp.minutes else 0 end), {cols}
                 from fixture_players fp join fixtures f using (fixture_id)
-                group by fp.player_id, f.season, fp.position"""):
+                group by fp.player_id, f.season, fp.role, fp.position"""):
         entry = seasons[(row[0], row[1])]
-        for k, v in zip(STATS, row[3:]):
+        for k, v in zip(STATS, row[4:]):
             entry["sums"][k] += float(v)
-        entry["pos"][row[2]] += float(row[3])
+        if row[2]:
+            entry["roles"][row[2]] += float(row[4])
+        entry["broad"][row[3]] += float(row[4])
     groups = defaultdict(list)
     for entry in seasons.values():
         if entry["sums"]["minutes"] < 900:
             continue
-        pos = entry["pos"].most_common(1)[0][0]
+        pos = (role_group(entry["roles"].most_common(1)[0][0]) if entry["roles"]
+               else FALLBACK.get(entry["broad"].most_common(1)[0][0]))
         m = metrics(entry["sums"])
         if pos in WEIGHTS and m:
             groups[pos].append(m)
@@ -163,11 +191,11 @@ def compute_player_ratings(conn):
            order by kickoff, fixture_id""", [config.INJURY_MODEL_LEAGUES]).fetchall()
     apps = defaultdict(list)
     cols = ", ".join(STATS[3:])
-    for r in conn.execute(f"""select fixture_id, team_id, player_id, minutes, started, position, rating, {cols}
-                              from fixture_players"""):
+    for r in conn.execute(f"""select fixture_id, team_id, player_id, minutes, started, position, role, rating,
+                                     {cols} from fixture_players"""):
         apps[r[0]].append({"team": r[1], "player": r[2], "minutes": r[3], "started": r[4],
-                           "position": r[5], "rating": float(r[6]) if r[6] is not None else None,
-                           "stats": r[7:]})
+                           "position": r[5], "role": r[6], "rating": float(r[7]) if r[7] is not None else None,
+                           "stats": r[8:]})
     injured = defaultdict(set)
     for fid, team, player in conn.execute("select fixture_id, team_id, player_id from injuries"):
         injured[(fid, team)].add(player)
@@ -214,8 +242,8 @@ def compute_player_ratings(conn):
                 s, pos, _ = raw_score(p, tz, kickoff)
                 if s is not None:
                     scored.append((p, pos, s, m))
-            keepers = [x for x in scored if x[1] == "G"][:1]
-            outfield = [x for x in scored if x[1] != "G"][:10]
+            keepers = [x for x in scored if x[1] == "GK"][:1]
+            outfield = [x for x in scored if x[1] != "GK"][:10]
             predicted = keepers + outfield
             actual = []
             for a in apps.get(fid, []):
@@ -228,10 +256,11 @@ def compute_player_ratings(conn):
                         sample[pos].append(s)
                     if a["started"]:
                         actual.append((s, pos))
-            team_rows.append((fid, team, [(p, pos, s) for p, pos, s, _ in predicted], actual, upcoming))
+            team_rows.append((fid, team, [(p, pos, s, windows[p].label()) for p, pos, s, _ in predicted],
+                              actual, upcoming))
         # after the match: update windows and team history
         for a in apps.get(fid, []):
-            windows[a["player"]].add(kickoff, _row_stats(a), a["position"])
+            windows[a["player"]].add(kickoff, _row_stats(a), a["role"], a["position"])
             player_team[a["player"]] = a["team"]
         for team in (home, away):
             played = {a["player"]: a["minutes"] for a in apps.get(fid, []) if a["team"] == team}
@@ -251,7 +280,7 @@ def compute_player_ratings(conn):
     team_out, lineups = [], []
     xi_hist = defaultdict(lambda: deque(maxlen=PREDICT_MATCHES))
     for fid, team, predicted, actual, upcoming in team_rows:
-        pred = [to_rank(s, pos) for _, pos, s in predicted]
+        pred = [to_rank(s, pos) for _, pos, s, _ in predicted]
         act = [to_rank(s, pos) for s, pos in actual]
         recent = sum(xi_hist[team]) / len(xi_hist[team]) if xi_hist[team] else None
         team_out.append((fid, team, sum(pred) / len(pred) if pred else None, len(pred), recent,
@@ -259,7 +288,7 @@ def compute_player_ratings(conn):
         if act:
             xi_hist[team].append(sum(act) / len(act))
         if upcoming:
-            lineups.extend((fid, team, p, pos, to_rank(s, pos)) for p, pos, s in predicted)
+            lineups.extend((fid, team, p, label, to_rank(s, pos)) for p, pos, s, label in predicted)
 
     # Current rank per player: latest window, latest rank of his latest team
     current = []
@@ -267,7 +296,7 @@ def compute_player_ratings(conn):
         tz = (last_rank_ctx.get(player_team.get(player), tr_mean) - tr_mean) / tr_sd
         s, pos, minutes = raw_score(player, tz, fixtures[-1][1] if fixtures else None)
         if s is not None:
-            current.append((player, to_rank(s, pos), pos, int(minutes)))
+            current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
 
     _write(conn, appearance_scores, to_rank, team_out, lineups, current)
 

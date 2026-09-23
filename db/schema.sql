@@ -289,6 +289,16 @@ alter table fixture_players add column if not exists red_cards smallint;
 alter table fixture_players add column if not exists saves smallint;
 alter table fixture_players add column if not exists goals_conceded smallint;
 alter table fixture_players add column if not exists penalties_saved smallint;
+-- Starting position from the line-up: grid "row:col" and the role derived from it with the
+-- formation (positions.py), e.g. 'LB', 'DM', 'RW'. Null for substitutes.
+alter table fixture_players add column if not exists grid text;
+alter table fixture_players add column if not exists role text;
+create table if not exists fixture_formations (
+    fixture_id  int not null,
+    team_id     int not null,
+    formation   text,
+    primary key (fixture_id, team_id)
+);
 -- Player rank (0-100) going into this match, from matches before it (player_ratings.py)
 alter table fixture_players add column if not exists player_rank numeric(4,1);
 alter table fixtures add column if not exists players_fetched_at timestamptz;
@@ -463,3 +473,4 @@ alter table fixture_players    enable row level security;
 alter table paper_bets         enable row level security;
 alter table fixture_team_ratings enable row level security;
 alter table predicted_lineups  enable row level security;
+alter table fixture_formations enable row level security;

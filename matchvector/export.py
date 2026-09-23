@@ -289,9 +289,11 @@ def export_players(conn, out_dir=OUT_DIR):
     for team, fid, player, name, pos, rank in lineups:
         entry = next_xi.setdefault(str(team), {"fixture": fid, "players": []})
         entry["players"].append([player, name, pos, float(rank) if rank is not None else None])
-    order = {"G": 0, "D": 1, "M": 2, "F": 3}
+    # team-sheet order: keeper, defence right to left, midfield, attack
+    order = {r: i for i, r in enumerate(["GK", "RB", "RWB", "CB", "LB", "LWB", "DM", "CM", "RM", "LM",
+                                          "AM", "RW", "LW", "ST"])}
     for entry in next_xi.values():
-        entry["players"].sort(key=lambda x: (order.get(x[2], 4), -(x[3] or 0)))
+        entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     (out_dir / "players.json").write_text(json.dumps({
         "fields": ["id", "name", "position", "rank", "minutes", "team", "league"],
         "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6]] for r in players],

@@ -73,15 +73,18 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 
 **Player rank**
 1. Take the player's last 20 appearances within 18 months.
-2. Work out his per-90 stats and ratios by position:
-   - Forwards: goals, shots on target, assists, key passes, dribbles and duels.
-   - Midfielders: key passes, assists, goals, tackles + interceptions, passing and dribbles.
-   - Defenders: tackles + interceptions, duels won, blocks and passing, with fouls and cards counting against.
+2. Work out his **role** from the line-ups. `matchvector/positions.py` turns each starter's grid position and the team's formation into a role: GK, LB, CB, RB, LWB, RWB, DM, CM, AM, LM, RM, LW, RW or ST. For example, 4-2-3-1 row 4 gives LW, AM and RW. His role is the one he's started in most over the window; players only seen as substitutes use their broad position. Roles are compared in groups, with left and right together: GK, CB, full-back, DM, CM, AM, winger and ST.
+3. Work out his per-90 stats and ratios, with weights set for each role group:
+   - Centre-backs: duels, blocks, tackles + interceptions and passing.
+   - Full-backs: defending plus key passes, assists and dribbles.
+   - DM: tackles + interceptions and passing.
+   - AM and wingers: key passes, assists, goals and dribbles.
+   - Strikers: goals and shots on target.
    - Goalkeepers: save rate and goals conceded.
-   - Every position also includes the average match rating.
-3. Compare each stat with other players in the same position, and adjust for team strength, because stats come more easily in weaker teams.
-4. Pull players with few minutes towards the average.
-5. Turn the result into a **percentile among regulars in that position**: 50 is an average regular, and 90 is better than 90% of them.
+   - Every role group also includes the average match rating.
+4. Compare each stat with other players in the same role group, and adjust for team strength, because stats come more easily in weaker teams.
+5. Pull players with few minutes towards the average.
+6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
 
 **Where it's stored**
 - `fixture_players.player_rank` holds each player's rank going into every match.
@@ -93,7 +96,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 - **Actual XI rating:** the average rank of the XI that started, for finished matches.
 - `predicted_lineups` holds the predicted XI for upcoming matches.
 
-The site shows player ranks on the Rankings tab (Players view), the predicted XI for a team's next match in the team pop-up, and the XI ratings on match cards.
+Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group), the predicted XI for a team's next match in the team pop-up, and the XI ratings on match cards.
 
 **Backtest (2024/25 onwards):** home XI rating minus away XI rating added nothing on top of the team ranks. Predicted XI against the recent average gave a tiny gain in the unexpected direction, so the XI ratings are shown but not used in the projections.
 
