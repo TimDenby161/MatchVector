@@ -84,9 +84,11 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
    - Strikers: goals and shots on target.
    - Goalkeepers: save rate and goals conceded.
    - Every role group also includes the average match rating.
-4. Compare each stat with other players in the same role group, and adjust for team strength, because stats come more easily in weaker teams.
-5. Pull players with few minutes towards the average.
-6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
+4. Compare each stat with other players in the same role group.
+5. **Adjust for club strength:** add the strength of the clubs he played those 20 matches for, each at its club rank at the time and weighted by his minutes. Club level counts about as much as his own stats, so players at weak clubs are marked down.
+   - This is a judgement, not something the data forces. On about 1,900 transfers between these leagues, moving to a stronger club didn't lower a player's stats.
+6. **Mark down players with few minutes:** pull them towards a below-average level (−0.5, weighted as 900 minutes), not towards the average.
+7. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
 
 **Where it's stored**
 - `fixture_players.player_rank` holds each player's rank going into every match.

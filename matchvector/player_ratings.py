@@ -11,8 +11,13 @@ Player rank
                z-score against players in the same role group (GK, CB, FB, DM, CM, AM, W, ST;
                norms: player-seasons with 900+ minutes - a distribution, not any one player's future)
     score    = sum(weight * z) for the player's role group
-               + TEAM_WEIGHT * z(team rank before the match)   (stats come easier in weaker teams)
-    score   *= minutes / (minutes + SHRINK_MINUTES)            (few minutes -> pulled to average)
+               + TEAM_WEIGHT * club strength, where club strength = z of the club rank at the
+                 time, averaged over the window's matches by minutes (the clubs he actually
+                 played those matches for, as good as they were then). TEAM_WEIGHT = 1 makes
+                 club level count about as much as his own stats (sd 0.59 vs 0.67 among regulars),
+                 so players at weak clubs are marked down.
+    score    = (score x minutes + MINUTES_PRIOR x SHRINK_MINUTES) / (minutes + SHRINK_MINUTES)
+               (few minutes -> pulled toward a below-average level, so they're marked down)
     rank     = percentile of the score among regulars (900+ window minutes) in the same position
                across all matches, so 50 = an average regular in that position, 90 = better than
                90% of them
@@ -39,7 +44,8 @@ log = logging.getLogger(__name__)
 WINDOW_APPS = 20
 WINDOW_DAYS = 540
 SHRINK_MINUTES = 900
-TEAM_WEIGHT = 0.35
+TEAM_WEIGHT = 1.0
+MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
@@ -101,7 +107,7 @@ class Window:
 
     def __init__(self):
         self.apps = deque()                # (kickoff, stats dict, role, broad position)
-        self.sums = dict.fromkeys(STATS, 0.0)
+        self.sums = dict.fromkeys(STATS + ("club_mins",), 0.0)   # club_mins: club strength x minutes
         self.roles = Counter()             # starting roles (LB, DM, ...)
         self.broad = Counter()             # API positions (G/D/M/F)
 
@@ -202,10 +208,8 @@ def compute_player_ratings(conn):
 
     windows = defaultdict(Window)
     team_recent = defaultdict(lambda: deque(maxlen=PREDICT_MATCHES))     # team -> [{player: minutes}]
-    last_rank_ctx = {}          # team -> latest known rank
-    player_team = {}            # player -> team of latest appearance
 
-    def raw_score(player, team_z, now):
+    def raw_score(player, now):
         w = windows.get(player)
         if w is None:
             return None, None, 0
@@ -219,9 +223,9 @@ def compute_player_ratings(conn):
             if m[k] is not None:
                 mean, sd = norms[pos][k]
                 score += weight * (m[k] - mean) / sd
-        score += TEAM_WEIGHT * team_z
         minutes = w.sums["minutes"]
-        return score * minutes / (minutes + SHRINK_MINUTES), pos, minutes
+        score += TEAM_WEIGHT * w.sums["club_mins"] / minutes
+        return (score * minutes + MINUTES_PRIOR * SHRINK_MINUTES) / (minutes + SHRINK_MINUTES), pos, minutes
 
     # One replay collects raw scores; ranks are scaled afterwards by the spread among regulars
     sample = defaultdict(list) # position -> raw scores of players with a full window of minutes
@@ -229,8 +233,6 @@ def compute_player_ratings(conn):
     team_rows = []             # (fixture, team, predicted XI [(player, pos, raw)], actual XI [(raw, pos)], upcoming)
     for fid, kickoff, home, away, upcoming in fixtures:
         for team in (home, away):
-            tz = (team_rank.get((fid, team), last_rank_ctx.get(team, tr_mean)) - tr_mean) / tr_sd
-            last_rank_ctx[team] = team_rank.get((fid, team), last_rank_ctx.get(team, tr_mean))
             # predicted XI from recent matches, excluding the injury list
             minutes = Counter()
             for g in team_recent[team]:
@@ -239,7 +241,7 @@ def compute_player_ratings(conn):
             candidates = [(p, m) for p, m in minutes.most_common() if p not in out]
             scored = []
             for p, m in candidates:
-                s, pos, _ = raw_score(p, tz, kickoff)
+                s, pos, _ = raw_score(p, kickoff)
                 if s is not None:
                     scored.append((p, pos, s, m))
             keepers = [x for x in scored if x[1] == "GK"][:1]
@@ -249,7 +251,7 @@ def compute_player_ratings(conn):
             for a in apps.get(fid, []):
                 if a["team"] != team:
                     continue
-                s, pos, mins = raw_score(a["player"], tz, kickoff)
+                s, pos, mins = raw_score(a["player"], kickoff)
                 if s is not None:
                     appearance_scores.append((fid, a["player"], s, pos))
                     if mins >= SHRINK_MINUTES:
@@ -260,8 +262,10 @@ def compute_player_ratings(conn):
                               actual, upcoming))
         # after the match: update windows and team history
         for a in apps.get(fid, []):
-            windows[a["player"]].add(kickoff, _row_stats(a), a["role"], a["position"])
-            player_team[a["player"]] = a["team"]
+            st = _row_stats(a)
+            club_z = (team_rank.get((fid, a["team"]), tr_mean) - tr_mean) / tr_sd
+            st["club_mins"] = club_z * (a["minutes"] or 0)
+            windows[a["player"]].add(kickoff, st, a["role"], a["position"])
         for team in (home, away):
             played = {a["player"]: a["minutes"] for a in apps.get(fid, []) if a["team"] == team}
             if played:
@@ -290,11 +294,10 @@ def compute_player_ratings(conn):
         if upcoming:
             lineups.extend((fid, team, p, label, to_rank(s, pos)) for p, pos, s, label in predicted)
 
-    # Current rank per player: latest window, latest rank of his latest team
+    # Current rank per player: latest window
     current = []
     for player in list(windows):
-        tz = (last_rank_ctx.get(player_team.get(player), tr_mean) - tr_mean) / tr_sd
-        s, pos, minutes = raw_score(player, tz, fixtures[-1][1] if fixtures else None)
+        s, pos, minutes = raw_score(player, fixtures[-1][1] if fixtures else None)
         if s is not None:
             current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
 
