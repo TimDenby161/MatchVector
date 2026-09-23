@@ -368,6 +368,19 @@
   .goal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .rank-move { font-size: 11px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
+  /* Wide screens: league filters in a column to the left of the ranked list, which stays
+     centred on the page (the filters sit in the left margin, outside the centred column) */
+  @media (min-width: 1160px) {
+    section[data-tab="table"] { position: relative; }
+    #table-filters { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 200px; margin: 0; }
+    #table-filters .filter-stick { position: sticky; top: 124px; max-height: calc(100vh - 140px); overflow-y: auto;
+      padding-right: 4px; }
+    #table-filters .filter-row { flex-direction: column; align-items: stretch; gap: 4px; }
+    #table-filters .filter-chip { text-align: left; border-radius: 8px; white-space: normal; }
+    #table-filters .filter-more { text-align: left; }
+    #table-filters .more-country { margin-top: 8px; }
+  }
+
   footer { color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 16px 24px; line-height: 1.5; }
 
   @media (max-width: 480px) {
@@ -424,8 +437,10 @@
 
   <section class="panel" data-tab="table" data-active="true">
     <div class="filters-wrap" id="table-filters">
-      <div class="filter-row"></div>
-      <div class="filter-row filter-row-more" hidden></div>
+      <div class="filter-stick">
+        <div class="filter-row"></div>
+        <div class="filter-row filter-row-more" hidden></div>
+      </div>
     </div>
     <div class="filter-row range-row" id="table-view" style="margin-bottom:10px">
       <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
