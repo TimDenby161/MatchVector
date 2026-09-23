@@ -133,7 +133,7 @@ Every run replays all fixtures from scratch, which takes seconds. Late results, 
 
 `fixture_predictions` holds one row per fixture. The `upcoming_predictions` view adds team and competition names, and shows percentages. The method is based on the sheet's RG tabs:
 
-1. **Expected margin:** (home rank − away rank + 30) / 100, plus 0.2 goals in the Champions League, Europa League and Conference League, where home sides do better.
+1. **Expected margin:** (home match rank − away match rank + 30) / 100. Each team's **match rank** is 60% of its current rank (Now) plus 40% of LT ALGO. A point-in-time backtest beat Now alone in both 2022–23 (log loss 1.0026 → 1.0012) and 2024 onwards (1.0034 → 1.0007). ST, LT, the 30 and 100 Rankings and other blends all did worse., plus 0.2 goals in the Champions League, Europa League and Conference League, where home sides do better.
 2. **Base goals for each side:** the average of the team's own goals scored and the opponent's goals conceded, at home for the home side and away for the away side. The averages cover the last 12 months, use **xG instead of goals** for any match that has it, and are shrunk towards the competition average by 6 games.
 3. **Projected goals:** a proportional version of the sheet's "Buff" scales the favourite up and the underdog down by the same factor until the margin matches. The original moved goals in a straight line, which pushed underdogs to around 0 goals and made the model far too sure they wouldn't score.
 4. **Injuries**, in the 10 leagues in `config.INJURY_MODEL_LEAGUES` that have injury history: the Premier League, Championship, La Liga, Serie A, the Bundesliga, Ligue 1, Turkey, the Netherlands, MLS and Norway.

@@ -2,7 +2,9 @@
 
 Based on the Club Ranking sheet's RG tabs, improved by backtesting 51,000 matches (2024-26):
 
-    exp_diff   = (home_rank - away_rank + HOME_ADVANTAGE_POINTS) / 100   (as in ranking.py)
+    match rank = MATCH_RANK_NOW x Now (current rank) + (1 - MATCH_RANK_NOW) x LT ALGO
+                 (backtested: beat Now alone in 2022-23 and 2024+, log loss 1.0034 -> 1.0007)
+    exp_diff   = (home match rank - away match rank + HOME_ADVANTAGE_POINTS) / 100
                  + EUROPE_HOME_BONUS in UEFA club competitions (home sides do ~0.2 goals better)
     base_home  = mean(home team's avg goals scored at home, away team's avg conceded away)
     base_away  = mean(away team's avg goals scored away, home team's avg conceded at home)
@@ -28,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import config
 from .injuries import BETA as INJURY_BETA, missing_strengths
-from .ranking import DEFAULT_STARTING_RANK, HOME_ADVANTAGE_POINTS
+from .ranking import DEFAULT_STARTING_RANK, HOME_ADVANTAGE_POINTS, summarise
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +39,12 @@ DRAW_INFLATION = 1.1      # max draw boost (close games); independent Poisson un
 DRAW_FADE_MARGIN = 1.5    # no draw boost once the expected margin reaches this many goals
 EUROPE_HOME_BONUS = 0.2   # extra expected home margin in the Champions/Europa/Conference League
 EUROPE_COMPS = {2, 3, 848}
+MATCH_RANK_NOW = 0.6       # weight of the current rank; the rest is LT ALGO
+
+
+def match_rank(now, lt):
+    """Rank used for projections: a blend of the current rank and LT ALGO."""
+    return MATCH_RANK_NOW * now + (1 - MATCH_RANK_NOW) * (lt if lt is not None else now)
 MAX_GOALS = 10
 DEFAULT_HOME_GOALS, DEFAULT_AWAY_GOALS = 1.45, 1.15
 UPCOMING_STATUSES = ("NS", "TBD")
@@ -131,8 +139,8 @@ def update_predictions(conn):
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=365)
 
-    ranks = {t: (r, rel) for t, r, rel in conn.execute(
-        "select team_id, current_rank, reliability from team_rankings")}
+    ranks = {t: (match_rank(now, lt), rel) for t, now, lt, rel in conn.execute(
+        "select team_id, current_rank, lt_algo, reliability from team_rankings")}
     starting = {k: float(v) for k, v in conn.execute(
         "select league_id, starting_rank from leagues where starting_rank is not null")}
 
@@ -208,10 +216,15 @@ def backfill_predictions(conn):
     time. Live snapshots (source='live', made the night before) are never overwritten.
     """
     have = {r[0] for r in conn.execute("select fixture_id from fixture_predictions")}
-    ranks_before = {}
-    for fid, team, is_home, rank in conn.execute(
-            "select fixture_id, team_id, is_home, rank_before from team_rank_history"):
-        ranks_before[(fid, is_home)] = rank
+    # Match rank going into each fixture: Now and LT ALGO as they stood before it
+    history, ranks_before = {}, {}
+    for fid, team, is_home, before, after in conn.execute(
+            """select fixture_id, team_id, is_home, rank_before, rank_after from team_rank_history
+               order by team_id, match_no"""):
+        hist = history.setdefault(team, [before])
+        s = summarise(hist)
+        ranks_before[(fid, is_home)] = match_rank(before, s["lt_algo"] if s else before)
+        hist.append(after)
 
     fixtures = conn.execute(
         """select fixture_id, kickoff, league_id, home_team_id, away_team_id, home_goals, away_goals
