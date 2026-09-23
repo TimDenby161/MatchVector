@@ -104,7 +104,7 @@
 
   nav.tabs {
     display: flex; gap: 4px; background: var(--chip-bg);
-    border-radius: 10px; padding: 3px; margin-top: 8px;
+    border-radius: 10px; padding: 3px; margin-bottom: 8px;
   }
   nav.tabs button {
     flex: 1; appearance: none; border: none; background: transparent; cursor: pointer;
@@ -405,6 +405,12 @@
 <body>
 
 <header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="table" aria-selected="true">Rankings</button>
+    <button role="tab" data-tab="matches" aria-selected="false">Matches</button>
+    <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
+    <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
+  </nav>
   <div class="app-bar">
     <h1><span class="brand-mark" aria-hidden="true"></span><span>MatchVector</span></h1>
     <div class="meta-row">
@@ -412,12 +418,6 @@
       <button id="refresh-btn" type="button" aria-label="Reload data">&#8635;</button>
     </div>
   </div>
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="table" aria-selected="true">Rankings</button>
-    <button role="tab" data-tab="matches" aria-selected="false">Matches</button>
-    <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
-    <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
-  </nav>
 </header>
 
 <main>
