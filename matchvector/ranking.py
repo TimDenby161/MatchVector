@@ -163,7 +163,11 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
 
     # Goal averages over the last 12 months (HG/HA/AG/AA columns)
     today = date.today()
-    one_year_ago = today.replace(year=today.year - 1, day=min(today.day, 28))
+    # Sheet: DATE(YEAR(NOW())-1, MONTH(NOW()), DAY(NOW())); 29 Feb rolls to 1 Mar like Sheets
+    try:
+        one_year_ago = today.replace(year=today.year - 1)
+    except ValueError:
+        one_year_ago = date(today.year - 1, 3, 1)
     goals = {}
     for _, kickoff, _, _, home, away, hg, ag in fixtures:
         if kickoff.date() >= one_year_ago:
