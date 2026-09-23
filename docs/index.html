@@ -353,15 +353,15 @@
     </div>
   </div>
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="matches" aria-selected="true">Matches</button>
-    <button role="tab" data-tab="table" aria-selected="false">Rankings</button>
+    <button role="tab" data-tab="table" aria-selected="true">Rankings</button>
+    <button role="tab" data-tab="matches" aria-selected="false">Matches</button>
     <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
     <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
   </nav>
 </header>
 
 <main>
-  <section class="panel" data-tab="matches" data-active="true">
+  <section class="panel" data-tab="matches" data-active="false">
     <div class="filters-wrap" id="match-filters">
       <div class="filter-row"></div>
       <div class="filter-row filter-row-more" hidden></div>
@@ -375,7 +375,7 @@
     <div id="matches-list"></div>
   </section>
 
-  <section class="panel" data-tab="table">
+  <section class="panel" data-tab="table" data-active="true">
     <div class="filters-wrap" id="table-filters">
       <div class="filter-row"></div>
       <div class="filter-row filter-row-more" hidden></div>
@@ -466,7 +466,7 @@ const FINISHED = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
 
 const state = {
   data: null, rankings: null, compLabels: {},
-  matchFilter: "all", tableFilter: "39", date: null,
+  matchFilter: "all", tableFilter: "all", date: null,
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
@@ -565,7 +565,7 @@ function renderFilterChips(kind) {
 
   const primary = matchLike
     ? [chip("all", "All"), ...PRIMARY_COMPS.map((c) => chip(c.id, c.label, c.ids ? "English teams" : compLabel(c.id)))]
-    : TABLE_COMPS.map((c) => chip(c.id, c.label, compLabel(c.id)));
+    : [chip("all", "All", "All leagues"), ...TABLE_COMPS.map((c) => chip(c.id, c.label, compLabel(c.id)))];
   const covered = new Set((matchLike ? PRIMARY_COMPS : TABLE_COMPS).map((c) => c.id));
 
   // "More": every other competition, grouped by country
@@ -770,8 +770,9 @@ function renderPlayers() {
   if (!state.players) { wrap.innerHTML = `<div class="empty-state">No player ranks yet.</div>`; return; }
   const league = Number(state.tableFilter);
   const q = state.tableSearch.trim().toLowerCase();
+  const all = state.tableFilter === "all";
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
-               : state.players.list.filter((p) => p.league === league);
+               : all ? state.players.list : state.players.list.filter((p) => p.league === league);
   if (state.playerGroup !== "all") rows = rows.filter((p) => ROLE_GROUP[p.position] === state.playerGroup);
   rows = rows.slice(0, 300);
   const chips = `<div class="filter-row" id="player-groups" style="margin-bottom:10px">${GROUP_CHIPS.map(([g, label]) =>
@@ -783,7 +784,7 @@ function renderPlayers() {
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}">
           <td>${i + 1}</td>
-          <td>${escapeHtml(p.name)}<span class="club-sub">${escapeHtml(teamName(p.team))}</span></td>
+          <td>${escapeHtml(p.name)}<span class="club-sub">${escapeHtml(teamName(p.team))}${all || q ? ` · ${escapeHtml(compLabel(p.league))}` : ""}</span></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
@@ -796,8 +797,11 @@ function renderTable() {
   if (state.tableView === "players") return renderPlayers();
   const wrap = $("#table-wrap");
   const league = Number(state.tableFilter);
+  const all = state.tableFilter === "all";
   const q = state.tableSearch.trim().toLowerCase();
-  let rows = state.rankings.filter((r) => r.league === league);
+  const yearAgo = Date.now() - 365 * 864e5;
+  let rows = all ? state.rankings.filter((r) => r.last_match && new Date(r.last_match) >= yearAgo)
+                 : state.rankings.filter((r) => r.league === league);
   if (q) rows = state.rankings.filter((r) => teamName(r.team).toLowerCase().includes(q));
   const key = state.tableSort;
   rows = rows.slice().sort((a, b) => (b[key] ?? -1e9) - (a[key] ?? -1e9));
@@ -816,7 +820,7 @@ function renderTable() {
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
-          <td>${escapeHtml(teamName(r.team))}${q ? `<span class="club-sub">${escapeHtml(compLabel(r.league))}</span>` : ""}</td>
+          <td>${escapeHtml(teamName(r.team))}${q || all ? `<span class="club-sub">${escapeHtml(compLabel(r.league))}</span>` : ""}</td>
           <td class="num"><b>${Math.round(r.lt)}</b></td>
           <td class="num">${Math.round(r.current)}</td>
           <td class="num">${formHtml(r.form)}</td>
