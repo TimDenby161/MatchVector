@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <clipPath id="r"><rect width="64" height="64" rx="19"/></clipPath>
+  </defs>
+  <g clip-path="url(#r)">
+    <rect width="64" height="64" fill="#1baf7a"/>
+    <polygon points="0,0 61.4,0 0,61.4" fill="#2a78d6"/>
+    <polygon points="64,2.6 64,64 2.6,64" fill="#eb6834"/>
+  </g>
+</svg>
