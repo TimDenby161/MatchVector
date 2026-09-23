@@ -87,11 +87,10 @@ STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on",
 # goals / assists / save % beyond those mostly reflected luck that evened out. So rating is a
 # small part everywhere, the lasting stats carry the weight, and goals still count for attackers.
 WEIGHTS = {
-    # keepers on match rating alone: goals conceded mostly measures the defence in front of him
-    # (Trafford went 41 -> 96 moving from a relegated Premier League side to the Championship's
-    # best defence) and save % is mostly luck; rating alone repeated best season to season
-    # (0.60, and 0.61 for keepers who changed club, vs 0.57 / 0.61 for rating + save % + conceded)
-    "GK": {"rating": 1.0},
+    # keepers on match rating alone, corrected for workload (gk_rating, see metrics): goals
+    # conceded mostly measures the defence in front of him (Trafford went 41 -> 96 moving from a
+    # relegated Premier League side to the Championship's best defence) and save % is mostly luck
+    "GK": {"gk_rating": 1.0},
     "CB": {"rating": .15, "duels_pct": .20, "passes": .18, "pass_acc": .10, "tackles_int": .12,
            "blocks": .05, "goals": .05, "shots_on": .05, "discipline": -.10},
     "FB": {"rating": .12, "key_passes": .18, "passes": .15, "duels_pct": .12, "tackles_int": .10,
@@ -109,6 +108,14 @@ WEIGHTS = {
 }
 
 
+# Keeper ratings rise with workload: busy keepers earn rating points for saves. Raya was 7.21 at
+# Brentford (4.1 saves per 90) and 6.86 at Arsenal (1.4). A keeper's rating is compared with what
+# his workload would give: GK_SAVES_ADJ per save per 90 away from GK_SAVES_MEAN. 0.10 made ratings
+# most consistent for keepers who changed club (Raya 7.09 -> 7.01); stronger overshoots.
+GK_SAVES_ADJ = 0.10
+GK_SAVES_MEAN = 2.9
+
+
 def metrics(s):
     """Metric values from summed stats s (dict)."""
     m = s["minutes"]
@@ -116,8 +123,10 @@ def metrics(s):
         return None
     p90 = lambda k: s[k] * 90 / m
     ratio = lambda a, b: s[a] / s[b] if s[b] else None
+    rating = s["rating_mins"] / s["rated_mins"] if s["rated_mins"] else None
     return {
-        "rating": s["rating_mins"] / s["rated_mins"] if s["rated_mins"] else None,
+        "rating": rating,
+        "gk_rating": rating - GK_SAVES_ADJ * (p90("saves") - GK_SAVES_MEAN) if rating is not None else None,
         "goals": p90("goals"), "assists": p90("assists"), "shots_on": p90("shots_on"),
         "key_passes": p90("key_passes"), "dribbles_won": p90("dribbles_won"),
         "tackles_int": (s["tackles"] + s["interceptions"]) * 90 / m, "blocks": p90("blocks"),
