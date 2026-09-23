@@ -43,6 +43,8 @@ Season rank (player_season_ranks), from that season's own matches
                apart instead of all sitting at ~99
     rank     = pct x club_factor(club), club = his clubs' average rank over his matches;
                keepers use keeper_rank instead (mostly club level, rating nudges it)
+    keeper club level is smoothed over this and earlier seasons (0.5 ^ years apart), so a move
+               to a bigger club lifts him gradually
     keepers  = a keeper's season score is blended with his other seasons, weighted 1 for the
                season itself and 0.5 ^ years apart for the rest: a keeper's season rating repeats
                only ~0.28 from one season to the next (outfield ~0.55), so one season says little
@@ -448,8 +450,23 @@ def _season_ranks(conn, norms):
                 club = sum(either_side) / len(either_side) if either_side else None
             scored.append((player, season, est, pos, club, 0))
 
+    # Keepers lean on club level, so smooth that across his career too (weight 0.5 ^ years apart):
+    # a move to a bigger club counts, but not fully straight away (Suzuki, Parma 912 -> Villa 1056,
+    # would otherwise jump 66 -> 83 in four games)
+    gk_club = defaultdict(dict)
+    for player, season, s, pos, club, mins in scored:
+        if pos == "GK" and club:
+            gk_club[player][season] = club
+    smooth_club = {}
+    for player, clubs in gk_club.items():
+        for season in clubs:
+            w = {y: 0.5 ** abs(y - season) for y in clubs if y <= season}   # this season and earlier ones
+            smooth_club[(player, season)] = sum(clubs[y] * w[y] for y in w) / sum(w.values())
+
     rows = []
     for player, season, s, pos, club, mins in scored:
+        if pos == "GK" and (player, season) in smooth_club:
+            club = smooth_club[(player, season)]
         if ref.get(pos) and club:
             games = season_games.get((player, season))
             share = min(mins / (games * 90), 1) if games else None
