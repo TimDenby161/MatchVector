@@ -85,6 +85,8 @@ LEAGUES = {
     262: "Mexico Liga MX",
     307: "Saudi Pro League",
     253: "MLS",
+    233: "Egypt Premier League",
+    188: "Australia A-League",
 }
 
 # API-Football seasons are keyed by the year the season starts (2025 = 2025/26).

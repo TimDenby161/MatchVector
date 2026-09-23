@@ -48,6 +48,8 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 - `API_FOOTBALL_KEY`
 - `DATABASE_URL`: use the Supabase **Session pooler** string.
 
+**Adding a league.** Add its API-Football id to `config.LEAGUES`, and set a starting rank for it with `update leagues set starting_rank = … where league_id = …` once the league row exists. Then run the **Backfill leagues** workflow ([`.github/workflows/backfill.yml`](.github/workflows/backfill.yml)) with the new ids. The nightly job only refreshes current seasons, so the backfill pulls every season's teams, fixtures, standings, match stats and odds, then re-ranks and republishes the site. After that, the nightly job keeps the league up to date.
+
 ## Players and injuries
 
 For the 22 leagues in `config.PLAYER_LEAGUES`, the sync pulls the tables below. They are the English top five, La Liga, Serie A, the Bundesliga and Ligue 1, plus Turkey, Saudi Arabia, MLS, Portugal, the Netherlands, Belgium, Greece, Ukraine, Czechia, Austria, Norway, Azerbaijan and Slovakia.

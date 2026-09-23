@@ -1,0 +1,65 @@
+name: Backfill leagues
+
+# Manual run for newly added leagues: pulls every season's teams, fixtures, standings, match
+# stats and odds, then re-ranks, re-predicts and republishes the site data. The nightly job
+# only refreshes current seasons, so a new league needs this once.
+on:
+  workflow_dispatch:
+    inputs:
+      leagues:
+        description: "API-Football league ids, space-separated (e.g. 233 188)"
+        required: true
+      seasons:
+        description: "Seasons (year the season starts), space-separated"
+        required: true
+        default: "2020 2021 2022 2023 2024 2025 2026"
+
+concurrency:
+  group: db-sync            # never overlaps the nightly or match-day jobs
+  cancel-in-progress: false
+
+permissions:
+  contents: write          # to commit the website data in docs/data
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      API_DAILY_RESERVE: "200"
+      LEAGUES: ${{ inputs.leagues }}
+      SEASONS: ${{ inputs.seasons }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Pull the leagues' history from API-Football
+        run: |
+          for target in leagues teams fixtures standings stats odds; do
+            python -m matchvector sync "$target" --leagues $LEAGUES --seasons $SEASONS
+          done
+
+      - name: Re-rank and re-predict
+        run: |
+          python -m matchvector rank
+          python -m matchvector predict
+          python -m matchvector export
+
+      - name: Commit website data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898183+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update website data"
+            git pull --rebase
+            git push
+          fi
