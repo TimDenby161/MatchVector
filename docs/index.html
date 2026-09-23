@@ -284,6 +284,8 @@
   table.leaderboard.players th.col-s0, table.leaderboard.players td.col-s0 { padding-left: 12px; width: 46px; }
   table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 44px; }
   table.leaderboard.players .dim { color: var(--gridline); }
+  /* a season estimated from the age curve (no minutes in covered leagues): outlined, not filled */
+  table.leaderboard.players .est .rel-chip { background: transparent; box-shadow: inset 0 0 0 1px currentColor; font-style: italic; opacity: .8; }
   @media (max-width: 480px) {
     table.leaderboard.players .col-s3,
     table.leaderboard.players .col-s4, table.leaderboard.players .col-s5 { display: none; }
@@ -1079,6 +1081,9 @@ function playerCellTip(pid, key) {
     ageLine = `Age ${Number(key) - by - (bm > 7 || (bm === 7 && bd > 1) ? 1 : 0)}\n`;
   }
   const spells = detail.players?.[pid]?.[key];
+  const p = (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(pid);
+  const i = (state.players.seasons || []).indexOf(Number(key));
+  if (p?.estimated?.includes(i)) return ageLine + "Not in a covered league this season\nEstimated from his other seasons and age";
   if (!spells?.length) return ageLine + "No minutes";
   const club = (id) => detail.teams?.[id] || teamName(id);
   return ageLine + spells.map(([team, mins, rank, rating, goals, assists]) =>
@@ -1126,7 +1131,7 @@ function renderPlayers() {
             <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? `<span class="pl-where"> · ${escapeHtml(countryLeagueText(p.league))}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
-          ${seasons.map((y, i) => `<td class="num col-season col-s${i} tip-cell" data-key="${y}">${p.seasons?.[i] == null ? `<span class="dim">–</span>` : rankChipSmall(p.seasons[i])}</td>`).join("")}
+          ${seasons.map((y, i) => `<td class="num col-season col-s${i} tip-cell" data-key="${y}">${p.seasons?.[i] == null ? `<span class="dim">–</span>` : p.estimated?.includes(i) ? `<span class="est">${rankChipSmall(p.seasons[i])}</span>` : rankChipSmall(p.seasons[i])}</td>`).join("")}
         </tr>`).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);

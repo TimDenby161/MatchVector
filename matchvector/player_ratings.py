@@ -31,6 +31,10 @@ Season rank (player_season_ranks), from that season's own matches
                  age, measured from players with ANCHOR_MINUTES+ in both seasons). So a 15-year-old's
                  debut season sits a normal amount below his first full season. With no such
                  season anywhere, MINUTES_PRIOR, so a thin season is marked down
+    gaps     = a season between his first and last seasons here with no minutes in these leagues
+               (e.g. a year in a league without player data) gets the age-curve estimate alone,
+               with club level from the seasons either side; stored with minutes = 0 so the site
+               can show it as an estimate
     pct      = percentile among player-seasons with 900+ minutes in the same role group, except
                the top decile, which is spread by how far the score is above the 90th percentile
                (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
@@ -332,6 +336,25 @@ def _season_ranks(conn, norms):
 
     log.info("Age curve (score change per year by age): %s",
              {a: round(v, 3) for a, v in sorted(curve.items())})
+    # Gaps inside a player's span of seasons: estimate from the age curve (minutes = 0)
+    by_player = defaultdict(dict)
+    for player, season, s, pos, club, mins in scored:
+        by_player[player][season] = (pos, club)
+    for player, have in by_player.items():
+        for season in range(min(have) + 1, max(have)):
+            if season in have:
+                continue
+            est = estimate(player, season)
+            if est is None:
+                continue
+            near = sorted(have, key=lambda y: abs(y - season))
+            pos = have[near[0]][0]
+            either_side = [have[y][1] for y in (max((y for y in have if y < season), default=None),
+                                                 min((y for y in have if y > season), default=None))
+                           if y is not None and have[y][1]]
+            club = sum(either_side) / len(either_side) if either_side else None
+            scored.append((player, season, est, pos, club, 0))
+
     rows = []
     for player, season, s, pos, club, mins in scored:
         if ref.get(pos) and club:

@@ -302,11 +302,13 @@ def export_players(conn, out_dir=OUT_DIR):
            join fixtures f on f.fixture_id = x.fixture_id
            where p.current_rank is not null and p.rank_minutes >= 450
            order by p.current_rank desc""").fetchall()
-    season_ranks = defaultdict(dict)
-    for player, season, rank in conn.execute(
-            "select player_id, season, season_rank from player_season_ranks where season = any(%s)",
+    season_ranks, estimated = defaultdict(dict), defaultdict(set)
+    for player, season, rank, minutes in conn.execute(
+            "select player_id, season, season_rank, minutes from player_season_ranks where season = any(%s)",
             [PLAYER_SEASONS]):
         season_ranks[player][season] = float(rank)
+        if minutes == 0:                 # a gap season filled from the age curve
+            estimated[player].add(season)
     lineups = conn.execute(
         """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
                   p.name, pl.position, pl.player_rank
@@ -324,10 +326,11 @@ def export_players(conn, out_dir=OUT_DIR):
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     (out_dir / "players.json").write_text(json.dumps({
-        "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age"],
+        "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age", "estimated"],
         "seasons": PLAYER_SEASONS,
         "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6],
-                     [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7]] for r in players],
+                     [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7],
+                     [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]]] for r in players],
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))
