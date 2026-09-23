@@ -3,8 +3,11 @@
 Per match (Individual Results tab):
     exp_diff    = (home_rank * 1.09 - away_rank) / 100
     act_diff    = home_goals - away_goals
-    rank_change = (act_diff - exp_diff) * 10
+    rank_change = (act_diff - exp_diff) * K
     home_rank  += rank_change;  away_rank -= rank_change
+
+K is 10 (as in the sheet), except domestic cups (FA Cup, EFL Cup, Scottish cups...)
+use 5: rotated squads and giant-killings otherwise drain points from top leagues.
 
 Every team starts from a Starting Rank: leagues.starting_rank of the first
 league (type 'League') it plays in, else that of the first competition it
@@ -37,6 +40,7 @@ log = logging.getLogger(__name__)
 
 HOME_ADVANTAGE = 1.09
 K_FACTOR = 10
+DOMESTIC_CUP_K_FACTOR = 5     # competitions of type 'Cup' outside country 'World'
 DEFAULT_STARTING_RANK = 650
 
 # Reliability score tuning
@@ -53,6 +57,7 @@ class Match:
     away: object
     home_goals: int
     away_goals: int
+    k: float = K_FACTOR
 
 
 def run(matches, starting_rank):
@@ -69,7 +74,7 @@ def run(matches, starting_rank):
         h, a = current[m.home], current[m.away]
         exp_diff = (h * HOME_ADVANTAGE - a) / 100
         act_diff = m.home_goals - m.away_goals
-        change = (act_diff - exp_diff) * K_FACTOR
+        change = (act_diff - exp_diff) * m.k
         current[m.home], current[m.away] = h + change, a - change
         history[m.home].append(current[m.home])
         history[m.away].append(current[m.away])
@@ -126,7 +131,7 @@ def update_rankings(conn):
     fixtures = conn.execute(
         """
         select f.fixture_id, f.kickoff, f.league_id, l.type, f.home_team_id, f.away_team_id,
-               f.home_goals, f.away_goals
+               f.home_goals, f.away_goals, l.country
         from fixtures f join leagues l using (league_id)
         where f.status_short = any(%s) and f.home_goals is not null and f.away_goals is not null
         order by f.kickoff, f.fixture_id
@@ -135,7 +140,7 @@ def update_rankings(conn):
     ).fetchall()
 
     first_league, first_comp = {}, {}
-    for _, _, league_id, ltype, home, away, _, _ in fixtures:
+    for _, _, league_id, ltype, home, away, _, _, _ in fixtures:
         for team in (home, away):
             first_comp.setdefault(team, league_id)
             if ltype == "League":
@@ -152,7 +157,9 @@ def update_rankings(conn):
 
 def _replay(conn, fixtures, starting_rank):
     conn.execute("truncate team_rank_history")
-    matches = [Match(f[0], f[4], f[5], f[6], f[7]) for f in fixtures]
+    matches = [Match(f[0], f[4], f[5], f[6], f[7],
+                     DOMESTIC_CUP_K_FACTOR if f[3] == "Cup" and f[8] != "World" else K_FACTOR)
+               for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, _ = run(matches, starting_rank)
 
@@ -189,7 +196,7 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
         last_match[team] = kickoff
 
     latest_league = {}
-    for _, _, league_id, ltype, home, away, _, _ in fixtures:
+    for _, _, league_id, ltype, home, away, _, _, _ in fixtures:
         if ltype == "League":
             latest_league[home] = latest_league[away] = league_id
 
@@ -201,7 +208,7 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
     except ValueError:
         one_year_ago = date(today.year - 1, 3, 1)
     goals = {}
-    for _, kickoff, _, _, home, away, hg, ag in fixtures:
+    for _, kickoff, _, _, home, away, hg, ag, _ in fixtures:
         if kickoff.date() >= one_year_ago:
             for team in (home, away):
                 goals.setdefault(team, {"hg": [], "ha": [], "ag": [], "aa": []})

@@ -52,7 +52,7 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 This is a port of the Club Ranking Google Sheet. Every finished fixture is replayed oldest first, ordered by kickoff time, with the fixture ID breaking ties. For each fixture:
 
 - Expected goal difference = (home rank × 1.09 − away rank) / 100
-- Rank change = (actual goal difference − expected goal difference) × 10
+- Rank change = (actual goal difference − expected goal difference) × 10, or × 5 in domestic cups (FA Cup, EFL Cup, EFL Trophy, FA Trophy, Community Shield, Scottish cups). This isn't in the sheet: at × 10, rotated squads and giant-killings drained points from the top leagues. European competitions and the Club World Cup keep × 10.
 - The home team gains the rank change and the away team loses it.
 
 A team's first rank is `leagues.starting_rank` of the first league it plays in. For a team that only ever appears in cups, it's the `starting_rank` of the first cup it plays in.
