@@ -272,6 +272,12 @@
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
+  .table-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--surface-1); }
+  .table-scroll table.leaderboard th { background: var(--surface-1); z-index: 1; }
+  .table-scroll table.leaderboard tbody tr:last-child td { border-bottom: none; }
+  .table-scroll table.leaderboard th:first-child, .table-scroll table.leaderboard td:first-child { padding-left: 8px; }
+  .table-count { color: var(--text-muted); font-size: 11px; margin: 6px 2px 0; }
   table.leaderboard tbody tr { cursor: pointer; }
   table.leaderboard tbody tr:active { background: var(--chip-bg); }
   .club-sub { display: block; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
@@ -345,7 +351,7 @@
     table.leaderboard th:first-child, table.leaderboard td:first-child { width: 28px; }
     table.leaderboard.clubs { font-size: 11.5px; }
     table.leaderboard.clubs th { font-size: 10px; }
-    table.leaderboard.clubs th:first-child, table.leaderboard.clubs td:first-child { width: 22px; padding-left: 0; padding-right: 2px; }
+    table.leaderboard.clubs th:first-child, table.leaderboard.clubs td:first-child { width: 28px; padding-left: 6px; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 24px; padding-left: 0; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 28px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
@@ -785,6 +791,21 @@ function rankChipSmall(r) {
   return `<span class="rel-chip rel-${t}">${Math.round(r)}</span>`;
 }
 
+const TOP_ROWS = 10;
+// Show the first TOP_ROWS rows; the rest scroll inside the box
+function fitTopRows(wrap) {
+  const box = wrap.querySelector(".table-scroll");
+  if (!box) return;
+  const rows = box.querySelectorAll("tbody tr");
+  if (rows.length <= TOP_ROWS) { box.style.maxHeight = "none"; return; }
+  let h = box.querySelector("thead").offsetHeight;
+  for (let i = 0; i < TOP_ROWS; i++) h += rows[i].offsetHeight;
+  box.style.maxHeight = `${h + 2}px`;
+}
+function countNote(n, noun) {
+  return `<div class="table-count">${n > TOP_ROWS ? `Top ${TOP_ROWS} shown · scroll the box for all ${n.toLocaleString()} ${noun}` : `${n} ${noun}`}</div>`;
+}
+
 function renderPlayers() {
   const wrap = $("#table-wrap");
   if (!state.players) { wrap.innerHTML = `<div class="empty-state">No player ranks yet.</div>`; return; }
@@ -794,12 +815,11 @@ function renderPlayers() {
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
                : all ? state.players.list : state.players.list.filter((p) => p.league === league);
   if (state.playerGroup !== "all") rows = rows.filter((p) => ROLE_GROUP[p.position] === state.playerGroup);
-  rows = rows.slice(0, 300);
   const chips = `<div class="filter-row" id="player-groups" style="margin-bottom:10px">${GROUP_CHIPS.map(([g, label]) =>
     `<button type="button" class="filter-chip" data-group="${g}" aria-pressed="${state.playerGroup === g}">${label}</button>`).join("")}</div>`;
   if (!rows.length) { wrap.innerHTML = chips + `<div class="empty-state">No player ranks here (ranks cover the 10 leagues with per-match player data).</div>`; return; }
   wrap.innerHTML = chips + `
-    <table class="leaderboard">
+    <div class="table-scroll"><table class="leaderboard">
       <thead><tr><th>#</th><th>Player</th><th class="num">Pos</th><th class="num">Mins</th><th class="num">Rank</th></tr></thead>
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}">
@@ -809,8 +829,10 @@ function renderPlayers() {
           <td class="num">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
         </tr>`).join("")}</tbody>
-    </table>
+    </table></div>
+    ${countNote(rows.length, "players")}
     <div class="stats-note" style="margin-top:8px">Rank 0–100 from per-90 stats over each player's last 20 appearances. Positions come from where he has started in recent line-ups (e.g. LB, DM, RW); he's compared with regulars in the same role (left and right together) and adjusted for team strength. 50 = an average regular in that role; 90 = better than 90% of them.</div>`;
+  fitTopRows(wrap);
 }
 
 function renderTable() {
@@ -829,7 +851,7 @@ function renderTable() {
   const th = (k, label, title) =>
     `<th class="num sortable${key === k ? " active" : ""}" data-sort="${k}" title="${title}">${label}</th>`;
   wrap.innerHTML = `
-    <table class="leaderboard clubs">
+    <div class="table-scroll"><table class="leaderboard clubs">
       <thead><tr>
         <th>#</th><th></th><th>Club</th>
         ${th("played", "Pl", "Matches played")}
@@ -852,7 +874,9 @@ function renderTable() {
           <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
         </tr>`).join("")}
       </tbody>
-    </table>`;
+    </table></div>
+    ${countNote(rows.length, "clubs")}`;
+  fitTopRows(wrap);
 }
 
 // ------------------------------------------------------------------ stats
