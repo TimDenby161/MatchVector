@@ -252,6 +252,13 @@
 
   table.leaderboard { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
   table.leaderboard th, table.leaderboard td { padding: 7px 4px; text-align: left; border-bottom: 1px solid var(--gridline); }
+  .col-tip { position: fixed; z-index: 50; max-width: 260px; padding: 7px 10px; border-radius: 8px;
+    background: var(--text-primary); color: var(--surface-1); font-size: 12px; line-height: 1.4;
+    font-weight: 400; text-transform: none; letter-spacing: 0; pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+  .col-tip[hidden] { display: none; }
+  th[data-tip] { cursor: help; }
+  th.sortable[data-tip] { cursor: pointer; }
   table.leaderboard th {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted);
     font-weight: 600; position: sticky; top: 0; background: var(--page-plane);
@@ -982,17 +989,19 @@ function renderTable() {
   const key = state.tableSort;
   rows = rows.slice().sort((a, b) => (b[key] ?? -1e9) - (a[key] ?? -1e9));
   if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No clubs found.</div>`; return; }
-  const th = (k, label, title) =>
-    `<th class="num sortable${key === k ? " active" : ""}" data-sort="${k}" title="${title}">${label}</th>`;
+  const th = (k, label, tip) =>
+    `<th class="num sortable${key === k ? " active" : ""}" data-sort="${k}" data-tip="${escapeHtml(tip + " Click to sort.")}">${label}</th>`;
   wrap.innerHTML = `
     <div class="table-scroll"><table class="leaderboard clubs">
       <thead><tr>
-        <th>#</th><th></th><th>Club</th>
-        ${th("played", "Pl", "Matches played")}
-        ${th("reliability", "Rel", "Reliability 0-100")}
-        ${th("lt", "LT", "Long-term rank (LT ALGO)")}
-        ${th("form", "Form", "Rank change over the last 6 games")}
-        ${th("current", "Now", "Current rank, after the latest match")}
+        <th data-tip="Position in this list, in the current sort order.">#</th>
+        <th data-tip="Club badge."></th>
+        <th data-tip="Club name, with its country and league. Click a club to open its page.">Club</th>
+        ${th("played", "Pl", "Played: matches counted in the ranking since 2020, including cups and European games.")}
+        ${th("reliability", "Rel", "Reliability, 0 to 100: how far to trust the rank. Lower for clubs with few matches, or whose rank has been swinging a lot.")}
+        ${th("lt", "LT", "Long-term rank (LT ALGO): a smoothed rank, weighted mostly to the average over the last 100 matches. Slow to move, and the better guide for matches months away.")}
+        ${th("form", "Form", "Rank change over the last 6 matches. Green is rising, red is falling.")}
+        ${th("current", "Now", "Current rank, after the latest match. It rises when a club does better than expected against that opponent, and falls when it does worse.")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
@@ -1001,9 +1010,9 @@ function renderTable() {
           <td>${clubLink(r.team)}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
-          <td class="num"><b>${Math.round(r.lt)}</b></td>
+          <td class="num">${Math.round(r.lt)}</td>
           <td class="num">${formHtml(r.form)}</td>
-          <td class="num">${Math.round(r.current)}</td>
+          <td class="num"><b>${Math.round(r.current)}</b></td>
         </tr>`).join("")}
       </tbody>
     </table></div>
@@ -1474,6 +1483,24 @@ $("#matches-list").addEventListener("click", (e) => {
     header.querySelector(".comp-group-caret").innerHTML = group.classList.contains("collapsed") ? "&#9656;" : "&#9662;";
   }
 });
+// Column explanations: hover a header in the Rankings table
+const colTip = Object.assign(document.createElement("div"), { className: "col-tip", hidden: true });
+colTip.setAttribute("role", "tooltip");
+document.body.appendChild(colTip);
+$("#table-wrap").addEventListener("mouseover", (e) => {
+  const h = e.target.closest("th[data-tip]");
+  if (!h) return;
+  colTip.textContent = h.dataset.tip;
+  colTip.hidden = false;
+  const b = h.getBoundingClientRect(), w = colTip.offsetWidth;
+  colTip.style.left = `${Math.max(8, Math.min(b.left + b.width / 2 - w / 2, innerWidth - w - 8))}px`;
+  colTip.style.top = `${b.bottom + 6}px`;
+});
+$("#table-wrap").addEventListener("mouseout", (e) => {
+  if (e.target.closest("th[data-tip]") && !e.relatedTarget?.closest?.("th[data-tip]")) colTip.hidden = true;
+});
+$("#table-wrap").addEventListener("scroll", () => { colTip.hidden = true; }, true);
+
 $("#table-wrap").addEventListener("click", (e) => {
   const th = e.target.closest("th[data-sort]");
   if (th) { state.tableSort = th.dataset.sort; return renderTable(); }
