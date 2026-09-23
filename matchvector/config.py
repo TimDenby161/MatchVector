@@ -37,6 +37,7 @@ LEAGUES = {
     140: "La Liga",
     135: "Serie A",
     78: "Bundesliga",
+    79: "2. Bundesliga",
     61: "Ligue 1",
     # Other European leagues
     141: "Spain Segunda Division",
