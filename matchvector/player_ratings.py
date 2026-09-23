@@ -47,6 +47,9 @@ Season rank (player_season_ranks), from that season's own matches
                keepers use keeper_rank instead (mostly club level, rating nudges it)
     keeper club level is smoothed over this and earlier seasons (0.5 ^ years apart), so a move
                to a bigger club lifts him gradually
+    smoothing = every season with 900+ minutes is blended with his other such seasons, weighted
+               OUTFIELD_SMOOTH (0.25) ^ years apart for outfield players, since seasons repeat only
+               ~0.55 (Tah's poor 22/23: 51 -> 63)
     keepers  = a keeper's season score is blended with his other seasons, weighted 1 for the
                season itself and 0.5 ^ years apart for the rest: a keeper's season rating repeats
                only ~0.28 from one season to the next (outfield ~0.55), so one season says little
@@ -84,6 +87,8 @@ FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull 
 PRIOR_SEASON_MINUTES = 1350  # weight of last season's score at the start of a season (15 full games)
 ANCHOR_MINUTES = 1500      # a season with this many minutes is measured well enough to estimate others from
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
+GK_SMOOTH = 0.5            # season blend weight per year apart: keepers
+OUTFIELD_SMOOTH = 0.25     # ... outfield players
 YOUNG_STEP_17 = 0.15       # age curve below 18 (not measurable: too few regulars): yearly gain at 17,
 YOUNG_STEP_EXTRA = 0.05    # plus this for each year younger (16: 0.20, 15: 0.25, 14: 0.30); set so
                            # Lamine Yamal is ~63 at 14 and 78 at 15 going back from his first full season
@@ -407,15 +412,20 @@ def _season_ranks(conn, norms):
         club = e["club"][0] / e["club"][1] if e["club"][1] else None
         scored.append((player, season, s, pos, club, int(mins)))
 
-    # Keepers: blend each season with his other seasons, weight 0.5 ^ years apart
-    gk = defaultdict(dict)
-    for p, y, sc, pos, _, _ in scored:
-        if pos == "GK":
-            gk[p][y] = sc
+    # Blend each season with his other seasons, weight SMOOTH ^ years apart: keepers 0.5 (season
+    # ratings repeat ~0.3), outfield 0.25 (~0.55), so one-off dips and spikes are softened
+    # Only seasons with 900+ minutes take part: thinner ones are mostly the age-curve estimate
+    # already, and smoothing would undo it (a 15-year-old's cameo pulled up to his later level)
+    career = defaultdict(dict)
+    for p, y, sc, pos, _, mins in scored:
+        if mins >= 900:
+            career[p][y] = sc
     for i, (player, season, sc, pos, club, mins) in enumerate(scored):
-        if pos == "GK":
-            w = {y: 0.5 ** abs(y - season) for y in gk[player]}
-            scored[i] = (player, season, sum(gk[player][y] * w[y] for y in w) / sum(w.values()), pos, club, mins)
+        if mins < 900:
+            continue
+        smooth = GK_SMOOTH if pos == "GK" else OUTFIELD_SMOOTH
+        w = {y: smooth ** abs(y - season) for y in career[player]}
+        scored[i] = (player, season, sum(career[player][y] * w[y] for y in w) / sum(w.values()), pos, club, mins)
     for player, season, sc, pos, club, mins in scored:
         if mins >= 900:
             ref[pos].append(sc)

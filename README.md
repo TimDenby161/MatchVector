@@ -96,6 +96,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 4. Compare each stat with other players in the same role group.
 5. **Mark down players with few minutes:** pull them towards a below-average level (−0.5, weighted as 900 minutes), not towards the average.
 6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
+   - **Seasons are smoothed across a player's career.** Each season with 900+ minutes is blended with his other such seasons, weighted 0.25 ^ years apart for outfield players (0.5 for keepers). Outfield seasons only repeat at about 0.55, so a one-off dip or spike is partly noise. For example, Tah's 22/23 goes from 51 to 63, while his real rise into Leverkusen's title season stays. Thinner seasons are left out, because they're mostly the age-curve estimate already.
 7. **Scale by club level:** multiply the percentile by the square root of the club's rank ÷ 1200 (capped at 1). The club rank is the average rank, at the time, of the clubs he played those matches for, weighted by his minutes. Even a perfect player is capped by his club: at a 966 club he can reach at most 100 × √(966 / 1200) = 90. The square root keeps club level in the rank but halves the gaps: Real Madrid (1063) against Bayern (1121) is 0.94 against 0.97, rather than 0.89 against 0.93.
 
 **Where it's stored**
