@@ -40,6 +40,7 @@ LEAGUES = {
     78: "Bundesliga",
     79: "2. Bundesliga",
     61: "Ligue 1",
+    62: "Ligue 2",
     # Other European leagues
     141: "Spain Segunda Division",
     179: "Scotland Premiership",
