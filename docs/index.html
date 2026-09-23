@@ -223,6 +223,12 @@
   .prob-labels .prob-draw { color: var(--text-muted); }
   .prob-labels .prob-away { color: var(--series-orange); }
   .match-card.rated { cursor: pointer; }
+  .market-line { margin-top: 4px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: center; }
+  .market-line b { color: var(--text-secondary); font-weight: 700; }
+  .vs-market { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .vs-market .hd { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; text-align: right; }
+  .vs-market .num { text-align: right; font-weight: 700; }
+  .vs-market .better { color: var(--status-good); }
   .match-card.acc-5 { background: color-mix(in srgb, var(--status-good) 15%, var(--surface-1)); border-color: #d7a915; border-left: 5px solid #d7a915; }
   .match-card.acc-4 { background: color-mix(in srgb, var(--status-good) 12%, var(--surface-1)); border-left: 4px solid var(--status-good); }
   .match-card.acc-3 { background: color-mix(in srgb, #dfff00 20%, var(--surface-1)); border-left: 4px solid #c4df00; }
@@ -650,6 +656,7 @@ function matchCard(m) {
         </div>
       </div>
       ${probBar(m)}
+      ${m.m_home != null ? `<div class="market-line" title="Average bookmaker odds, margin removed">Bookmakers <b>${Math.round(m.m_home * 100)}%</b> · <b>${Math.round(m.m_draw * 100)}%</b> · <b>${Math.round(m.m_away * 100)}%</b></div>` : ""}
       ${detail}
     </div>`;
 }
@@ -784,7 +791,19 @@ function renderStats() {
       <div style="margin-top:4px">${factorRows}</div>
       <div class="stats-note">Each result is rated 1 (terrible) to 5 (excellent) from five factors, weighted as shown. Tap a result on the Matches tab to see its breakdown.</div>
     </div>` : "";
-  body.innerHTML = ratingBlock + `
+  const mk = s.market;
+  const cmp = (a, b, lowerBetter) => (lowerBetter ? a < b : a > b) ? " better" : "";
+  const marketBlock = mk ? `
+    <div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">Model vs bookmakers (${mk.n.toLocaleString()} matches with odds)</div>
+      <div class="vs-market">
+        <span></span><span class="hd">Model</span><span class="hd">Bookmakers</span>
+        <span>Right result</span><span class="num${cmp(mk.model_correct, mk.market_correct)}">${pct(mk.model_correct)}</span><span class="num${cmp(mk.market_correct, mk.model_correct)}">${pct(mk.market_correct)}</span>
+        <span>Log loss</span><span class="num${cmp(mk.model_ll, mk.market_ll, true)}">${mk.model_ll.toFixed(3)}</span><span class="num${cmp(mk.market_ll, mk.model_ll, true)}">${mk.market_ll.toFixed(3)}</span>
+      </div>
+      <div class="stats-note">Bookmakers' chances are the average across bookmakers with their margin removed, from the last odds before kickoff. Only matches with odds are compared${mk.n < 1000 ? "; the sample is still small, so treat this as a rough guide" : ""}.</div>
+    </div>` : `<div class="stats-card" style="margin-bottom:12px"><div class="stats-label">Model vs bookmakers</div><div class="stats-note">No finished matches with bookmaker odds in this range yet. Odds are collected nightly for upcoming matches.</div></div>`;
+  body.innerHTML = ratingBlock + marketBlock + `
     <div class="stats-grid">
       ${card("Matches", s.n.toLocaleString(), liveNote)}
       ${card("Right result", pct(s.correct), `Picking the home team every time: ${pct(s.home_rate)}`)}

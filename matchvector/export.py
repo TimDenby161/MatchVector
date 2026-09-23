@@ -17,6 +17,21 @@ FUTURE_DAYS = 60     # upcoming fixtures shown on the site
 FORM_GAMES = 6       # rank change over this many recent games = "form"
 
 
+def market_probabilities(conn):
+    """{fixture_id: (p_home, p_draw, p_away)} from the stored match-winner odds: each
+    bookmaker's 1/odds normalised to remove its margin, then averaged across bookmakers."""
+    books = {}
+    for fid, bm, sel, odd in conn.execute(
+            "select fixture_id, bookmaker_id, selection, odd from odds where bet_id = 1 and odd > 1"):
+        books.setdefault((fid, bm), {})[sel] = 1 / float(odd)
+    per_fixture = {}
+    for (fid, _), p in books.items():
+        if len(p) == 3:
+            total = p["Home"] + p["Draw"] + p["Away"]
+            per_fixture.setdefault(fid, []).append((p["Home"] / total, p["Draw"] / total, p["Away"] / total))
+    return {fid: tuple(sum(x[i] for x in ps) / len(ps) for i in range(3)) for fid, ps in per_fixture.items()}
+
+
 def _r(x, n=2):
     return None if x is None else round(float(x), n)
 
@@ -31,6 +46,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
             "select league_id, name, country, type from leagues")
     }
 
+    market = market_probabilities(conn)
     matches = []
     team_ids = set()
     for row in conn.execute(
@@ -50,6 +66,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
             fid, kickoff.isoformat(), lid, rnd, home, away, status, hg, ag, ph, pa_,
             _r(p_h, 3), _r(p_d, 3), _r(p_a, 3), _r(hxg), _r(axg), likely, _r(hr, 0), _r(ar, 0),
             source, *ratings,
+            *[_r(x, 3) for x in market.get(fid, (None, None, None))],
         ])
 
     # Form: total rank change over each team's last FORM_GAMES games
@@ -77,7 +94,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
         "fields": ["id", "kickoff", "league", "round", "home", "away", "status", "hg", "ag",
                    "pen_h", "pen_a", "p_home", "p_draw", "p_away", "home_xg", "away_xg",
                    "likely", "home_rank", "away_rank", "source", "rating", "r_winner",
-                   "r_margin", "r_clean_sheets", "r_shape", "r_goals"],
+                   "r_margin", "r_clean_sheets", "r_shape", "r_goals", "m_home", "m_draw", "m_away"],
         "matches": matches,
         "competitions": competitions,
         "teams": teams,
@@ -108,7 +125,15 @@ def _stats(rows):
     ratings = [0] * 5                               # count of 1s..5s
     factor_sums = [0.0] * 5
     rated = 0
-    for ph, pd, pa, hxg, axg, likely, hg, ag, source, rating, *factors in rows:
+    mk = {"n": 0, "model_ll": 0.0, "market_ll": 0.0, "model_correct": 0, "market_correct": 0}
+    for ph, pd, pa, hxg, axg, likely, hg, ag, source, rating, *factors, mprobs in rows:
+        if mprobs:
+            r_ = 0 if hg > ag else 1 if hg == ag else 2
+            mk["n"] += 1
+            mk["model_ll"] += -math.log(max((ph, pd, pa)[r_], 1e-6))
+            mk["market_ll"] += -math.log(max(mprobs[r_], 1e-6))
+            mk["model_correct"] += (ph, pd, pa).index(max(ph, pd, pa)) == r_
+            mk["market_correct"] += mprobs.index(max(mprobs)) == r_
         if rating:
             rated += 1
             ratings[rating - 1] += 1
@@ -132,6 +157,11 @@ def _stats(rows):
         "home_rate": round(home_wins / n, 4),
         "log_loss": round(logloss / n, 4), "brier": round(brier / n, 4),
         "goal_error": round(goal_err / n, 3),
+        "market": {"n": mk["n"],
+                   "model_ll": round(mk["model_ll"] / mk["n"], 4),
+                   "market_ll": round(mk["market_ll"] / mk["n"], 4),
+                   "model_correct": round(mk["model_correct"] / mk["n"], 4),
+                   "market_correct": round(mk["market_correct"] / mk["n"], 4)} if mk["n"] else None,
         "rated": rated,
         "rating_avg": round(sum((i + 1) * c for i, c in enumerate(ratings)) / rated, 3) if rated else None,
         "rating_counts": ratings,
@@ -148,17 +178,21 @@ def export_stats(conn, out_dir=OUT_DIR):
     rows = conn.execute(
         """select f.kickoff, f.league_id, p.p_home, p.p_draw, p.p_away, p.home_xg, p.away_xg,
                   p.likely_score, f.home_goals, f.away_goals, p.source, p.rating, p.rating_winner,
-                  p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals
+                  p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals,
+                  f.fixture_id
            from fixture_predictions p join fixtures f using (fixture_id)
            where f.status_short = any(%s) and f.home_goals is not null and f.kickoff >= %s""",
         [["FT", "AET", "PEN"], now - timedelta(days=max(STAT_RANGES.values()))]).fetchall()
+    market = market_probabilities(conn)
+    rows = [(*r, market.get(r[-1])) for r in rows]
     stats = {}
     for key, days in STAT_RANGES.items():
         recent = [r for r in rows if r[0] >= now - timedelta(days=days)]
         by_group = {"all": recent, "eng": [r for r in recent if r[1] in ENGLISH]}
         for r in recent:
             by_group.setdefault(str(r[1]), []).append(r)
-        stats[key] = {g: _stats([r[2:] for r in rs]) for g, rs in by_group.items() if rs}
+        # drop the fixture_id column (second to last) before summarising
+        stats[key] = {g: _stats([(*r[2:-2], r[-1]) for r in rs]) for g, rs in by_group.items() if rs}
     (out_dir / "stats.json").write_text(json.dumps(
         {"generated_at": now.isoformat(), "ranges": stats}, separators=(",", ":")), encoding="utf-8")
     log.info("Exported prediction stats for %d finished fixtures", len(rows))

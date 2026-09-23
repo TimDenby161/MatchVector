@@ -75,14 +75,21 @@ Every run replays all fixtures from scratch, which takes seconds. Late results, 
 
 ## Match predictions
 
-`fixture_predictions` holds one row per upcoming fixture. The `upcoming_predictions` view adds team and competition names, and shows percentages. The method is based on the sheet's RG tabs:
+`fixture_predictions` holds one row per fixture. The `upcoming_predictions` view adds team and competition names, and shows percentages. The method is based on the sheet's RG tabs:
 
-1. **Expected margin:** (home rank − away rank + 30) / 100.
-2. **Base goals for each side:** the average of the team's own goals scored and the opponent's goals conceded, at home for the home side and away for the away side. The averages cover the last 12 months and are shrunk towards the competition average by 6 games.
-3. **Projected goals:** the sheet's "Buff" shifts goals from one side to the other so the projected margin equals the expected margin, while total goals stay the same.
-4. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is multiplied by 1.1 because plain Poisson under-predicts draws.
+1. **Expected margin:** (home rank − away rank + 30) / 100, plus 0.2 goals in the Champions League, Europa League and Conference League, where home sides do better.
+2. **Base goals for each side:** the average of the team's own goals scored and the opponent's goals conceded, at home for the home side and away for the away side. The averages cover the last 12 months, use **xG instead of goals** for any match that has it, and are shrunk towards the competition average by 6 games.
+3. **Projected goals:** a proportional version of the sheet's "Buff" scales the favourite up and the underdog down by the same factor until the margin matches. The original moved goals in a straight line, which pushed underdogs to around 0 goals and made the model far too sure they wouldn't score.
+4. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is boosted by up to ×1.1 in close games; the boost fades to nothing at a 1.5-goal margin.
 
-The sheet's "36% × strength ratio" blend is dropped, because in backtesting it made predictions worse. On 51,000 matches from 2024 to 2026, log loss was 1.016 with the sheet's method and 1.005 with this one; guessing base rates scores about 1.07.
+The sheet's "36% × strength ratio" blend is dropped. Backtested log loss on 51,000 matches from 2024 to 2026: the sheet's method 1.016, the first version 1.0053, the current one 1.0035. Guessing base rates scores about 1.07.
+
+These were tested and not adopted:
+- A faster rank K for the first games after the summer break. It was worse.
+- Pulling ranks towards the league level after the summer. It made no difference.
+- Blending in bookmaker odds. On the first 505 matches with odds, the bookmakers alone scored best (log loss 0.975 against the model's 0.991), so blending isn't worth it yet. Re-test once there are a few thousand matches.
+
+**Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
 
 ```bash
 python -m matchvector predict   # the nightly job runs this after the rankings
