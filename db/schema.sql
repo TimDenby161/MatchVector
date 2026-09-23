@@ -238,6 +238,14 @@ create table if not exists fixture_predictions (
 -- 'live' = made before kickoff by the nightly run; 'backfill' = reconstructed afterwards
 -- from pre-match ranks and goal averages (what the current model would have said)
 alter table fixture_predictions add column if not exists source text not null default 'live';
+-- 1 (terrible) - 5 (excellent) grade of the projection once the match is finished, plus the
+-- five 0-5 factor scores it is weighted from (see matchvector/rating.py)
+alter table fixture_predictions add column if not exists rating smallint;
+alter table fixture_predictions add column if not exists rating_winner smallint;
+alter table fixture_predictions add column if not exists rating_margin smallint;
+alter table fixture_predictions add column if not exists rating_clean_sheets smallint;
+alter table fixture_predictions add column if not exists rating_shape smallint;
+alter table fixture_predictions add column if not exists rating_goals smallint;
 
 create or replace view upcoming_predictions as
 select p.kickoff, l.name as competition, l.country, f.round,

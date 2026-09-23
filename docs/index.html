@@ -222,8 +222,33 @@
   .prob-labels .prob-home { color: var(--series-blue); }
   .prob-labels .prob-draw { color: var(--text-muted); }
   .prob-labels .prob-away { color: var(--series-orange); }
-  .match-card.hit { border-left: 4px solid var(--status-good); }
-  .match-card.miss { border-left: 4px solid var(--status-critical); }
+  .match-card.rated { cursor: pointer; }
+  .match-card.acc-5 { background: color-mix(in srgb, var(--status-good) 15%, var(--surface-1)); border-color: #d7a915; border-left: 5px solid #d7a915; }
+  .match-card.acc-4 { background: color-mix(in srgb, var(--status-good) 12%, var(--surface-1)); border-left: 4px solid var(--status-good); }
+  .match-card.acc-3 { background: color-mix(in srgb, #dfff00 20%, var(--surface-1)); border-left: 4px solid #c4df00; }
+  .match-card.acc-2 { background: color-mix(in srgb, var(--series-orange) 12%, var(--surface-1)); border-left: 4px solid var(--series-orange); }
+  .match-card.acc-1 { background: color-mix(in srgb, var(--status-critical) 14%, var(--surface-1)); border-left: 5px solid var(--status-critical); }
+  .rating-badge { min-width: 30px; padding: 2px 6px; border-radius: 6px; font-size: 10px; line-height: 1.2;
+    font-weight: 800; text-align: center; border: 1px solid var(--border); }
+  .badge-5 { background: #f6c945; border-color: #b98500; color: #161100; }
+  .badge-4 { background: var(--status-good); border-color: var(--status-good); color: #fff; }
+  .badge-3 { background: #dfff00; border-color: #a6bd00; color: #101400; }
+  .badge-2 { background: var(--series-orange); border-color: var(--series-orange); color: #fff; }
+  .badge-1 { background: var(--status-critical); border-color: var(--status-critical); color: #fff; }
+  .card-top-right { display: flex; align-items: center; gap: 6px; }
+  .rating-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .rating-detail[hidden] { display: none; }
+  .factor { background: color-mix(in srgb, var(--surface-1) 70%, var(--chip-bg)); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .factor-name { color: var(--text-muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+  .factor-score { font-size: 12px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .factor-weight { color: var(--text-muted); font-size: 10px; font-weight: 600; }
+  .dist-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; font-variant-numeric: tabular-nums; }
+  .dist-label { width: 88px; flex-shrink: 0; font-weight: 700; }
+  .dist-bar-wrap { flex: 1; background: var(--chip-bg); border-radius: 4px; height: 10px; overflow: hidden; }
+  .dist-bar { height: 100%; border-radius: 4px; }
+  .dist-pct { width: 44px; text-align: right; color: var(--text-secondary); font-weight: 600; }
 
   table.leaderboard { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
   table.leaderboard th, table.leaderboard td { padding: 7px 4px; text-align: left; border-bottom: 1px solid var(--gridline); }
@@ -393,6 +418,11 @@ const SHORT_NAMES = {
 // Order competition groups are stacked in on the Matches tab (anything else follows)
 const GROUP_ORDER = [39, 40, 41, 42, 2, 3, 848, 45, 48, 46, 140, 135, 78, 61, 94, 88, 144, 179,
   43, 50, 51, 47];
+const RATING_LABELS = { 1: "Terrible", 2: "Poor", 3: "Decent", 4: "Very good", 5: "Excellent" };
+const FACTORS = [
+  ["r_winner", "Winner", "30%"], ["r_margin", "Margin", "25%"], ["r_clean_sheets", "Clean sheets", "20%"],
+  ["r_shape", "Shape", "15%"], ["r_goals", "Goals", "10%"],
+];
 const LIVE = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT", "SUSP"]);
 const FINISHED = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
 
@@ -591,11 +621,14 @@ function statusTag(m) {
 
 function matchCard(m) {
   const finished = FINISHED.has(m.status) && m.hg != null;
-  let cls = "";
-  if (finished && m.p_home != null) {
-    const probs = [m.p_home, m.p_draw, m.p_away];
-    cls = probs.indexOf(Math.max(...probs)) === outcome(m.hg, m.ag) ? " hit" : " miss";
-  }
+  const rated = finished && m.rating;
+  const cls = rated ? ` rated acc-${m.rating}` : "";
+  const badge = rated
+    ? `<span class="rating-badge badge-${m.rating}" title="${m.rating}/5 ${RATING_LABELS[m.rating]}">${m.rating}/5</span>` : "";
+  const detail = rated ? `<div class="rating-detail" hidden>
+      <div class="factor"><span class="factor-name">Overall</span><span class="factor-score">${m.rating}/5 ${RATING_LABELS[m.rating]}</span></div>
+      ${FACTORS.map(([k, label, w]) => `<div class="factor"><span class="factor-name">${label} <span class="factor-weight">${w}</span></span><span class="factor-score">${m[k]}/5</span></div>`).join("")}
+    </div>` : "";
   const round = m.round ? ` · ${escapeHtml(m.round.replace(/^Regular Season - /, "Round "))}` : "";
   const hRank = finished ? m.home_rank : state.rankByTeam.get(m.home)?.current ?? m.home_rank;
   const aRank = finished ? m.away_rank : state.rankByTeam.get(m.away)?.current ?? m.away_rank;
@@ -603,7 +636,7 @@ function matchCard(m) {
     <div class="match-card${cls}">
       <div class="match-card-top">
         <span class="match-meta">${escapeHtml(fmtTime(m.kickoff))}${round}</span>
-        ${statusTag(m)}
+        <span class="card-top-right">${badge}${statusTag(m)}</span>
       </div>
       <div class="match-teams">
         <div class="match-team">
@@ -617,6 +650,7 @@ function matchCard(m) {
         </div>
       </div>
       ${probBar(m)}
+      ${detail}
     </div>`;
 }
 
@@ -725,7 +759,32 @@ function renderStats() {
       <td class="${gap <= 0.03 ? "gap-ok" : gap > 0.06 ? "gap-off" : ""}">${pct(hit)}</td>
       <td style="width:70px"><span class="calib-bar" style="width:${Math.round(hit * 60)}px"></span></td></tr>`;
   }).join("");
-  body.innerHTML = `
+  const rc = s.rating_counts || [0, 0, 0, 0, 0];
+  const rated = rc.reduce((a, b) => a + b, 0);
+  const avgTier = s.rating_avg ? Math.round(s.rating_avg) : null;
+  const colours = { 5: "#f6c945", 4: "var(--status-good)", 3: "#c4df00", 2: "var(--series-orange)", 1: "var(--status-critical)" };
+  const dist = [5, 4, 3, 2, 1].map((r) => {
+    const share = rated ? rc[r - 1] / rated : 0;
+    return `<div class="dist-row"><span class="dist-label">${r} ${RATING_LABELS[r]}</span>
+      <span class="dist-bar-wrap"><span class="dist-bar" style="display:block;width:${(100 * share).toFixed(1)}%;background:${colours[r]}"></span></span>
+      <span class="dist-pct">${pct(share, 0)}</span></div>`;
+  }).join("");
+  const factorRows = s.factor_avgs ? FACTORS.map(([k, label, w]) => {
+    const v = s.factor_avgs[k.slice(2)];
+    return `<div class="dist-row"><span class="dist-label">${label} <span class="factor-weight">${w}</span></span>
+      <span class="dist-bar-wrap"><span class="dist-bar" style="display:block;width:${(v / 5 * 100).toFixed(1)}%;background:var(--series-blue)"></span></span>
+      <span class="dist-pct">${v.toFixed(2)}</span></div>`;
+  }).join("") : "";
+  const ratingBlock = rated ? `
+    <div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">Average rating</div>
+      <div class="stats-value">${s.rating_avg.toFixed(2)}<span style="font-size:14px;color:var(--text-muted)"> / 5 · ${RATING_LABELS[avgTier]}</span></div>
+      <div style="margin-top:10px">${dist}</div>
+      <div class="stats-label" style="margin-top:12px">Average by factor (0–5)</div>
+      <div style="margin-top:4px">${factorRows}</div>
+      <div class="stats-note">Each result is rated 1 (terrible) to 5 (excellent) from five factors, weighted as shown. Tap a result on the Matches tab to see its breakdown.</div>
+    </div>` : "";
+  body.innerHTML = ratingBlock + `
     <div class="stats-grid">
       ${card("Matches", s.n.toLocaleString(), liveNote)}
       ${card("Right result", pct(s.correct), `Picking the home team every time: ${pct(s.home_rate)}`)}
@@ -805,6 +864,12 @@ $("#table-search").addEventListener("input", (e) => { state.tableSearch = e.targ
 $("#matches-list").addEventListener("click", (e) => {
   const team = e.target.closest("[data-team]");
   if (team) return openTeam(Number(team.dataset.team));
+  const ratedCard = e.target.closest(".match-card.rated");
+  if (ratedCard) {
+    const d = ratedCard.querySelector(".rating-detail");
+    if (d) d.hidden = !d.hidden;
+    return;
+  }
   const go = e.target.closest("[data-goto]");
   if (go) { state.date = go.dataset.goto; return renderMatches(); }
   const header = e.target.closest(".comp-group-header");

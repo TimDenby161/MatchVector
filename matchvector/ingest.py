@@ -9,6 +9,7 @@ from .api import QuotaExhausted
 from .db import upsert
 from .predictions import backfill_predictions, update_predictions
 from .ranking import update_rankings
+from .rating import rate_fixtures
 
 log = logging.getLogger(__name__)
 
@@ -390,6 +391,7 @@ def sync_nightly(api, conn, league_ids):
     step("rankings", lambda api, conn: update_rankings(conn))
     step("predictions", lambda api, conn: update_predictions(conn))
     step("prediction backfill", lambda api, conn: backfill_predictions(conn))
+    step("prediction ratings", lambda api, conn: rate_fixtures(conn))
     return failures
 
 
