@@ -5,6 +5,7 @@ so the site never needs database credentials.
 """
 import json
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,17 +37,18 @@ def export_site_data(conn, out_dir=OUT_DIR):
             """select f.fixture_id, f.kickoff, f.league_id, f.round, f.home_team_id, f.away_team_id,
                       f.status_short, f.home_goals, f.away_goals, f.pen_home, f.pen_away,
                       p.p_home, p.p_draw, p.p_away, p.home_xg, p.away_xg, p.likely_score,
-                      p.home_rank, p.away_rank
+                      p.home_rank, p.away_rank, p.source
                from fixtures f left join fixture_predictions p using (fixture_id)
                where f.kickoff between %s and %s
                order by f.kickoff, f.fixture_id""",
             [now - timedelta(days=PAST_DAYS), now + timedelta(days=FUTURE_DAYS)]):
         (fid, kickoff, lid, rnd, home, away, status, hg, ag, ph, pa_, p_h, p_d, p_a,
-         hxg, axg, likely, hr, ar) = row
+         hxg, axg, likely, hr, ar, source) = row
         team_ids.update((home, away))
         matches.append([
             fid, kickoff.isoformat(), lid, rnd, home, away, status, hg, ag, ph, pa_,
             _r(p_h, 3), _r(p_d, 3), _r(p_a, 3), _r(hxg), _r(axg), likely, _r(hr, 0), _r(ar, 0),
+            source,
         ])
 
     # Form: total rank change over each team's last FORM_GAMES games
@@ -73,7 +75,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
         "generated_at": generated,
         "fields": ["id", "kickoff", "league", "round", "home", "away", "status", "hg", "ag",
                    "pen_h", "pen_a", "p_home", "p_draw", "p_away", "home_xg", "away_xg",
-                   "likely", "home_rank", "away_rank"],
+                   "likely", "home_rank", "away_rank", "source"],
         "matches": matches,
         "competitions": competitions,
         "teams": teams,
@@ -85,3 +87,61 @@ def export_site_data(conn, out_dir=OUT_DIR):
         "rankings": rankings,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d matches and %d rankings to %s", len(matches), len(rankings), out_dir)
+    export_stats(conn, out_dir)
+
+
+STAT_RANGES = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
+ENGLISH = [39, 40, 41, 42, 43, 50, 51, 45, 46, 47, 48, 528]
+
+
+def _stats(rows):
+    """Accuracy summary for (p_home, p_draw, p_away, home_xg, away_xg, likely, hg, ag, source)."""
+    n = len(rows)
+    if not n:
+        return None
+    correct = exact = live = home_wins = 0
+    logloss = brier = goal_err = 0.0
+    calib = [[0, 0.0, 0] for _ in range(10)]   # per 10% bin: count, sum of predicted, hits
+    for ph, pd, pa, hxg, axg, likely, hg, ag, source in rows:
+        res = 0 if hg > ag else 1 if hg == ag else 2
+        probs = (ph, pd, pa)
+        correct += probs.index(max(probs)) == res
+        exact += likely == f"{hg}-{ag}"
+        live += source == "live"
+        home_wins += res == 0
+        logloss += -math.log(max(probs[res], 1e-6))
+        brier += sum((p - (i == res)) ** 2 for i, p in enumerate(probs))
+        goal_err += (abs(hxg - hg) + abs(axg - ag)) / 2
+        for i, p in enumerate(probs):
+            b = calib[min(9, int(p * 10))]
+            b[0] += 1; b[1] += p; b[2] += i == res
+    return {
+        "n": n, "live": live,
+        "correct": round(correct / n, 4), "exact": round(exact / n, 4),
+        "home_rate": round(home_wins / n, 4),
+        "log_loss": round(logloss / n, 4), "brier": round(brier / n, 4),
+        "goal_error": round(goal_err / n, 3),
+        "calibration": [[c, round(s / c, 3), round(h / c, 3)] if c else [0, None, None]
+                        for c, s, h in calib],
+    }
+
+
+def export_stats(conn, out_dir=OUT_DIR):
+    """Prediction accuracy by date range and competition, for the site's Stats tab."""
+    now = datetime.now(timezone.utc)
+    rows = conn.execute(
+        """select f.kickoff, f.league_id, p.p_home, p.p_draw, p.p_away, p.home_xg, p.away_xg,
+                  p.likely_score, f.home_goals, f.away_goals, p.source
+           from fixture_predictions p join fixtures f using (fixture_id)
+           where f.status_short = any(%s) and f.home_goals is not null and f.kickoff >= %s""",
+        [["FT", "AET", "PEN"], now - timedelta(days=max(STAT_RANGES.values()))]).fetchall()
+    stats = {}
+    for key, days in STAT_RANGES.items():
+        recent = [r for r in rows if r[0] >= now - timedelta(days=days)]
+        by_group = {"all": recent, "eng": [r for r in recent if r[1] in ENGLISH]}
+        for r in recent:
+            by_group.setdefault(str(r[1]), []).append(r)
+        stats[key] = {g: _stats([r[2:] for r in rs]) for g, rs in by_group.items() if rs}
+    (out_dir / "stats.json").write_text(json.dumps(
+        {"generated_at": now.isoformat(), "ranges": stats}, separators=(",", ":")), encoding="utf-8")
+    log.info("Exported prediction stats for %d finished fixtures", len(rows))

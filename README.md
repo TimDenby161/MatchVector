@@ -39,7 +39,7 @@ API-Football only serves **odds** from about 14 days before kickoff, so you can'
 3. Fetches stats for newly finished matches.
 4. Pulls odds for upcoming matches.
 5. Updates the club rankings (see below).
-6. Projects the score and win/draw/loss chances for every upcoming fixture.
+6. Projects the score and win/draw/loss chances for every upcoming fixture, and backfills any finished fixture that has no projection.
 
 A normal night uses about 350–500 API calls and takes a few minutes. If one competition fails, the others still run, and the exit code is non-zero.
 
@@ -96,7 +96,11 @@ python -m matchvector predict   # the nightly job runs this after the rankings
 
 The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `docs/data/rankings.json`. These are written by `python -m matchvector export`, and the nightly workflow commits them, so the site never needs database credentials. To view it on this PC, run `python -m http.server` in `docs/` and open http://localhost:8000.
 
-Predictions for a fixture stop updating at kickoff, so results show the last pre-match projection next to the score.
+**Recording projections.** Predictions for a fixture stop updating at kickoff, so the last nightly projection before the match is kept. `fixture_predictions.source` shows where each projection came from:
+- `live`: recorded before kickoff.
+- `backfill`: reconstructed afterwards for matches since July 2023, using each team's pre-match rank and goal averages. It shows what the current model would have said at the time.
+
+Result cards show `proj` for live projections and `recon` for backfilled ones. The **Stats** tab (`docs/data/stats.json`) scores the projections over 7, 30 and 90 days and 12 months, by competition. It shows how often the predicted result was right, exact scores, goal error, log loss, Brier score and calibration.
 
 ## Tables
 

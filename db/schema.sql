@@ -235,6 +235,10 @@ create table if not exists fixture_predictions (
     updated_at        timestamptz not null default now()
 );
 
+-- 'live' = made before kickoff by the nightly run; 'backfill' = reconstructed afterwards
+-- from pre-match ranks and goal averages (what the current model would have said)
+alter table fixture_predictions add column if not exists source text not null default 'live';
+
 create or replace view upcoming_predictions as
 select p.kickoff, l.name as competition, l.country, f.round,
        h.name as home_team, a.name as away_team,

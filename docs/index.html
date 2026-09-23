@@ -271,6 +271,21 @@
   .team-row-res { flex-shrink: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
   .res-w { color: var(--status-good); } .res-d { color: var(--text-muted); } .res-l { color: var(--status-critical); }
 
+  .range-row { margin-bottom: 8px; }
+  .range-row .filter-chip { flex: 1; text-align: center; border-radius: 8px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .stats-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .stats-label { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stats-value { margin-top: 4px; font-size: 24px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stats-note { color: var(--text-muted); font-size: 11px; margin-top: 4px; line-height: 1.35; }
+  .calib-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+  .calib-table th, .calib-table td { padding: 6px 4px; border-bottom: 1px solid var(--gridline); text-align: right; font-variant-numeric: tabular-nums; }
+  .calib-table th { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 700; }
+  .calib-table th:first-child, .calib-table td:first-child { text-align: left; }
+  .calib-bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--series-blue); vertical-align: middle; }
+  .gap-ok { color: var(--status-good); }
+  .gap-off { color: var(--status-critical); }
+
   footer { color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 16px 24px; line-height: 1.5; }
 
   @media (max-width: 480px) {
@@ -297,6 +312,7 @@
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="matches" aria-selected="true">Matches</button>
     <button role="tab" data-tab="table" aria-selected="false">Rankings</button>
+    <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
   </nav>
 </header>
 
@@ -322,6 +338,20 @@
     </div>
     <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search clubs">
     <div id="table-wrap"></div>
+  </section>
+
+  <section class="panel" data-tab="stats">
+    <div class="filter-row range-row" id="stats-ranges">
+      <button type="button" class="filter-chip" data-range="7d" aria-pressed="false">7 days</button>
+      <button type="button" class="filter-chip" data-range="30d" aria-pressed="true">30 days</button>
+      <button type="button" class="filter-chip" data-range="90d" aria-pressed="false">90 days</button>
+      <button type="button" class="filter-chip" data-range="365d" aria-pressed="false">12 months</button>
+    </div>
+    <div class="filters-wrap" id="stats-filters">
+      <div class="filter-row"></div>
+      <div class="filter-row filter-row-more" hidden></div>
+    </div>
+    <div id="stats-body"></div>
   </section>
 </main>
 
@@ -370,6 +400,7 @@ const state = {
   data: null, rankings: null, compLabels: {},
   matchFilter: "all", tableFilter: "39", date: null,
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
+  stats: null, statsRange: "30d", statsFilter: "all",
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -393,10 +424,12 @@ async function loadData() {
   btn.dataset.loading = "true";
   $("#status-line").textContent = "Loading…";
   try {
-    const [m, r] = await Promise.all([
+    const [m, r, st] = await Promise.all([
       fetch("data/matches.json", { cache: "no-store" }).then((res) => res.json()),
       fetch("data/rankings.json", { cache: "no-store" }).then((res) => res.json()),
+      fetch("data/stats.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null),
     ]);
+    state.stats = st;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
@@ -406,8 +439,10 @@ async function loadData() {
     if (!state.date) state.date = defaultDate();
     renderFilterChips("match");
     renderFilterChips("table");
+    renderFilterChips("stats");
     renderMatches();
     renderTable();
+    renderStats();
   } catch (err) {
     console.error(err);
     $("#status-line").textContent = "Couldn't load data";
@@ -449,20 +484,23 @@ function renderFilterChips(kind) {
   const wrap = $(`#${kind}-filters`);
   const main = wrap.querySelector(".filter-row");
   const more = wrap.querySelector(".filter-row-more");
-  const current = kind === "match" ? state.matchFilter : state.tableFilter;
+  const current = kind === "match" ? state.matchFilter : kind === "stats" ? state.statsFilter : state.tableFilter;
+  const matchLike = kind !== "table";
   const chip = (id, label, title = label) =>
     `<button type="button" class="filter-chip" data-filter="${escapeHtml(id)}" title="${escapeHtml(title)}" aria-pressed="${current === id}">${escapeHtml(label)}</button>`;
 
-  const primary = kind === "match"
+  const primary = matchLike
     ? [chip("all", "All"), ...PRIMARY_COMPS.map((c) => chip(c.id, c.label, c.ids ? "English teams" : compLabel(c.id)))]
     : TABLE_COMPS.map((c) => chip(c.id, c.label, compLabel(c.id)));
-  const covered = new Set((kind === "match" ? PRIMARY_COMPS : TABLE_COMPS).map((c) => c.id));
+  const covered = new Set((matchLike ? PRIMARY_COMPS : TABLE_COMPS).map((c) => c.id));
 
   // "More": every other competition, grouped by country
   const comps = state.data.competitions;
   const present = kind === "match"
     ? new Set(state.data.matches.map((m) => String(m.league)))
-    : new Set(state.rankings.map((r) => String(r.league)));
+    : kind === "stats"
+      ? new Set(Object.keys(state.stats?.ranges?.[state.statsRange] || {}))
+      : new Set(state.rankings.map((r) => String(r.league)));
   const byCountry = {};
   for (const [id, c] of Object.entries(comps)) {
     if (covered.has(id) || !present.has(id)) continue;
@@ -495,6 +533,7 @@ function onChipClick(kind, e) {
   const btn = e.target.closest(".filter-chip[data-filter]");
   if (!btn) return;
   if (kind === "match") { state.matchFilter = btn.dataset.filter; renderMatches(); }
+  else if (kind === "stats") { state.statsFilter = btn.dataset.filter; renderStats(); }
   else { state.tableFilter = btn.dataset.filter; renderTable(); }
   wrap.querySelectorAll(".filter-chip[data-filter]").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.filter === btn.dataset.filter)));
@@ -530,7 +569,9 @@ function scoreCentre(m) {
   const live = LIVE.has(m.status) && m.hg != null;
   if (finished || live) {
     const pens = m.pen_h != null ? `<div class="score-sub">pens ${m.pen_h}–${m.pen_a}</div>` : "";
-    const proj = m.home_xg != null ? `<div class="score-sub">proj ${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}</div>` : "";
+    const label = m.source === "backfill" ? "recon" : "proj";
+    const tip = m.source === "backfill" ? "Reconstructed afterwards from pre-match data" : "Projected before kickoff";
+    const proj = m.home_xg != null ? `<div class="score-sub" title="${tip}">${label} ${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}</div>` : "";
     return `<div class="match-score"><div class="score-row"><span class="final-box">${m.hg}</span><span class="vs-text">–</span><span class="final-box">${m.ag}</span></div>${pens}${proj}</div>`;
   }
   if (m.home_xg == null) return `<div class="match-score"><div class="score-row"><span class="vs-text">vs</span></div></div>`;
@@ -664,6 +705,45 @@ function renderTable() {
     </table>`;
 }
 
+// ------------------------------------------------------------------ stats
+const pct = (x, d = 1) => `${(100 * x).toFixed(d)}%`;
+
+function renderStats() {
+  const body = $("#stats-body");
+  const range = state.stats?.ranges?.[state.statsRange];
+  const s = range?.[state.statsFilter];
+  if (!s) { body.innerHTML = `<div class="empty-state">No finished matches with a projection in this range.</div>`; return; }
+  const card = (label, value, note = "") =>
+    `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
+  const liveNote = s.live === s.n ? "All recorded before kickoff"
+    : s.live === 0 ? "Reconstructed from pre-match data"
+    : `${s.live.toLocaleString()} recorded before kickoff, rest reconstructed`;
+  const rows = s.calibration.map(([count, avgP, hit], i) => {
+    if (!count) return "";
+    const gap = Math.abs(hit - avgP);
+    return `<tr><td>${i * 10}–${i * 10 + 10}%</td><td>${count.toLocaleString()}</td><td>${pct(avgP)}</td>
+      <td class="${gap <= 0.03 ? "gap-ok" : gap > 0.06 ? "gap-off" : ""}">${pct(hit)}</td>
+      <td style="width:70px"><span class="calib-bar" style="width:${Math.round(hit * 60)}px"></span></td></tr>`;
+  }).join("");
+  body.innerHTML = `
+    <div class="stats-grid">
+      ${card("Matches", s.n.toLocaleString(), liveNote)}
+      ${card("Right result", pct(s.correct), `Picking the home team every time: ${pct(s.home_rate)}`)}
+      ${card("Exact score", pct(s.exact), "Most likely scoreline was spot on")}
+      ${card("Goal error", s.goal_error.toFixed(2), "Average goals off per team")}
+      ${card("Log loss", s.log_loss.toFixed(3), "Lower is better. Guessing ≈ 1.07")}
+      ${card("Brier score", s.brier.toFixed(3), "Lower is better. Guessing ≈ 0.64")}
+    </div>
+    <div class="stats-card">
+      <div class="stats-label">Calibration: when it says X%, how often did it happen?</div>
+      <table class="calib-table">
+        <thead><tr><th>Said</th><th>Calls</th><th>Avg said</th><th>Happened</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="stats-note">Every home win, draw and away win chance counts as one call. Well calibrated means "Happened" is close to "Avg said".</div>
+    </div>`;
+}
+
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
   const r = state.rankByTeam.get(teamId);
@@ -706,6 +786,15 @@ document.querySelectorAll("nav.tabs button").forEach((btn) => btn.addEventListen
 }));
 $("#match-filters").addEventListener("click", (e) => onChipClick("match", e));
 $("#table-filters").addEventListener("click", (e) => onChipClick("table", e));
+$("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
+$("#stats-ranges").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-range]");
+  if (!btn) return;
+  state.statsRange = btn.dataset.range;
+  document.querySelectorAll("#stats-ranges [data-range]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+  renderFilterChips("stats");
+  renderStats();
+});
 $("#date-prev").addEventListener("click", () => stepDate(-1));
 $("#date-next").addEventListener("click", () => stepDate(1));
 $("#date-today").addEventListener("click", () => { state.date = localDateStr(new Date()); renderMatches(); });

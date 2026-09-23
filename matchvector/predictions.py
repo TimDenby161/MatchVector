@@ -17,7 +17,7 @@ it's dropped. Log loss: sheet method 1.016, this 1.005 (base-rate guessing ~1.07
 """
 import logging
 import math
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from . import config
@@ -63,6 +63,25 @@ def outcome_probabilities(home_xg, away_xg):
     return home * scale, draw_adj, away * scale, f"{likely[0]}-{likely[1]}"
 
 
+def _shrunk(records, idx, league_avg):
+    """Mean of records[*][idx], pulled toward league_avg by SHRINK_GAMES pseudo-matches."""
+    total = sum(r[idx] for r in records)
+    return (total + league_avg * SHRINK_GAMES) / (len(records) + SHRINK_GAMES)
+
+
+def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away):
+    """(exp_diff, home_xg, away_xg, p_home, p_draw, p_away, likely_score) for one fixture.
+
+    home_records: the home side's home games as (scored, conceded); away_records: the away
+    side's away games as (scored, conceded); lg_*: competition average goals.
+    """
+    exp_diff = (h_rank - a_rank + HOME_ADVANTAGE_POINTS) / 100
+    base_home = (_shrunk(home_records, 0, lg_home) + _shrunk(away_records, 1, lg_home)) / 2
+    base_away = (_shrunk(away_records, 0, lg_away) + _shrunk(home_records, 1, lg_away)) / 2
+    home_xg, away_xg = project(base_home, base_away, exp_diff)
+    return (exp_diff, home_xg, away_xg, *outcome_probabilities(home_xg, away_xg))
+
+
 def update_predictions(conn):
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=365)
@@ -83,11 +102,6 @@ def update_predictions(conn):
         away_rec[away].append((ag, hg))
         comp_goals[league_id].append((hg, ag))
 
-    def shrunk(records, idx, league_avg):
-        n = len(records)
-        total = sum(r[idx] for r in records)
-        return (total + league_avg * SHRINK_GAMES) / (n + SHRINK_GAMES)
-
     upcoming = conn.execute(
         """select fixture_id, kickoff, league_id, home_team_id, away_team_id from fixtures
            where status_short = any(%s) and kickoff >= %s order by kickoff""",
@@ -102,13 +116,9 @@ def update_predictions(conn):
         h_rank, h_rel = ranks.get(home, (default_rank, 0.0))
         a_rank, a_rel = ranks.get(away, (default_rank, 0.0))
 
-        exp_diff = (h_rank - a_rank + HOME_ADVANTAGE_POINTS) / 100
-        base_home = (shrunk(home_rec[home], 0, lg_home) + shrunk(away_rec[away], 1, lg_home)) / 2
-        base_away = (shrunk(away_rec[away], 0, lg_away) + shrunk(home_rec[home], 1, lg_away)) / 2
-        home_xg, away_xg = project(base_home, base_away, exp_diff)
-        p_home, p_draw, p_away, likely = outcome_probabilities(home_xg, away_xg)
-        rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank, exp_diff,
-                     home_xg, away_xg, p_home, p_draw, p_away, likely, h_rel, a_rel))
+        rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
+                     *predict_match(h_rank, a_rank, home_rec[home], away_rec[away], lg_home, lg_away),
+                     h_rel, a_rel))
 
     # Upsert only upcoming fixtures: once a match kicks off its row is left alone, so it
     # keeps the last pre-kickoff projection for comparing with the result.
@@ -129,3 +139,59 @@ def update_predictions(conn):
                  away_reliability = excluded.away_reliability, updated_at = now()""", rows)
     conn.commit()
     log.info("Predictions: %d upcoming fixtures", len(rows))
+
+
+BACKFILL_FROM = datetime(2023, 7, 1, tzinfo=timezone.utc)
+
+
+def backfill_predictions(conn):
+    """Reconstruct pre-match projections for finished fixtures that have none (source='backfill').
+
+    Uses each team's rank before the match (team_rank_history.rank_before) and goal averages
+    from the 12 months before kickoff, so it's what the current model would have said at the
+    time. Live snapshots (source='live', made the night before) are never overwritten.
+    """
+    have = {r[0] for r in conn.execute("select fixture_id from fixture_predictions")}
+    ranks_before = {}
+    for fid, team, is_home, rank in conn.execute(
+            "select fixture_id, team_id, is_home, rank_before from team_rank_history"):
+        ranks_before[(fid, is_home)] = rank
+
+    fixtures = conn.execute(
+        """select fixture_id, kickoff, league_id, home_team_id, away_team_id, home_goals, away_goals
+           from fixtures where status_short = any(%s) and home_goals is not null
+           order by kickoff, fixture_id""", [list(config.FINISHED_STATUSES)]).fetchall()
+
+    window = timedelta(days=365)
+    home_rec, away_rec, comp = defaultdict(deque), defaultdict(deque), defaultdict(deque)
+
+    def trim(dq, now):
+        while dq and dq[0][0] < now - window:
+            dq.popleft()
+
+    rows = []
+    for fid, kickoff, league_id, home, away, hg, ag in fixtures:
+        for dq in (home_rec[home], away_rec[away], comp[league_id]):
+            trim(dq, kickoff)
+        if kickoff >= BACKFILL_FROM and fid not in have \
+                and (fid, True) in ranks_before and (fid, False) in ranks_before:
+            games = comp[league_id]
+            lg_home = sum(g[1] for g in games) / len(games) if games else DEFAULT_HOME_GOALS
+            lg_away = sum(g[2] for g in games) / len(games) if games else DEFAULT_AWAY_GOALS
+            h_rank, a_rank = ranks_before[(fid, True)], ranks_before[(fid, False)]
+            rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
+                         *predict_match(h_rank, a_rank, [r[1:] for r in home_rec[home]],
+                                        [r[1:] for r in away_rec[away]], lg_home, lg_away)))
+        home_rec[home].append((kickoff, hg, ag))
+        away_rec[away].append((kickoff, ag, hg))
+        comp[league_id].append((kickoff, hg, ag))
+
+    with conn.cursor() as cur:
+        cur.executemany(
+            """insert into fixture_predictions (fixture_id, kickoff, league_id, home_team_id,
+               away_team_id, home_rank, away_rank, exp_diff, home_xg, away_xg, p_home, p_draw,
+               p_away, likely_score, source)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'backfill')
+               on conflict (fixture_id) do nothing""", rows)
+    conn.commit()
+    log.info("Backfilled predictions for %d finished fixtures", len(rows))
