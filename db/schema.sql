@@ -177,8 +177,6 @@ create index if not exists odds_fixture_idx on odds (fixture_id);
 -- Club ranking (see matchvector/ranking.py). Rebuilt from scratch on every run.
 -- Every team starts from leagues.starting_rank of the first league it plays in.
 alter table leagues add column if not exists starting_rank numeric;
--- Extra rank for this league's teams in European / Club World Cup matches (manual)
-alter table leagues add column if not exists europe_bonus numeric not null default 0;
 
 create table if not exists team_rank_history (
     fixture_id   int not null,
@@ -214,8 +212,6 @@ create table if not exists team_rankings (
 );
 alter table team_rankings add column if not exists rank_volatility double precision;
 alter table team_rankings add column if not exists reliability double precision;
--- leagues.europe_bonus of the team's current league, already added to the rank figures
-alter table team_rankings add column if not exists europe_bonus double precision;
 
 -- Supabase exposes the public schema through its REST API; enable RLS with no
 -- policies so these tables are only reachable via the postgres/service role.
