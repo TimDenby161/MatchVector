@@ -98,7 +98,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 - **Actual XI rating:** the average rank of the XI that started, for finished matches.
 - `predicted_lineups` holds the predicted XI for upcoming matches.
 
-Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group), the predicted XI for a team's next match in the team pop-up, and the XI ratings on match cards.
+Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group, with each player's photo). Next to the current rank (Now) are **season-start ranks** for 2026 back to 2021: the player's rank going into his first match of that season, built only from earlier matches, and blank if he had no earlier minutes in these leagues. It also shows the predicted XI for a team's next match in the team pop-up, and the XI ratings on match cards.
 
 **Backtest (2024/25 onwards):** home XI rating minus away XI rating added nothing on top of the team ranks. Predicted XI against the recent average gave a tiny gain in the unexpected direction, so the XI ratings are shown but not used in the projections.
 

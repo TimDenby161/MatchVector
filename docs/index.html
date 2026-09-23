@@ -274,6 +274,15 @@
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
+  table.leaderboard.players th.col-season, table.leaderboard.players td.col-season { width: 36px; padding-left: 2px; padding-right: 4px; }
+  table.leaderboard.players td.col-season { color: var(--text-secondary); font-size: 12px; }
+  table.leaderboard.players th.col-s0, table.leaderboard.players td.col-s0 { padding-left: 12px; width: 46px; }
+  table.leaderboard.players .dim { color: var(--gridline); }
+  @media (max-width: 480px) {
+    table.leaderboard.players .col-mins, table.leaderboard.players .col-s3,
+    table.leaderboard.players .col-s4, table.leaderboard.players .col-s5 { display: none; }
+    table.leaderboard.players th.col-s2, table.leaderboard.players td.col-s2 { padding-right: 9px; width: 42px; }
+  }
   .player-photo { width: 32px; height: 32px; flex: none; border-radius: 50%; object-fit: cover; background: var(--chip-bg); }
   table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 74px; }
   .table-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border);
@@ -589,7 +598,7 @@ const state = {
   tableSort: "current", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
-  players: null, tableView: "clubs", playerGroup: "all",
+  players: null, tableView: "clubs", playerGroup: "all", playerSort: "rank",
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -618,7 +627,7 @@ async function loadData() {
     state.stats = st;
     state.bets = await fetch("data/bets.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
     const pj = await fetch("data/players.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
-    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi } : null;
+    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [] } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
@@ -1052,20 +1061,36 @@ function renderPlayers() {
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
                : ids === null ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
   if (state.playerGroup !== "all") rows = rows.filter((p) => ROLE_GROUP[p.position] === state.playerGroup);
+  // Sort: Now (rank), minutes, or a season-start rank ("s2024"); blanks last
+  const seasons = state.players.seasons || [];
+  const key = state.playerSort;
+  const val = (p) => key.startsWith("s") ? p.starts?.[seasons.indexOf(Number(key.slice(1)))] : p[key];
+  rows = rows.slice().sort((a, b) => (val(b) ?? -1) - (val(a) ?? -1));
+  const th = (k, label, tip, cls = "") =>
+    `<th class="num sortable${key === k ? " active" : ""}${cls}" data-sort="${k}" data-tip="${escapeHtml(tip + " Click to sort.")}">${label}</th>`;
+  const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
   const chips = `<div class="filter-row" id="player-groups" style="margin-bottom:10px">${GROUP_CHIPS.map(([g, label]) =>
     `<button type="button" class="filter-chip" data-group="${g}" aria-pressed="${state.playerGroup === g}">${label}</button>`).join("")}</div>`;
   if (!rows.length) { wrap.innerHTML = chips + `<div class="empty-state">No player ranks here (ranks cover the 10 leagues with per-match player data).</div>`; return; }
   wrap.innerHTML = chips + `
-    <div class="table-scroll"><table class="leaderboard">
-      <thead><tr><th>#</th><th>Player</th><th class="num">Pos</th><th class="num">Mins</th><th class="num">Rank</th></tr></thead>
+    <div class="table-scroll"><table class="leaderboard players">
+      <thead><tr>
+        <th data-tip="Position in this list, in the current sort order.">#</th>
+        <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
+        <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
+        ${th("minutes", "Mins", "Minutes played in his last 20 appearances (the ones the rank is built from).", " col-mins")}
+        ${th("rank", "Now", "Current rank, 0 to 100: how he compares with regulars in the same position, from his last 20 appearances. 50 is an average regular, 90 is better than 90% of them.")}
+        ${seasons.map((y, i) => th(`s${y}`, String(y).slice(2), `Rank at the start of the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway): his rank going into his first match that season, built only from earlier matches. Blank if he had no earlier minutes in these leagues.`, ` col-season col-s${i}`)).join("")}
+      </tr></thead>
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}">
           <td>${i + 1}</td>
           <td><div class="pl-cell"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
             <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? ` · ${escapeHtml(countryLeagueText(p.league))}` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
-          <td class="num">${p.minutes.toLocaleString()}</td>
+          <td class="num col-mins">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
+          ${seasons.map((y, i) => `<td class="num col-season col-s${i}">${p.starts?.[i] == null ? `<span class="dim">–</span>` : Math.round(p.starts[i])}</td>`).join("")}
         </tr>`).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
@@ -1601,7 +1626,10 @@ $("#table-wrap").addEventListener("scroll", () => { colTip.hidden = true; }, tru
 
 $("#table-wrap").addEventListener("click", (e) => {
   const th = e.target.closest("th[data-sort]");
-  if (th) { state.tableSort = th.dataset.sort; return renderTable(); }
+  if (th) {
+    if (state.tableView === "players") state.playerSort = th.dataset.sort; else state.tableSort = th.dataset.sort;
+    return renderTable();
+  }
   if (e.target.closest("a")) return;
   const tr = e.target.closest("tr[data-team]");
   if (tr) openTeam(Number(tr.dataset.team));
