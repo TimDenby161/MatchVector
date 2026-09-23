@@ -18,8 +18,10 @@ Summary figures (Ranking tab), where history = [starting rank, rank after each m
 
 Reliability (0-100, not in the sheet):
     games_factor     = 1 - exp(-played / 35)       (66% after 38 games, 89% after 76)
-    rank_volatility  = standard deviation of the last 30 rank changes
-    stability_factor = min(1, (18 / rank_volatility) ** 1.5)   (1 if under 5 games)
+    rank_volatility  = standard deviation of the rank around its own linear trend over the
+                       last 30 games (a steady rise or fall isn't volatility, and neither
+                       are big per-match changes that cancel out)
+    stability_factor = min(1, (27 / rank_volatility) ** 1.5)   (1 if under 10 games)
     reliability      = 100 * games_factor * stability_factor
 """
 import io
@@ -38,10 +40,10 @@ K_FACTOR = 10
 DEFAULT_STARTING_RANK = 650
 
 # Reliability score tuning
-GAMES_SCALE = 35          # games for the games factor to reach ~63%
-VOLATILITY_WINDOW = 30    # recent matches used to measure rank swings
-TYPICAL_VOLATILITY = 18   # median spread of rank changes; at or below this = fully stable
-MIN_VOLATILITY_GAMES = 5
+GAMES_SCALE = 35            # games for the games factor to reach ~63%
+VOLATILITY_WINDOW = 30      # recent matches used to measure rank swings
+VOLATILITY_THRESHOLD = 27   # ~75th percentile; only teams swinging more than this lose points
+MIN_VOLATILITY_GAMES = 10
 
 
 @dataclass
@@ -84,15 +86,24 @@ def summarise(history):
     rank_30, rank_100 = mean(history[-30:]), mean(history[-100:])
     st = 0.6 * history[-1] + 0.2 * mean(history[-3:]) + 0.1 * rank_30 + 0.1 * rank_100
     lt = 0.1 * st + 0.3 * rank_30 + 0.6 * rank_100
-    changes = [b - a for a, b in zip(history, history[1:])][-VOLATILITY_WINDOW:]
-    volatility = statistics.stdev(changes) if len(changes) >= 2 else None
+    window = history[-(VOLATILITY_WINDOW + 1):]
+    volatility = _detrended_sd(window) if len(window) >= 3 else None
     games_factor = 1 - math.exp(-played / GAMES_SCALE)
     stability = 1.0
-    if len(changes) >= MIN_VOLATILITY_GAMES and volatility:
-        stability = min(1.0, (TYPICAL_VOLATILITY / volatility) ** 1.5)
+    if played >= MIN_VOLATILITY_GAMES and volatility:
+        stability = min(1.0, (VOLATILITY_THRESHOLD / volatility) ** 1.5)
     return {"played": played, "current_rank": history[-1], "rank_30": rank_30,
             "rank_100": rank_100, "st_algo": st, "lt_algo": lt,
             "rank_volatility": volatility, "reliability": 100 * games_factor * stability}
+
+
+def _detrended_sd(values):
+    """Standard deviation of values around their least-squares straight line."""
+    n = len(values)
+    x_mean, y_mean = (n - 1) / 2, sum(values) / n
+    slope = (sum((i - x_mean) * (y - y_mean) for i, y in enumerate(values))
+             / sum((i - x_mean) ** 2 for i in range(n)))
+    return statistics.pstdev([y - (y_mean + slope * (i - x_mean)) for i, y in enumerate(values)])
 
 
 # --------------------------------------------------------------------------- database
