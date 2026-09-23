@@ -273,6 +273,8 @@
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
+  .pl-cell { display: flex; align-items: center; gap: 10px; }
+  .player-photo { width: 32px; height: 32px; flex: none; border-radius: 50%; object-fit: cover; background: var(--chip-bg); }
   table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 74px; }
   .table-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border);
     border-radius: 10px; background: var(--surface-1); }
@@ -414,6 +416,7 @@
     #table-filters .flabel { flex: 1; min-width: 0; }
     #table-filters .cnt { display: inline; font-size: 11px; font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
     #table-filters .filter-chip[aria-pressed="true"] .cnt { color: inherit; opacity: .75; }
+    #table-filters .filter-chip.none:not([aria-pressed="true"]) { opacity: .45; }
     #table-filters .caret { order: 0; display: inline-block; width: 10px; margin: 0; text-align: center; transform: rotate(-90deg); transition: transform .2s ease; }
     #table-filters .cgroups .sep { display: block; height: 1px; background: var(--gridline); margin: 6px 10px; }
     #table-filters .league-list { display: grid; grid-template-rows: 0fr; opacity: 0;
@@ -647,14 +650,20 @@ function buildCompetitionLabels() {
 }
 const compLabel = (id) => state.compLabels[id] || `Competition ${id}`;
 // "Country · League" shown on the same line after the team name, for rows that span leagues
-function countryLeague(id) {
+function countryLeagueText(id) {
   const c = state.data.competitions[id];
   if (!c) return "";
   const country = c.country === "World" ? "International" : c.country.replace(/-/g, " ");
-  return ` <span class="club-meta">${escapeHtml(country)} · ${escapeHtml(SHORT_NAMES[id] || c.name)}</span>`;
+  return `${country} · ${SHORT_NAMES[id] || c.name}`;
+}
+function countryLeague(id) {
+  const text = countryLeagueText(id);
+  if (!text) return "";
+  return ` <span class="club-meta">${escapeHtml(text)}</span>`;
 }
 const teamName = (id) => state.data.teams[id] || `Team ${id}`;
 const teamLogo = (id) => `https://media.api-sports.io/football/teams/${id}.png`;
+const playerPhoto = (id) => `https://media.api-sports.io/football/players/${id}.png`;
 const clubHref = (id) => `#/club/${id}`;
 const clubLink = (id, text = teamName(id)) => `<a class="team-link" href="${clubHref(id)}">${escapeHtml(text)}</a>`;
 
@@ -726,17 +735,19 @@ function renderTableFilters() {
   const f = state.tableFilter;
   const countries = tableCountries();
   const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
-  // Clubs per filter (current league members), shown on the right in the side menu
+  // Clubs (current league members) or ranked players per filter, shown on the right in the side menu
   const counts = new Map();
   let total = 0;
-  for (const r of state.rankings) if (r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
+  const players = state.tableView === "players" && state.players;
+  for (const r of players ? state.players.list : state.rankings)
+    if (players || r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
   const sum = (ids) => ids.reduce((n, id) => n + (counts.get(id) || 0), 0);
   const countOf = (value) => value === "all" ? total
     : value.startsWith("c:") ? sum(countries.find((c) => c.name === value.slice(2))?.leagues || [])
     : value.startsWith("r:") ? sum(countries.filter((c) => c.region === value.slice(2)).flatMap((c) => c.leagues))
     : counts.get(Number(value)) || 0;
   const chip = (value, label, title, extra = "", cls = "") =>
-    `<button type="button" class="filter-chip ${cls}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${extra}<span class="flabel">${label}</span><span class="cnt">${countOf(value)}</span></button>`;
+    `<button type="button" class="filter-chip ${cls}${countOf(value) ? "" : " none"}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${extra}<span class="flabel">${label}</span><span class="cnt">${countOf(value)}</span></button>`;
   const caret = `<span class="caret" aria-hidden="true">▾</span>`;
   const list = (html) => `<div class="league-list"><div class="ll-inner">${html}</div></div>`;
   const activeCountry = f.startsWith("c:") ? countries.find((c) => c.name === f.slice(2))
@@ -1050,7 +1061,8 @@ function renderPlayers() {
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}">
           <td>${i + 1}</td>
-          <td>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}</span>${all || q ? countryLeague(p.league) : ""}</td>
+          <td><div class="pl-cell"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+            <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? ` · ${escapeHtml(countryLeagueText(p.league))}` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
@@ -1547,6 +1559,7 @@ $("#table-view").addEventListener("click", (e) => {
   state.tableView = btn.dataset.view;
   document.querySelectorAll("#table-view [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
   $("#table-search").placeholder = state.tableView === "players" ? "Search players or clubs" : "Search clubs";
+  renderTableFilters();
   renderTable();
 });
 
