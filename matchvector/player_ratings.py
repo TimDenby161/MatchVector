@@ -25,8 +25,12 @@ Season rank (player_season_ranks), from that season's own matches
                - his previous season's score, weighted PRIOR_SEASON_MINUTES x (1 - club games /
                  FULL_SEASON_GAMES): early in a season it leans on last season, and by the end it
                  stands on its own (no previous season: an average regular, 0)
-               - MINUTES_PRIOR, weighted SHRINK_MINUTES x club games / FULL_SEASON_GAMES, so a
-                 completed season with few minutes is marked down
+               - for the rest of the weight (SHRINK_MINUTES x club games / FULL_SEASON_GAMES): an
+                 estimate of where he'd be with more data - his nearest season with ANCHOR_MINUTES+
+                 walked through the typical age curve (average season-to-season change in score by
+                 age, measured from players with ANCHOR_MINUTES+ in both seasons). So a 15-year-old's
+                 debut season sits a normal amount below his first full season. With no such
+                 season anywhere, MINUTES_PRIOR, so a thin season is marked down
     pct      = percentile among player-seasons with 900+ minutes in the same role group, except
                the top decile, which is spread by how far the score is above the 90th percentile
                (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
@@ -60,6 +64,7 @@ MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (be
 PREDICT_MATCHES = 5
 FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull on season ranks
 PRIOR_SEASON_MINUTES = 1350  # weight of last season's score at the start of a season (15 full games)
+ANCHOR_MINUTES = 1500      # a season with this many minutes is measured well enough to estimate others from
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -228,6 +233,7 @@ def _season_ranks(conn, norms):
                select away_team_id, season from fixtures
                where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
            group by 1, 2""", {"l": config.INJURY_MODEL_LEAGUES})}
+    born = dict(conn.execute("select player_id, birth_date from players where birth_date is not null"))
     for row in conn.execute(
             f"""select fp.player_id, f.season, fp.team_id, fp.role, fp.position, sum(fp.minutes),
                        sum(case when fp.rating is not null then fp.rating * fp.minutes else 0 end),
@@ -248,23 +254,66 @@ def _season_ranks(conn, norms):
         e["club"][0] += float(row[-2] or 0)
         e["club"][1] += float(row[-1] or 0)
         e["games"] = max(e["games"], team_games.get((row[2], row[1]), 0))
-    scored = []
-    ref = defaultdict(list)
-    final = {}                 # (player, season) -> blended score, for the next season's prior
-    for (player, season), e in sorted(seasons.items(), key=lambda kv: kv[0][1]):
+    # Raw season scores, then the age curve from well-measured consecutive seasons
+    raw = {}
+    for (player, season), e in seasons.items():
         mins = e["sums"]["minutes"]
         if mins <= 0:
             continue
         pos = (role_group(e["roles"].most_common(1)[0][0]) if +e["roles"]
                else FALLBACK.get((+e["broad"]).most_common(1)[0][0]) if +e["broad"] else None)
-        s = _stat_score(e["sums"], pos, norms)
-        if s is None:
+        sc = _stat_score(e["sums"], pos, norms)
+        if sc is not None:
+            raw[(player, season)] = (sc, mins, pos)
+
+    def age(player, season):             # age at the start of the season (1 July)
+        b = born.get(player)
+        return None if b is None else season - b.year - ((b.month, b.day) > (7, 1))
+    steps = defaultdict(list)
+    for (player, season), (sc, mins, _) in raw.items():
+        nxt = raw.get((player, season + 1))
+        a = age(player, season)
+        if a is not None and mins >= ANCHOR_MINUTES and nxt and nxt[1] >= ANCHOR_MINUTES:
+            steps[min(max(a, 18), 36)].append(nxt[0] - sc)
+    curve = {a: sum(v) / len(v) for a, v in steps.items() if len(v) >= 30}
+
+    def step(a):                         # typical change in score from age a to a + 1
+        if a is None or not curve:
+            return 0.0
+        a = min(max(a, min(curve)), max(curve))
+        return curve.get(a, 0.0)
+    anchors = defaultdict(list)
+    for (player, season), (sc, mins, _) in raw.items():
+        if mins >= ANCHOR_MINUTES:
+            anchors[player].append(season)
+
+    def estimate(player, season):
+        """Score from his nearest well-measured season, moved through the age curve."""
+        near = [y for y in anchors.get(player, []) if y != season]
+        if not near:
+            return None
+        y = min(near, key=lambda x: (abs(x - season), x < season))   # nearest; ties: the later one
+        est = raw[(player, y)][0]
+        for t in range(season, y):       # anchor later: take off the growth between
+            est -= step(age(player, t))
+        for t in range(y, season):       # anchor earlier: add it on
+            est += step(age(player, t))
+        return est
+
+    scored = []
+    ref = defaultdict(list)
+    final = {}                 # (player, season) -> blended score, for the next season's prior
+    for (player, season), e in sorted(seasons.items(), key=lambda kv: kv[0][1]):
+        if (player, season) not in raw:
             continue
+        s, mins, pos = raw[(player, season)]
         done = min(e["games"] / FULL_SEASON_GAMES, 1)
         prev = final.get((player, season - 1), final.get((player, season - 2), 0.0))
         w_prev = PRIOR_SEASON_MINUTES * (1 - done)
         w_low = SHRINK_MINUTES * done
-        s = (s * mins + prev * w_prev + MINUTES_PRIOR * w_low) / (mins + w_prev + w_low)
+        est = estimate(player, season)
+        low = MINUTES_PRIOR if est is None else est
+        s = (s * mins + prev * w_prev + low * w_low) / (mins + w_prev + w_low)
         final[(player, season)] = s
         club = e["club"][0] / e["club"][1] if e["club"][1] else None
         scored.append((player, season, s, pos, club, int(mins)))
@@ -281,6 +330,8 @@ def _season_ranks(conn, norms):
         lo, hi = ref[int(0.9 * n)], ref[min(int(0.999 * n), n - 1)]
         return 90 + 10 * min(max((score - lo) / (hi - lo), 0), 1) if hi > lo else p
 
+    log.info("Age curve (score change per year by age): %s",
+             {a: round(v, 3) for a, v in sorted(curve.items())})
     rows = []
     for player, season, s, pos, club, mins in scored:
         if ref.get(pos) and club:
