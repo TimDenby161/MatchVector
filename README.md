@@ -48,7 +48,7 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 - `API_FOOTBALL_KEY`
 - `DATABASE_URL`: use the Supabase **Session pooler** string.
 
-**Adding a league.** Add its API-Football id to `config.LEAGUES`, and set a starting rank for it with `update leagues set starting_rank = … where league_id = …` once the league row exists. Then run the **Backfill leagues** workflow ([`.github/workflows/backfill.yml`](.github/workflows/backfill.yml)) with the new ids. The nightly job only refreshes current seasons, so the backfill pulls every season's teams, fixtures, standings, match stats and odds, then re-ranks and republishes the site. After that, the nightly job keeps the league up to date.
+**Adding a league.** Add its API-Football id to `config.LEAGUES`, and set a starting rank for it with `update leagues set starting_rank = … where league_id = …` once the league row exists. The next nightly run spots that the league has no fixtures yet and pulls every season in `config.DEFAULT_SEASONS`, then keeps it up to date. To get it sooner, run the **Backfill leagues** workflow ([`.github/workflows/backfill.yml`](.github/workflows/backfill.yml)) with the new ids. It pulls every season's teams, fixtures, standings, match stats and odds, then re-ranks and republishes the site.
 
 ## Players and injuries
 

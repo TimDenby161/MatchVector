@@ -389,6 +389,13 @@ def sync_nightly(api, conn, league_ids):
     sync_leagues(api, conn, league_ids)
     pairs = active_seasons(conn, league_ids)
     log.info("Active league seasons: %d", len(pairs))
+    # A newly added league has no fixtures yet: pull every season once, not just the current one
+    have = {r[0] for r in conn.execute(
+        "select distinct league_id from fixtures where league_id = any(%s)", [list(league_ids)])}
+    new = [l for l in league_ids if l not in have]
+    if new:
+        log.info("New leagues, pulling all seasons: %s", new)
+        pairs = sorted(set(pairs) | {(l, s) for l in new for s in config.DEFAULT_SEASONS})
 
     failures = 0
 
