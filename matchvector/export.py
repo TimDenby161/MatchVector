@@ -295,7 +295,7 @@ def export_players(conn, out_dir=OUT_DIR):
     match, weighted by minutes; player_season_ranks), blank if he didn't play in these leagues."""
     players = conn.execute(
         """select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, x.team_id,
-                  f.league_id
+                  f.league_id, extract(year from age(p.birth_date))::int
            from players p
            join lateral (select fp.team_id, fp.fixture_id from fixture_players fp
                          where fp.player_id = p.player_id order by fp.fixture_id desc limit 1) x on true
@@ -324,10 +324,10 @@ def export_players(conn, out_dir=OUT_DIR):
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     (out_dir / "players.json").write_text(json.dumps({
-        "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons"],
+        "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age"],
         "seasons": PLAYER_SEASONS,
         "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6],
-                     [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS]] for r in players],
+                     [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7]] for r in players],
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))
