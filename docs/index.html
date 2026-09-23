@@ -268,7 +268,10 @@
   table.leaderboard th:first-child, table.leaderboard td:first-child { width: 34px; color: var(--text-muted); }
   table.leaderboard th:nth-child(n+3), table.leaderboard td:nth-child(n+3) { width: 56px; }
   table.leaderboard td:nth-child(2) { overflow-wrap: anywhere; }
-  table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: 40px; }
+  table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 32px; padding-left: 2px; padding-right: 2px; }
+  table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
+  table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
+  .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   table.leaderboard tbody tr { cursor: pointer; }
   table.leaderboard tbody tr:active { background: var(--chip-bg); }
   .club-sub { display: block; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
@@ -340,8 +343,14 @@
     table.leaderboard { font-size: 12px; }
     table.leaderboard th:nth-child(n+3), table.leaderboard td:nth-child(n+3) { width: 46px; }
     table.leaderboard th:first-child, table.leaderboard td:first-child { width: 28px; }
-    table.leaderboard.clubs th:nth-child(n+3), table.leaderboard.clubs td:nth-child(n+3) { width: 42px; padding-left: 2px; padding-right: 2px; }
-    table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: 32px; }
+    table.leaderboard.clubs { font-size: 11.5px; }
+    table.leaderboard.clubs th { font-size: 10px; }
+    table.leaderboard.clubs th:first-child, table.leaderboard.clubs td:first-child { width: 22px; padding-left: 0; padding-right: 2px; }
+    table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 24px; padding-left: 0; padding-right: 2px; }
+    table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 28px; padding-left: 1px; padding-right: 1px; }
+    table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
+    table.leaderboard.clubs .rel-chip { min-width: 28px; padding: 2px 3px; }
+    .club-logo { width: 20px; height: 20px; }
   }
 </style>
 </head>
@@ -547,6 +556,7 @@ function countryLeague(id) {
   return `<span class="club-sub">${escapeHtml(country)}</span><span class="club-sub">${escapeHtml(SHORT_NAMES[id] || c.name)}</span>`;
 }
 const teamName = (id) => state.data.teams[id] || `Team ${id}`;
+const teamLogo = (id) => `https://media.api-sports.io/football/teams/${id}.png`;
 
 function idsForFilter(filter) {
   if (filter === "all") return null;
@@ -821,7 +831,7 @@ function renderTable() {
   wrap.innerHTML = `
     <table class="leaderboard clubs">
       <thead><tr>
-        <th>#</th><th>Club</th>
+        <th>#</th><th></th><th>Club</th>
         ${th("played", "Pl", "Matches played")}
         ${th("current", "Now", "Current rank, after the latest match")}
         ${th("st", "ST", "Short-term rank (ST ALGO)")}
@@ -832,6 +842,7 @@ function renderTable() {
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
+          <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td>${escapeHtml(teamName(r.team))}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num">${Math.round(r.current)}</td>
