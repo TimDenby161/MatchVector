@@ -819,18 +819,18 @@ function renderTable() {
     <table class="leaderboard">
       <thead><tr>
         <th>#</th><th>Club</th>
-        ${th("lt", "Rank", "Long-term rank (LT ALGO)")}
-        ${th("current", "Now", "Rank after the latest match")}
-        ${th("form", "Form", "Rank change over the last 6 games")}
+        ${th("current", "Now", "Current rank, after the latest match")}
+        ${th("st", "ST", "Short-term rank (ST ALGO)")}
+        ${th("lt", "LT", "Long-term rank (LT ALGO)")}
         ${th("reliability", "Rel", "Reliability 0-100")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
           <td>${escapeHtml(teamName(r.team))}${q || all ? countryLeague(r.league) : ""}</td>
-          <td class="num"><b>${Math.round(r.lt)}</b></td>
           <td class="num">${Math.round(r.current)}</td>
-          <td class="num">${formHtml(r.form)}</td>
+          <td class="num">${Math.round(r.st)}</td>
+          <td class="num"><b>${Math.round(r.lt)}</b></td>
           <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
         </tr>`).join("")}
       </tbody>
