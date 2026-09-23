@@ -44,6 +44,7 @@ LEAGUES = {
     # Other European leagues
     141: "Spain Segunda Division",
     179: "Scotland Premiership",
+    180: "Scotland Championship",
     88: "Netherlands Eredivisie",
     94: "Portugal Primeira Liga",
     144: "Belgium Pro League",

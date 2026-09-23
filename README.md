@@ -49,11 +49,13 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 
 ## Club ranking
 
-This is a port of the Club Ranking Google Sheet. Every finished fixture is replayed oldest first, ordered by kickoff time, with the fixture ID breaking ties. For each fixture:
+This is based on the Club Ranking Google Sheet. Every finished fixture is replayed oldest first, ordered by kickoff time, with the fixture ID breaking ties. For each fixture:
 
-- Expected goal difference = (home rank × 1.09 − away rank) / 100
-- Rank change = (actual goal difference − expected goal difference) × 10, or × 5 in domestic cups (FA Cup, EFL Cup, EFL Trophy, FA Trophy, Community Shield, Scottish cups). This isn't in the sheet: at × 10, rotated squads and giant-killings drained points from the top leagues. European competitions and the Club World Cup keep × 10.
+- Expected goal difference = (home rank − away rank + 30) / 100
+- Rank change = (actual goal difference, capped at ±3 − expected goal difference) × 6
 - The home team gains the rank change and the away team loses it.
+
+This differs from the sheet, which uses (home × 1.09 − away) / 100, × 10 and no cap. Backtesting 2023–26 showed the ×1.09 gave 0.4–1.1 goals of home advantage, when the real figure is about 0.3 for every team. A smaller K and the goal cap also stop one freak result from swinging a rank. Prediction error fell from 1.77 to 1.68 goals per match. The settings are at the top of `matchvector/ranking.py`.
 
 A team's first rank is `leagues.starting_rank` of the first league it plays in. For a team that only ever appears in cups, it's the `starting_rank` of the first cup it plays in.
 
@@ -61,7 +63,7 @@ A team's first rank is `leagues.starting_rank` of the first league it plays in. 
 - `team_rankings` holds the current summary, like the Ranking tab: current rank, 30 and 100 Ranking, ST ALGO, LT ALGO, and HG/HA/AG/AA over the last 12 months.
 - `team_rankings` also has a `reliability` score from 0 to 100, which isn't in the sheet:
   - It's mainly driven by games played: a team scores 66% after 38 games, 89% after 76 and 96% after 114.
-  - It's reduced only when a team's rank fluctuates massively. `rank_volatility` is the standard deviation of the rank around its own trend line over the last 30 games, so a steady rise or fall doesn't count, and neither do big per-match changes that cancel out, as happens with dominant teams. At 27 or below (about three-quarters of teams) there's no reduction, at 40 the score is ×0.55 and at 60 it's ×0.30.
+  - It's reduced when a team's rank swings a lot. `rank_volatility` is the standard deviation of the team's last 30 per-match rank changes. At 10.5 or below (about 78% of teams) there's no reduction. Above that the score falls with the cube: 11.8 gives ×0.70 and 14 gives ×0.42.
   - The constants are at the top of `matchvector/ranking.py`.
 
 ```bash

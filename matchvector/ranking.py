@@ -1,13 +1,15 @@
-"""Club ranking: a port of the "Club Ranking" Google Sheet.
+"""Club ranking, based on the "Club Ranking" Google Sheet.
 
-Per match (Individual Results tab):
-    exp_diff    = (home_rank * 1.09 - away_rank) / 100
-    act_diff    = home_goals - away_goals
-    rank_change = (act_diff - exp_diff) * K
+Per match:
+    exp_diff    = (home_rank - away_rank + HOME_ADVANTAGE_POINTS) / 100
+    act_diff    = home_goals - away_goals, capped at +/- MAX_GOAL_DIFF
+    rank_change = (act_diff - exp_diff) * K_FACTOR
     home_rank  += rank_change;  away_rank -= rank_change
 
-K is 10 (as in the sheet), except domestic cups (FA Cup, EFL Cup, Scottish cups...)
-use 5: rotated squads and giant-killings otherwise drain points from top leagues.
+Differences from the sheet (exp_diff = (home*1.09 - away)/100, K = 10, no cap), chosen by
+backtesting 2023-26 predictions: the x1.09 multiplier gave 0.4-1.1 goals of home advantage
+(real: ~0.3 for everyone), and a smaller K plus a goal cap stops one freak result or cup
+thrashing from swinging a rank. Prediction error fell from 1.77 to 1.68 goals per match.
 
 Every team starts from a Starting Rank: leagues.starting_rank of the first
 league (type 'League') it plays in, else that of the first competition it
@@ -21,10 +23,8 @@ Summary figures (Ranking tab), where history = [starting rank, rank after each m
 
 Reliability (0-100, not in the sheet):
     games_factor     = 1 - exp(-played / 35)       (66% after 38 games, 89% after 76)
-    rank_volatility  = standard deviation of the rank around its own linear trend over the
-                       last 30 games (a steady rise or fall isn't volatility, and neither
-                       are big per-match changes that cancel out)
-    stability_factor = min(1, (27 / rank_volatility) ** 1.5)   (1 if under 10 games)
+    rank_volatility  = standard deviation of the last 30 per-match rank changes
+    stability_factor = min(1, (10.5 / rank_volatility) ** 3)   (1 if under 10 games)
     reliability      = 100 * games_factor * stability_factor
 """
 import io
@@ -38,15 +38,16 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-HOME_ADVANTAGE = 1.09
-K_FACTOR = 10
-DOMESTIC_CUP_K_FACTOR = 5     # competitions of type 'Cup' outside country 'World'
+HOME_ADVANTAGE_POINTS = 30   # = 0.3 goals, the same for every team
+K_FACTOR = 6
+MAX_GOAL_DIFF = 3            # a 7-0 counts as 3-0
 DEFAULT_STARTING_RANK = 650
 
 # Reliability score tuning
 GAMES_SCALE = 35            # games for the games factor to reach ~63%
 VOLATILITY_WINDOW = 30      # recent matches used to measure rank swings
-VOLATILITY_THRESHOLD = 27   # ~75th percentile; only teams swinging more than this lose points
+VOLATILITY_THRESHOLD = 10.5 # ~78th percentile; only teams swinging more than this lose points
+VOLATILITY_POWER = 3        # how steeply the score falls above the threshold
 MIN_VOLATILITY_GAMES = 10
 
 
@@ -57,7 +58,6 @@ class Match:
     away: object
     home_goals: int
     away_goals: int
-    k: float = K_FACTOR
 
 
 def run(matches, starting_rank):
@@ -72,9 +72,10 @@ def run(matches, starting_rank):
                 current[team] = starting_rank(team)
                 history[team] = [current[team]]
         h, a = current[m.home], current[m.away]
-        exp_diff = (h * HOME_ADVANTAGE - a) / 100
+        exp_diff = (h - a + HOME_ADVANTAGE_POINTS) / 100
         act_diff = m.home_goals - m.away_goals
-        change = (act_diff - exp_diff) * m.k
+        capped = max(-MAX_GOAL_DIFF, min(MAX_GOAL_DIFF, act_diff))
+        change = (capped - exp_diff) * K_FACTOR
         current[m.home], current[m.away] = h + change, a - change
         history[m.home].append(current[m.home])
         history[m.away].append(current[m.away])
@@ -91,24 +92,15 @@ def summarise(history):
     rank_30, rank_100 = mean(history[-30:]), mean(history[-100:])
     st = 0.6 * history[-1] + 0.2 * mean(history[-3:]) + 0.1 * rank_30 + 0.1 * rank_100
     lt = 0.1 * st + 0.3 * rank_30 + 0.6 * rank_100
-    window = history[-(VOLATILITY_WINDOW + 1):]
-    volatility = _detrended_sd(window) if len(window) >= 3 else None
+    changes = [b - a for a, b in zip(history, history[1:])][-VOLATILITY_WINDOW:]
+    volatility = statistics.stdev(changes) if len(changes) >= 2 else None
     games_factor = 1 - math.exp(-played / GAMES_SCALE)
     stability = 1.0
     if played >= MIN_VOLATILITY_GAMES and volatility:
-        stability = min(1.0, (VOLATILITY_THRESHOLD / volatility) ** 1.5)
+        stability = min(1.0, (VOLATILITY_THRESHOLD / volatility) ** VOLATILITY_POWER)
     return {"played": played, "current_rank": history[-1], "rank_30": rank_30,
             "rank_100": rank_100, "st_algo": st, "lt_algo": lt,
             "rank_volatility": volatility, "reliability": 100 * games_factor * stability}
-
-
-def _detrended_sd(values):
-    """Standard deviation of values around their least-squares straight line."""
-    n = len(values)
-    x_mean, y_mean = (n - 1) / 2, sum(values) / n
-    slope = (sum((i - x_mean) * (y - y_mean) for i, y in enumerate(values))
-             / sum((i - x_mean) ** 2 for i in range(n)))
-    return statistics.pstdev([y - (y_mean + slope * (i - x_mean)) for i, y in enumerate(values)])
 
 
 # --------------------------------------------------------------------------- database
@@ -157,9 +149,7 @@ def update_rankings(conn):
 
 def _replay(conn, fixtures, starting_rank):
     conn.execute("truncate team_rank_history")
-    matches = [Match(f[0], f[4], f[5], f[6], f[7],
-                     DOMESTIC_CUP_K_FACTOR if f[3] == "Cup" and f[8] != "World" else K_FACTOR)
-               for f in fixtures]
+    matches = [Match(f[0], f[4], f[5], f[6], f[7]) for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, _ = run(matches, starting_rank)
 
