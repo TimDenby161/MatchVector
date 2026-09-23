@@ -301,12 +301,13 @@ create table if not exists fixture_formations (
 );
 -- Player rank (0-100) going into each match, from matches before it (player_ratings.py).
 -- Its own table, rebuilt with truncate + copy, so fixture_players isn't rewritten nightly.
+-- No key or index: it's only ever rebuilt in full, and an index would double its size.
 create table if not exists fixture_player_ranks (
     fixture_id   int not null,
     player_id    int not null,
-    player_rank  numeric(4,1),
-    primary key (fixture_id, player_id)
+    player_rank  numeric(4,1)
 );
+alter table fixture_player_ranks drop constraint if exists fixture_player_ranks_pkey;
 alter table fixture_players drop column if exists player_rank;
 alter table fixtures add column if not exists players_fetched_at timestamptz;
 
