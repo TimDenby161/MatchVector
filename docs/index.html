@@ -274,6 +274,7 @@
   .table-count { color: var(--text-muted); font-size: 11px; margin: 6px 2px 0; }
   table.leaderboard tbody tr { cursor: pointer; }
   table.leaderboard tbody tr:active { background: var(--chip-bg); }
+  .club-meta { color: var(--text-muted); font-size: 11px; margin-left: 6px; white-space: nowrap; }
   .club-sub { display: block; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
   .form-up { color: var(--status-good); font-weight: 700; }
   .form-down { color: var(--status-critical); font-weight: 700; }
@@ -408,6 +409,7 @@
     table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs .rel-chip { min-width: 28px; padding: 2px 3px; }
     .club-logo { width: 20px; height: 20px; }
+    .club-meta { white-space: normal; margin-left: 0; display: block; }
   }
 </style>
 </head>
@@ -599,12 +601,12 @@ function buildCompetitionLabels() {
   }
 }
 const compLabel = (id) => state.compLabels[id] || `Competition ${id}`;
-// Country line then league line, for rows that span several leagues
+// "Country · League" shown on the same line after the team name, for rows that span leagues
 function countryLeague(id) {
   const c = state.data.competitions[id];
   if (!c) return "";
   const country = c.country === "World" ? "International" : c.country.replace(/-/g, " ");
-  return `<span class="club-sub">${escapeHtml(country)}</span><span class="club-sub">${escapeHtml(SHORT_NAMES[id] || c.name)}</span>`;
+  return ` <span class="club-meta">${escapeHtml(country)} · ${escapeHtml(SHORT_NAMES[id] || c.name)}</span>`;
 }
 const teamName = (id) => state.data.teams[id] || `Team ${id}`;
 const teamLogo = (id) => `https://media.api-sports.io/football/teams/${id}.png`;
