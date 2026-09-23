@@ -20,6 +20,10 @@ Player rank
     rank     = stat pct x min(club / CLUB_RANK_MAX, 1): even a perfect player is capped by his
                club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1200 = 80
 
+Season rank (player_season_ranks)
+    the average, weighted by minutes, of the player's rank after each match he played that
+    season (his window including that match), so it reflects that season's own performances
+
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
                     PREDICT_MATCHES matches, excluding anyone on the injury list for this match
@@ -188,7 +192,7 @@ def compute_player_ratings(conn):
     tr_mean = sum(ranks) / len(ranks)
 
     fixtures = conn.execute(
-        """select fixture_id, kickoff, home_team_id, away_team_id, status_short in ('NS', 'TBD')
+        """select fixture_id, kickoff, home_team_id, away_team_id, status_short in ('NS', 'TBD'), season
            from fixtures where league_id = any(%s)
              and (status_short in ('FT', 'AET', 'PEN') or (status_short in ('NS', 'TBD') and kickoff > now()))
            order by kickoff, fixture_id""", [config.INJURY_MODEL_LEAGUES]).fetchall()
@@ -228,7 +232,8 @@ def compute_player_ratings(conn):
     sample = defaultdict(list) # position -> raw scores of players with a full window of minutes
     appearance_scores = []     # (fixture, player, (stat score, club rank), position)
     team_rows = []             # (fixture, team, predicted XI [(player, pos, raw)], actual XI [(raw, pos)], upcoming)
-    for fid, kickoff, home, away, upcoming in fixtures:
+    after_match = []           # (player, season, (stat score, club rank), position, minutes)
+    for fid, kickoff, home, away, upcoming, season in fixtures:
         for team in (home, away):
             # predicted XI from recent matches, excluding the injury list
             minutes = Counter()
@@ -262,6 +267,10 @@ def compute_player_ratings(conn):
             st = _row_stats(a)
             st["club_mins"] = team_rank.get((fid, a["team"]), tr_mean) * (a["minutes"] or 0)
             windows[a["player"]].add(kickoff, st, a["role"], a["position"])
+            if a["minutes"]:
+                s, pos, _ = raw_score(a["player"], kickoff)
+                if s is not None:
+                    after_match.append((a["player"], season, s, pos, a["minutes"]))
         for team in (home, away):
             played = {a["player"]: a["minutes"] for a in apps.get(fid, []) if a["team"] == team}
             if played:
@@ -299,10 +308,18 @@ def compute_player_ratings(conn):
         if s is not None:
             current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
 
-    _write(conn, appearance_scores, to_rank, team_out, lineups, current)
+    # Season rank: minutes-weighted average of the rank after each match that season
+    season_sums = defaultdict(lambda: [0.0, 0])
+    for player, season, s, pos, mins in after_match:
+        acc = season_sums[(player, season)]
+        acc[0] += to_rank(s, pos) * mins
+        acc[1] += mins
+    season_rows = [(p, y, round(t / m, 1), m) for (p, y), (t, m) in season_sums.items()]
+
+    _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows)
 
 
-def _write(conn, appearance_scores, to_rank, team_out, lineups, current):
+def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows):
     with conn.cursor() as cur:
         cur.execute("create temp table tmp_rank (fixture_id int, player_id int, player_rank numeric(4,1)) on commit drop")
         buf = io.StringIO()
@@ -333,6 +350,9 @@ def _write(conn, appearance_scores, to_rank, team_out, lineups, current):
             cp.write(buf.getvalue())
         cur.execute("""update players pl set current_rank = t.r, rank_position = t.pos, rank_minutes = t.mins
                        from tmp_cur t where pl.player_id = t.player_id""")
+        cur.execute("truncate player_season_ranks")
+        with cur.copy("copy player_season_ranks (player_id, season, season_rank, minutes) from stdin") as cp:
+            cp.write("".join(f"{p}\t{y}\t{r}\t{m}\n" for p, y, r, m in season_rows))
     conn.commit()
-    log.info("Player ratings written: %d current player ranks, %d predicted-lineup rows",
-             len(current), len(lineups))
+    log.info("Player ratings written: %d current player ranks, %d predicted-lineup rows, %d player-seasons",
+             len(current), len(lineups), len(season_rows))

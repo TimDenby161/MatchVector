@@ -303,6 +303,16 @@ create table if not exists fixture_formations (
 alter table fixture_players add column if not exists player_rank numeric(4,1);
 alter table fixtures add column if not exists players_fetched_at timestamptz;
 
+-- Player rank for each season: minutes-weighted average of his rank after each match that
+-- season (player_ratings.py, rebuilt on every run)
+create table if not exists player_season_ranks (
+    player_id    int not null,
+    season       int not null,
+    season_rank  numeric(4,1),
+    minutes      int,
+    primary key (player_id, season)
+);
+
 -- Team ratings per fixture from player ranks (player_ratings.py), all as known before kickoff
 create table if not exists fixture_team_ratings (
     fixture_id           int not null,

@@ -286,13 +286,13 @@ def export_bets(conn, out_dir=OUT_DIR):
     log.info("Exported %d paper bets", len(bets))
 
 
-PLAYER_SEASONS = list(range(2026, 2020, -1))     # season-start ranks shown, newest first
+PLAYER_SEASONS = list(range(2026, 2020, -1))     # season ranks shown, newest first
 
 
 def export_players(conn, out_dir=OUT_DIR):
-    """Current player ranks, season-start ranks and each team's predicted XI for its next match
-    (players.json). A season-start rank is the player's rank going into his first match of that
-    season (built only from earlier matches), blank if he had no earlier minutes."""
+    """Current player ranks, season ranks and each team's predicted XI for its next match
+    (players.json). A season rank is the player's average rank across that season (after each
+    match, weighted by minutes; player_season_ranks), blank if he didn't play in these leagues."""
     players = conn.execute(
         """select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, x.team_id,
                   f.league_id
@@ -302,15 +302,11 @@ def export_players(conn, out_dir=OUT_DIR):
            join fixtures f on f.fixture_id = x.fixture_id
            where p.current_rank is not null and p.rank_minutes >= 450
            order by p.current_rank desc""").fetchall()
-    starts = defaultdict(dict)
+    season_ranks = defaultdict(dict)
     for player, season, rank in conn.execute(
-            """select distinct on (fp.player_id, f.season) fp.player_id, f.season, fp.player_rank
-               from fixture_players fp join fixtures f using (fixture_id)
-               where f.season = any(%s) and f.status_short = any(%s)
-               order by fp.player_id, f.season, f.kickoff""",
-            [PLAYER_SEASONS, list(config.FINISHED_STATUSES)]):
-        if rank is not None:
-            starts[player][season] = float(rank)
+            "select player_id, season, season_rank from player_season_ranks where season = any(%s)",
+            [PLAYER_SEASONS]):
+        season_ranks[player][season] = float(rank)
     lineups = conn.execute(
         """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
                   p.name, pl.position, pl.player_rank
@@ -328,10 +324,10 @@ def export_players(conn, out_dir=OUT_DIR):
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     (out_dir / "players.json").write_text(json.dumps({
-        "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "starts"],
+        "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons"],
         "seasons": PLAYER_SEASONS,
         "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6],
-                     [starts[r[0]].get(y) for y in PLAYER_SEASONS]] for r in players],
+                     [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS]] for r in players],
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))

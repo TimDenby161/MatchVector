@@ -1086,7 +1086,7 @@ function playerCellTip(pid, key) {
     const current = y === Math.max(...seasons);
     const calendarYear = CALENDAR_YEAR_LEAGUES.has(p.league);    // seasons run January to December
     head = `${p.name} · ${calendarYear ? y : `${y}/${String(y + 1).slice(2)}`}${current ? " (so far)" : ""}`;
-    rankLine = `Rank at the start of the season: ${fmt(p.starts?.[i])}`;
+    rankLine = `Average rank across the season${current ? " so far" : ""}: ${fmt(p.seasons?.[i])}`;
     during = current ? "This season so far:" : "During the season:";
     spells = detail?.players?.[pid]?.[key];
   }
@@ -1112,7 +1112,7 @@ function renderPlayers() {
   // Sort: Now (rank), minutes, or a season-start rank ("s2024"); blanks last
   const seasons = state.players.seasons || [];
   const key = state.playerSort;
-  const val = (p) => key.startsWith("s") ? p.starts?.[seasons.indexOf(Number(key.slice(1)))] : p[key];
+  const val = (p) => key.startsWith("s") ? p.seasons?.[seasons.indexOf(Number(key.slice(1)))] : p[key];
   rows = rows.slice().sort((a, b) => (val(b) ?? -1) - (val(a) ?? -1));
   const th = (k, label, tip, cls = "") =>
     `<th class="num sortable${key === k ? " active" : ""}${cls}" data-sort="${k}" data-tip="${escapeHtml(tip + " Click to sort.")}">${label}</th>`;
@@ -1128,7 +1128,7 @@ function renderPlayers() {
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("minutes", "Mins", "Minutes played in his last 20 appearances (the ones the rank is built from).", " col-mins")}
         ${th("rank", "Now", "Current rank, 0 to 100, from his last 20 appearances: how his stats compare with regulars in the same position (as a percentile), multiplied by his club's level (club rank ÷ 1200). So a perfect player at a 966 club can reach at most 80.")}
-        ${seasons.map((y, i) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank at the start of the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway): his rank going into his first match that season, built only from earlier matches. Blank if he had no earlier minutes in these leagues.`, ` col-season col-s${i}`)).join("")}
+        ${seasons.map((y, i) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Average rank across the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${y === seasons[0] ? "; so far" : ""}): his rank after each match he played that season, averaged and weighted by minutes. Blank if he didn't play in these leagues that season.`, ` col-season col-s${i}`)).join("")}
       </tr></thead>
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}" data-player="${p.id}">
@@ -1138,7 +1138,7 @@ function renderPlayers() {
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-mins">${p.minutes.toLocaleString()}</td>
           <td class="num tip-cell" data-key="now">${rankChipSmall(p.rank)}</td>
-          ${seasons.map((y, i) => `<td class="num col-season col-s${i} tip-cell" data-key="${y}">${p.starts?.[i] == null ? `<span class="dim">–</span>` : rankChipSmall(p.starts[i])}</td>`).join("")}
+          ${seasons.map((y, i) => `<td class="num col-season col-s${i} tip-cell" data-key="${y}">${p.seasons?.[i] == null ? `<span class="dim">–</span>` : rankChipSmall(p.seasons[i])}</td>`).join("")}
         </tr>`).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
