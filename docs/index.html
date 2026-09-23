@@ -276,6 +276,7 @@
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
+  .pl-cell .pl-badge { flex: none; margin-right: -2px; }
   table.leaderboard.players th.col-season, table.leaderboard.players td.col-season { width: 36px; padding-left: 2px; padding-right: 4px; }
   table.leaderboard.players td.col-season { color: var(--text-secondary); font-size: 12px; }
   table.leaderboard.players th.col-s0, table.leaderboard.players td.col-s0 { padding-left: 12px; width: 46px; }
@@ -284,6 +285,10 @@
     table.leaderboard.players .col-mins, table.leaderboard.players .col-s3,
     table.leaderboard.players .col-s4, table.leaderboard.players .col-s5 { display: none; }
     table.leaderboard.players th.col-s2, table.leaderboard.players td.col-s2 { padding-right: 9px; width: 42px; }
+    .pl-cell { gap: 5px; }
+    .pl-cell .pl-badge { width: 16px; height: 16px; margin-right: 0; }
+    .pl-cell .player-photo { width: 28px; height: 28px; }
+    .pl-cell .pl-where { display: none; }
   }
   .player-photo { width: 32px; height: 32px; flex: none; border-radius: 50%; object-fit: cover; background: var(--chip-bg); }
   table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 74px; }
@@ -1126,8 +1131,8 @@ function renderPlayers() {
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}" data-player="${p.id}">
           <td>${i + 1}</td>
-          <td><div class="pl-cell"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-            <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? ` · ${escapeHtml(countryLeagueText(p.league))}` : ""}</span></div></div></td>
+          <td><div class="pl-cell"><img class="club-logo pl-badge" src="${teamLogo(p.team)}" alt="" title="${escapeHtml(teamName(p.team))}" loading="lazy" onerror="this.style.visibility='hidden'"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+            <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? `<span class="pl-where"> · ${escapeHtml(countryLeagueText(p.league))}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-mins">${p.minutes.toLocaleString()}</td>
           <td class="num tip-cell" data-key="now">${rankChipSmall(p.rank)}</td>
