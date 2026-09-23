@@ -490,11 +490,6 @@
   </section>
 </main>
 
-<footer>
-  Ranks update after every match. Projections use each club's rank plus home and away scoring
-  and conceding over the last 12 months. Reliability reflects games played and how much the
-  rank swings.
-</footer>
 
 <div class="modal-overlay" id="team-modal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="team-modal-title">
@@ -853,9 +848,6 @@ function fitTopRows(wrap, capped = true) {
   for (let i = 0; i < TOP_ROWS; i++) h += rows[i].offsetHeight;
   box.style.maxHeight = `${h + 2}px`;
 }
-function countNote(n, noun, capped = true) {
-  return `<div class="table-count">${capped && n > TOP_ROWS ? `Top ${TOP_ROWS} shown · scroll the box for all ${n.toLocaleString()} ${noun}` : `${n} ${noun}`}</div>`;
-}
 
 function renderPlayers() {
   const wrap = $("#table-wrap");
@@ -880,9 +872,7 @@ function renderPlayers() {
           <td class="num">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
         </tr>`).join("")}</tbody>
-    </table></div>
-    ${countNote(rows.length, "players", all || !!q)}
-    <div class="stats-note" style="margin-top:8px">Rank 0–100 from per-90 stats over each player's last 20 appearances. Positions come from where he has started in recent line-ups (e.g. LB, DM, RW); he's compared with regulars in the same role (left and right together) and adjusted for team strength. 50 = an average regular in that role; 90 = better than 90% of them.</div>`;
+    </table></div>`;
   fitTopRows(wrap, all || !!q);
 }
 
@@ -926,7 +916,7 @@ function renderTable() {
         </tr>`).join("")}
       </tbody>
     </table></div>
-    ${countNote(rows.length, "clubs", all || !!q)}`;
+`;
   fitTopRows(wrap, all || !!q);
 }
 
