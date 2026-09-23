@@ -1069,21 +1069,19 @@ function loadPlayerSeasons() {
   state.playerSeasonsLoading = fetch("data/player_seasons.json", { cache: "no-store" })
     .then((res) => res.json()).then((d) => { state.playerSeasons = d; }).catch(() => {});
 }
-// Hover text for a season cell: his age that season, then per club "Team – club rank" and
+// Hover text for a season cell: his age that season (his age now for the current season, one
+// less for each season before), then per club "Team – club rank" and
 // "minutes – match rating – goals G, assists A"
 function playerCellTip(pid, key) {
   const detail = state.playerSeasons;
   if (!detail) return "Loading…";
-  const born = detail.born?.[pid];
-  let ageLine = "";
-  if (born) {        // age on 1 July at the start of the season
-    const [by, bm, bd] = born.split("-").map(Number);
-    ageLine = `Age ${Number(key) - by - (bm > 7 || (bm === 7 && bd > 1) ? 1 : 0)}\n`;
-  }
+  const pl = (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(pid);
+  const seasons = state.players.seasons || [];
+  const ageLine = pl?.age != null ? `Age ${pl.age - (seasons[0] - Number(key))}
+` : "";
   const spells = detail.players?.[pid]?.[key];
-  const p = (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(pid);
-  const i = (state.players.seasons || []).indexOf(Number(key));
-  if (p?.estimated?.includes(i)) return ageLine + "Not in a covered league this season\nEstimated from his other seasons and age";
+  const i = seasons.indexOf(Number(key));
+  if (pl?.estimated?.includes(i)) return ageLine + "Not in a covered league this season\nEstimated from his other seasons and age";
   if (!spells?.length) return ageLine + "No minutes";
   const club = (id) => detail.teams?.[id] || teamName(id);
   return ageLine + spells.map(([team, mins, rank, rating, goals, assists]) =>
