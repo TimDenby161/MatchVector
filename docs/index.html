@@ -374,9 +374,11 @@
   /* Country / league filter (Rankings) */
   .cgroups { display: flex; flex-wrap: wrap; gap: 6px; }
   .cgroup { display: contents; }
-  .cchip .caret { color: var(--text-muted); font-size: 10px; margin-left: 4px; }
+  .cchip { display: inline-flex; align-items: center; }
+  .cchip .caret { color: var(--text-muted); font-size: 10px; margin-left: 4px; order: 2; }
   .cchip.has-active { border-color: color-mix(in srgb, var(--series-blue) 45%, var(--border)); color: var(--series-blue); }
   .league-list { display: none; }
+  .cnt, .cgroups .sep { display: none; }
   .league-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .league-row[hidden] { display: none; }
 
@@ -397,15 +399,34 @@
     #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
     #table-filters { order: 3; margin: 0; }
-    #table-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 4px; }
-    #table-filters .cgroup { display: flex; flex-direction: column; gap: 4px; }
-    #table-filters .filter-chip { text-align: left; border-radius: 8px; white-space: normal; display: flex;
-      justify-content: space-between; align-items: center; }
-    /* hovering a country opens its leagues underneath; also open while one of them is selected */
-    #table-filters .cgroup:hover > .league-list, #table-filters .cgroup:focus-within > .league-list,
-    #table-filters .cgroup.open > .league-list { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
-    #table-filters .league-list .filter-chip { font-size: 11px; padding: 5px 9px; }
+    /* Side menu: plain rows, counts on the right, groups slide open */
+    #table-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
+    #table-filters .cgroup { display: block; }
+    #table-filters .filter-chip { width: 100%; display: flex; align-items: center; gap: 6px; text-align: left;
+      border: 0; background: transparent; border-radius: 7px; padding: 6px 10px; font-size: 13px; font-weight: 500;
+      color: var(--text-secondary); white-space: normal; transition: background-color .15s, color .15s; }
+    #table-filters .filter-chip:hover { background: var(--chip-bg); color: var(--text-primary); }
+    #table-filters .filter-chip:active { opacity: 1; }
+    #table-filters .filter-chip:focus-visible { outline: 2px solid var(--series-blue); outline-offset: -2px; }
+    #table-filters .filter-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--series-blue) 14%, transparent);
+      color: var(--series-blue); font-weight: 650; }
+    #table-filters .cchip.has-active { color: var(--series-blue); }
+    #table-filters .flabel { flex: 1; min-width: 0; }
+    #table-filters .cnt { display: inline; font-size: 11px; font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    #table-filters .filter-chip[aria-pressed="true"] .cnt { color: inherit; opacity: .75; }
+    #table-filters .caret { order: 0; display: inline-block; width: 10px; margin: 0; text-align: center; transform: rotate(-90deg); transition: transform .2s ease; }
+    #table-filters .cgroups .sep { display: block; height: 1px; background: var(--gridline); margin: 6px 10px; }
+    #table-filters .league-list { display: grid; grid-template-rows: 0fr; opacity: 0;
+      transition: grid-template-rows .22s ease, opacity .18s ease; }
+    #table-filters .ll-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 1px;
+      margin-left: 15px; padding-left: 6px; border-left: 1px solid var(--gridline); }
+    #table-filters .league-list .filter-chip { font-size: 12.5px; padding: 5px 10px; }
+    #table-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .league-list { grid-template-rows: 1fr; opacity: 1; }
+    #table-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .filter-chip .caret { transform: none; }
     #table-filters .league-row { display: none !important; }
+    @media (prefers-reduced-motion: reduce) {
+      #table-filters .league-list, #table-filters .caret, #table-filters .filter-chip { transition: none; }
+    }
     body[data-tab="table"] header .app-bar { display: none; }
     body[data-tab="table"] nav.tabs { margin-bottom: 0; }
     table.leaderboard.clubs td { padding-top: 4.5px; padding-bottom: 4.5px; }
@@ -705,9 +726,19 @@ function renderTableFilters() {
   const f = state.tableFilter;
   const countries = tableCountries();
   const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
+  // Clubs per filter (current league members), shown on the right in the side menu
+  const counts = new Map();
+  let total = 0;
+  for (const r of state.rankings) if (r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
+  const sum = (ids) => ids.reduce((n, id) => n + (counts.get(id) || 0), 0);
+  const countOf = (value) => value === "all" ? total
+    : value.startsWith("c:") ? sum(countries.find((c) => c.name === value.slice(2))?.leagues || [])
+    : value.startsWith("r:") ? sum(countries.filter((c) => c.region === value.slice(2)).flatMap((c) => c.leagues))
+    : counts.get(Number(value)) || 0;
   const chip = (value, label, title, extra = "", cls = "") =>
-    `<button type="button" class="filter-chip ${cls}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${label}${extra}</button>`;
-  const caret = `<span class="caret">▾</span>`;
+    `<button type="button" class="filter-chip ${cls}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${extra}<span class="flabel">${label}</span><span class="cnt">${countOf(value)}</span></button>`;
+  const caret = `<span class="caret" aria-hidden="true">▾</span>`;
+  const list = (html) => `<div class="league-list"><div class="ll-inner">${html}</div></div>`;
   const activeCountry = f.startsWith("c:") ? countries.find((c) => c.name === f.slice(2))
     : countries.find((c) => c.leagues.includes(Number(f)));
   const activeRegion = f.startsWith("r:") ? f.slice(2) : activeCountry?.region;
@@ -716,14 +747,13 @@ function renderTableFilters() {
   const countryGroup = (c) => {
     if (c.leagues.length === 1) return chip(String(c.leagues[0]), escapeHtml(c.name), `${c.name} · ${leagueName(c.leagues[0])}`);
     const inside = c.leagues.includes(Number(f));
-    const list = `<div class="league-list">${c.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), leagueName(id))).join("")}</div>`;
-    return `<div class="cgroup${activeCountry === c ? " open" : ""}">${chip(`c:${c.name}`, escapeHtml(c.name), `All ${c.name} clubs`, caret, `cchip${inside ? " has-active" : ""}`)}${list}</div>`;
+    return `<div class="cgroup${activeCountry === c ? " open" : ""}">${chip(`c:${c.name}`, escapeHtml(c.name), `All ${c.name} clubs`, caret, `cchip${inside ? " has-active" : ""}`)}${list(c.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), leagueName(id))).join(""))}</div>`;
   };
   const regionGroups = REGIONS.map((region) => {
     const members = countries.filter((c) => c.region === region);
     if (!members.length) return "";
     const inside = activeRegion === region && f !== `r:${region}`;
-    return `<div class="cgroup region${activeRegion === region ? " open" : ""}">${chip(`r:${region}`, escapeHtml(region), `All clubs in ${region}`, caret, `cchip${inside ? " has-active" : ""}`)}<div class="league-list">${members.map(countryGroup).join("")}</div></div>`;
+    return `<div class="cgroup region${activeRegion === region ? " open" : ""}">${chip(`r:${region}`, escapeHtml(region), `All clubs in ${region}`, caret, `cchip${inside ? " has-active" : ""}`)}${list(members.map(countryGroup).join(""))}</div>`;
   });
 
   // Phones (no hover): rows under the chips with the selected region's countries and country's leagues
@@ -734,9 +764,44 @@ function renderTableFilters() {
     ? `<div class="league-row">${activeCountry.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), "")).join("")}</div>` : "";
   wrap.innerHTML = `<div class="cgroups">
       ${chip("all", "All", "All leagues")}
+      <div class="sep"></div>
       ${countries.filter((c) => !c.region).map(countryGroup).join("")}
+      <div class="sep"></div>
       ${regionGroups.join("")}
     </div>${regionRow}${leagueRow}`;
+  bindFilterHover(wrap);
+}
+
+// Side menu (wide screens): a group opens after a short hover, so sweeping the pointer past
+// doesn't make the list jump, and closes shortly after the pointer leaves
+const SIDE_MENU = matchMedia("(min-width: 1160px)");
+function bindFilterHover(wrap) {
+  if (!matchMedia("(hover: hover)").matches) return;
+  for (const g of wrap.querySelectorAll(".cgroup")) {
+    g.addEventListener("mouseenter", () => {
+      clearTimeout(g._close);
+      g._open = setTimeout(() => g.classList.add("hover-open"), 140);
+    });
+    g.addEventListener("mouseleave", () => {
+      clearTimeout(g._open);
+      g._close = setTimeout(() => g.classList.remove("hover-open"), 220);
+    });
+  }
+}
+// Update the selection in place: no rebuild, so nothing flickers. A group that was open stays
+// open (.stay) until the pointer leaves the menu, so rows don't shift under the pointer.
+function syncTableFilters() {
+  const wrap = $("#table-filters");
+  const f = state.tableFilter;
+  const hovering = wrap.matches(":hover");
+  wrap.querySelectorAll("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === f)));
+  for (const g of wrap.querySelectorAll(".cgroup")) {
+    const head = g.querySelector(":scope > .filter-chip");
+    const pressed = g.querySelector('[aria-pressed="true"]');
+    if (g.classList.contains("open") && !pressed && hovering) g.classList.add("stay");
+    g.classList.toggle("open", !!pressed);
+    head.classList.toggle("has-active", !!pressed && pressed !== head);
+  }
 }
 
 function renderFilterChips(kind) {
@@ -1446,9 +1511,13 @@ $("#table-filters").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-filter]");
   if (!btn) return;
   state.tableFilter = btn.dataset.filter;
-  renderTableFilters();
+  // Side menu: update in place; phones rebuild (their rows depend on the selection)
+  if (SIDE_MENU.matches) syncTableFilters(); else renderTableFilters();
   renderTable();
 });
+$("#table-filters").addEventListener("mouseleave", (e) =>
+  e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
+SIDE_MENU.addEventListener("change", () => { if (state.rankings) renderTableFilters(); });
 $("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
 for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"]]) {
   $(id).addEventListener("click", (e) => {
