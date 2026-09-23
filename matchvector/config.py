@@ -90,8 +90,14 @@ LEAGUES = {
 # API-Football seasons are keyed by the year the season starts (2025 = 2025/26).
 DEFAULT_SEASONS = list(range(2020, 2027))
 
-# Leagues with player data and injury lists: English top five + the other big four
-PLAYER_LEAGUES = [39, 40, 41, 42, 43, 140, 135, 78, 61]
+# Leagues with player data and injury lists
+PLAYER_LEAGUES = [
+    39, 40, 41, 42, 43,            # England top five
+    140, 135, 78, 61,              # La Liga, Serie A, Bundesliga, Ligue 1
+    203, 307, 253, 94, 88, 144,    # Turkey, Saudi Arabia, MLS, Portugal, Netherlands, Belgium
+    197, 333, 345, 218, 103, 419,  # Greece, Ukraine, Czechia, Austria, Norway, Azerbaijan
+    332,                           # Slovakia
+]
 
 FINISHED_STATUSES = ("FT", "AET", "PEN")
 
