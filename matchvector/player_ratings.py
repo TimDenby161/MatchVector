@@ -20,9 +20,12 @@ Player rank
     rank     = stat pct x min(club / CLUB_RANK_MAX, 1): even a perfect player is capped by his
                club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1200 = 80
 
-Season rank (player_season_ranks)
-    the average, weighted by minutes, of the player's rank after each match he played that
-    season (his window including that match), so it reflects that season's own performances
+Season rank (player_season_ranks), from that season's own matches only
+    score    = the same stat score from his season totals, pulled toward MINUTES_PRIOR by
+               SHRINK_MINUTES x (club games that season / FULL_SEASON_GAMES), so a thin season is
+               marked down but a season in progress isn't punished for being young
+    rank     = percentile among player-seasons with 900+ minutes in the same role group
+               x min(club / CLUB_RANK_MAX, 1), club = his clubs' average rank over his matches
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
@@ -49,6 +52,7 @@ SHRINK_MINUTES = 900
 CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
+FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull on season ranks
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -57,8 +61,10 @@ STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on",
 # weight per metric by role group; negative weight = lower is better
 WEIGHTS = {
     "GK": {"rating": .50, "save_pct": .30, "conceded": -.20},
-    "CB": {"rating": .40, "duels_pct": .15, "tackles_int": .12, "blocks": .08, "pass_acc": .08,
-           "passes": .05, "goals": .03, "discipline": -.07},
+    # centre-backs lean on match rating: tackles, blocks and duels pile up for defenders under
+    # pressure, so volume stats undersell centre-backs at dominant clubs
+    "CB": {"rating": .60, "duels_pct": .12, "tackles_int": .05, "blocks": .03, "pass_acc": .08,
+           "passes": .05, "goals": .03, "discipline": -.04},
     "FB": {"rating": .35, "tackles_int": .12, "key_passes": .10, "assists": .08, "duels_pct": .08,
            "dribbles_won": .07, "passes": .07, "pass_acc": .05, "discipline": -.05},
     "DM": {"rating": .35, "tackles_int": .20, "passes": .12, "pass_acc": .10, "duels_pct": .10,
@@ -184,6 +190,74 @@ def _norms(conn):
     return norms
 
 
+def _stat_score(sums, pos, norms):
+    m = metrics(sums)
+    if not m or pos not in norms:
+        return None
+    return sum(w * (m[k] - norms[pos][k][0]) / norms[pos][k][1]
+               for k, w in WEIGHTS[pos].items() if m[k] is not None)
+
+
+def _season_ranks(conn, norms):
+    """[(player, season, rank, minutes)] from each season's own matches (see module docstring)."""
+    cols = ", ".join(f"sum(coalesce(fp.{c}, 0))" for c in STATS[3:])
+    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
+                                   "club": [0.0, 0.0], "games": 0})
+    team_games = {(t, y): n for t, y, n in conn.execute(
+        """select team_id, season, count(*) from (
+               select home_team_id as team_id, season from fixtures
+               where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')
+               union all
+               select away_team_id, season from fixtures
+               where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
+           group by 1, 2""", {"l": config.INJURY_MODEL_LEAGUES})}
+    for row in conn.execute(
+            f"""select fp.player_id, f.season, fp.team_id, fp.role, fp.position, sum(fp.minutes),
+                       sum(case when fp.rating is not null then fp.rating * fp.minutes else 0 end),
+                       sum(case when fp.rating is not null then fp.minutes else 0 end), {cols},
+                       sum(h.rank_before * fp.minutes),
+                       sum(case when h.rank_before is not null then fp.minutes else 0 end)
+                from fixture_players fp join fixtures f using (fixture_id)
+                left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
+                where f.status_short in ('FT', 'AET', 'PEN')
+                group by 1, 2, 3, 4, 5"""):
+        e = seasons[(row[0], row[1])]
+        for k, v in zip(STATS, row[5:5 + len(STATS)]):
+            e["sums"][k] += float(v)
+        mins = float(row[5])
+        if row[3]:
+            e["roles"][row[3]] += mins
+        e["broad"][row[4]] += mins
+        e["club"][0] += float(row[-2] or 0)
+        e["club"][1] += float(row[-1] or 0)
+        e["games"] = max(e["games"], team_games.get((row[2], row[1]), 0))
+    scored = []
+    ref = defaultdict(list)
+    for (player, season), e in seasons.items():
+        mins = e["sums"]["minutes"]
+        if mins <= 0:
+            continue
+        pos = (role_group(e["roles"].most_common(1)[0][0]) if +e["roles"]
+               else FALLBACK.get((+e["broad"]).most_common(1)[0][0]) if +e["broad"] else None)
+        s = _stat_score(e["sums"], pos, norms)
+        if s is None:
+            continue
+        prior = SHRINK_MINUTES * min(e["games"] / FULL_SEASON_GAMES, 1)
+        s = (s * mins + MINUTES_PRIOR * prior) / (mins + prior)
+        club = e["club"][0] / e["club"][1] if e["club"][1] else None
+        scored.append((player, season, s, pos, club, int(mins)))
+        if mins >= 900:
+            ref[pos].append(s)
+    for v in ref.values():
+        v.sort()
+    rows = []
+    for player, season, s, pos, club, mins in scored:
+        if ref.get(pos) and club:
+            pct = 100 * bisect.bisect_left(ref[pos], s) / len(ref[pos])
+            rows.append((player, season, round(pct * min(club / CLUB_RANK_MAX, 1), 1), mins))
+    return rows
+
+
 def compute_player_ratings(conn):
     norms = _norms(conn)
     team_rank = {(f, t): r for f, t, r in conn.execute(
@@ -232,8 +306,7 @@ def compute_player_ratings(conn):
     sample = defaultdict(list) # position -> raw scores of players with a full window of minutes
     appearance_scores = []     # (fixture, player, (stat score, club rank), position)
     team_rows = []             # (fixture, team, predicted XI [(player, pos, raw)], actual XI [(raw, pos)], upcoming)
-    after_match = []           # (player, season, (stat score, club rank), position, minutes)
-    for fid, kickoff, home, away, upcoming, season in fixtures:
+    for fid, kickoff, home, away, upcoming, _season in fixtures:
         for team in (home, away):
             # predicted XI from recent matches, excluding the injury list
             minutes = Counter()
@@ -267,10 +340,6 @@ def compute_player_ratings(conn):
             st = _row_stats(a)
             st["club_mins"] = team_rank.get((fid, a["team"]), tr_mean) * (a["minutes"] or 0)
             windows[a["player"]].add(kickoff, st, a["role"], a["position"])
-            if a["minutes"]:
-                s, pos, _ = raw_score(a["player"], kickoff)
-                if s is not None:
-                    after_match.append((a["player"], season, s, pos, a["minutes"]))
         for team in (home, away):
             played = {a["player"]: a["minutes"] for a in apps.get(fid, []) if a["team"] == team}
             if played:
@@ -308,14 +377,7 @@ def compute_player_ratings(conn):
         if s is not None:
             current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
 
-    # Season rank: minutes-weighted average of the rank after each match that season
-    season_sums = defaultdict(lambda: [0.0, 0])
-    for player, season, s, pos, mins in after_match:
-        acc = season_sums[(player, season)]
-        acc[0] += to_rank(s, pos) * mins
-        acc[1] += mins
-    season_rows = [(p, y, round(t / m, 1), m) for (p, y), (t, m) in season_sums.items()]
-
+    season_rows = _season_ranks(conn, norms)
     _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows)
 
 

@@ -1087,7 +1087,7 @@ function playerCellTip(pid, key) {
     const current = y === Math.max(...seasons);
     const calendarYear = CALENDAR_YEAR_LEAGUES.has(p.league);    // seasons run January to December
     head = `${p.name} · ${calendarYear ? y : `${y}/${String(y + 1).slice(2)}`}${current ? " (so far)" : ""}`;
-    rankLine = `Average rank across the season${current ? " so far" : ""}: ${fmt(p.seasons?.[i])}`;
+    rankLine = `Rank for the season${current ? " so far" : ""}: ${fmt(p.seasons?.[i])}`;
     during = current ? "This season so far:" : "During the season:";
     spells = detail?.players?.[pid]?.[key];
   }
@@ -1131,7 +1131,7 @@ function renderPlayers() {
         <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
-        ${seasons.map((y, i) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Average rank across the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${y === seasons[0] ? "; so far" : ""}): his rank after each match he played that season, averaged and weighted by minutes. A rank is how his stats over his last 20 appearances compare with regulars in the same position (as a percentile), multiplied by his club's level (club rank ÷ 1200), so a perfect player at a 966 club can reach at most 80. Blank if he didn't play in these leagues that season.`, ` col-season col-s${i}`)).join("")}
+        ${seasons.map((y, i) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${y === seasons[0] ? "; so far" : ""}), from that season's matches only: how his season stats compare with other players' seasons in the same position (as a percentile), multiplied by his club's level that season (club rank ÷ 1200), so a perfect player at a 966 club can reach at most 80. Few minutes pull it down. Blank if he didn't play in these leagues that season.`, ` col-season col-s${i}`)).join("")}
       </tr></thead>
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}" data-player="${p.id}">
