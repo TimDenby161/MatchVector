@@ -379,8 +379,6 @@
   .league-list { display: none; }
   .league-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .league-row[hidden] { display: none; }
-  .country-more { display: contents; }
-  .country-more[hidden] { display: none; }
 
   /* Rankings side panel: brand, view toggle, search and league filters.
      Phones: stacked above the list (filters, toggle, search). */
@@ -404,11 +402,10 @@
     #table-filters .filter-chip { text-align: left; border-radius: 8px; white-space: normal; display: flex;
       justify-content: space-between; align-items: center; }
     /* hovering a country opens its leagues underneath; also open while one of them is selected */
-    #table-filters .cgroup:hover .league-list, #table-filters .cgroup:focus-within .league-list,
-    #table-filters .cgroup.open .league-list { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
+    #table-filters .cgroup:hover > .league-list, #table-filters .cgroup:focus-within > .league-list,
+    #table-filters .cgroup.open > .league-list { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
     #table-filters .league-list .filter-chip { font-size: 11px; padding: 5px 9px; }
-    #table-filters .league-row, #table-filters .country-toggle { display: none !important; }
-    #table-filters .country-more { display: contents !important; }
+    #table-filters .league-row { display: none !important; }
     body[data-tab="table"] header .app-bar { display: none; }
     body[data-tab="table"] nav.tabs { margin-bottom: 0; }
     table.leaderboard.clubs td { padding-top: 4.5px; padding-bottom: 4.5px; }
@@ -658,7 +655,19 @@ function defaultDate() {
 // ------------------------------------------------------------------ filter chips
 // ---- Rankings country / league filter
 const COUNTRY_FIRST = ["England", "Germany", "Spain", "Italy", "France"];
-const COUNTRIES_SHOWN_ON_PHONES = 6;
+// Every other country goes under a region; anything not listed here is "Rest of Europe"
+// (UEFA members such as Turkey, Israel and Kazakhstan included).
+const REGIONS = ["Rest of Europe", "South America", "Africa", "Oceania", "Asia", "North America"];
+const REGION_OF = {};
+for (const [region, list] of Object.entries({
+  "South America": ["Argentina", "Brazil", "Chile", "Colombia", "Uruguay", "Paraguay", "Peru", "Ecuador", "Bolivia", "Venezuela"],
+  "Africa": ["Egypt", "Morocco", "South Africa", "Nigeria", "Tunisia", "Algeria", "Ghana", "Senegal", "Ivory Coast", "Cameroon", "Kenya", "Tanzania", "Zambia"],
+  "Oceania": ["Australia", "New Zealand", "Fiji"],
+  "Asia": ["Saudi Arabia", "Japan", "South Korea", "China", "Qatar", "United Arab Emirates", "Iran", "Iraq", "India", "Thailand", "Vietnam", "Indonesia", "Malaysia", "Uzbekistan", "Kuwait", "Bahrain", "Oman", "Jordan"],
+  "North America": ["USA", "Mexico", "Canada", "Costa Rica", "Honduras", "Guatemala", "Jamaica", "Panama", "El Salvador"],
+})) for (const c of list) REGION_OF[c] = region;
+const regionOf = (country) => REGION_OF[country] || "Rest of Europe";
+
 function tableCountries() {
   const present = new Set(state.rankings.map((r) => String(r.league)));
   const byCountry = new Map();
@@ -670,7 +679,7 @@ function tableCountries() {
   }
   const rank = (n) => { const i = COUNTRY_FIRST.indexOf(n); return i === -1 ? 99 : i; };
   return [...byCountry.entries()]
-    .map(([name, ids]) => ({ name, leagues: ids.sort((a, b) => a - b) }))
+    .map(([name, ids]) => ({ name, leagues: ids.sort((a, b) => a - b), region: COUNTRY_FIRST.includes(name) ? null : regionOf(name) }))
     .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 }
 // League ids for the current filter: null = all
@@ -678,6 +687,7 @@ function tableLeagueIds() {
   const f = state.tableFilter;
   if (f === "all") return null;
   if (f.startsWith("c:")) return tableCountries().find((c) => c.name === f.slice(2))?.leagues || [];
+  if (f.startsWith("r:")) return tableCountries().filter((c) => c.region === f.slice(2)).flatMap((c) => c.leagues);
   return [Number(f)];
 }
 function tableFilterIsWide() {   // spans several leagues: show league names and use the scroll box
@@ -688,35 +698,39 @@ function renderTableFilters() {
   const wrap = $("#table-filters");
   const f = state.tableFilter;
   const countries = tableCountries();
+  const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
   const chip = (value, label, title, extra = "", cls = "") =>
     `<button type="button" class="filter-chip ${cls}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${label}${extra}</button>`;
-  const activeCountry = f.startsWith("c:") ? f.slice(2)
-    : countries.find((c) => c.leagues.includes(Number(f)))?.name;
-  const groups = countries.map((c, i) => {
-    const single = c.leagues.length === 1;
-    const value = single ? String(c.leagues[0]) : `c:${c.name}`;
-    const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
-    const inside = !single && c.leagues.includes(Number(f));
-    const open = !single && activeCountry === c.name;
-    const head = chip(value, escapeHtml(c.name), single ? `${c.name} · ${leagueName(c.leagues[0])}` : `All ${c.name} clubs`,
-      single ? "" : `<span class="caret">▾</span>`, `cchip${inside ? " has-active" : ""}`);
-    const list = single ? "" : `<div class="league-list">${c.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), leagueName(id))).join("")}</div>`;
-    const extraOnPhones = i >= COUNTRIES_SHOWN_ON_PHONES && activeCountry !== c.name;
-    return `<div class="cgroup${open ? " open" : ""}${extraOnPhones ? " country-extra" : ""}">${head}${list}</div>`;
+  const caret = `<span class="caret">▾</span>`;
+  const activeCountry = f.startsWith("c:") ? countries.find((c) => c.name === f.slice(2))
+    : countries.find((c) => c.leagues.includes(Number(f)));
+  const activeRegion = f.startsWith("r:") ? f.slice(2) : activeCountry?.region;
+
+  // A country: one league = a plain chip; several = a chip that opens its leagues
+  const countryGroup = (c) => {
+    if (c.leagues.length === 1) return chip(String(c.leagues[0]), escapeHtml(c.name), `${c.name} · ${leagueName(c.leagues[0])}`);
+    const inside = c.leagues.includes(Number(f));
+    const list = `<div class="league-list">${c.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), leagueName(id))).join("")}</div>`;
+    return `<div class="cgroup${activeCountry === c ? " open" : ""}">${chip(`c:${c.name}`, escapeHtml(c.name), `All ${c.name} clubs`, caret, `cchip${inside ? " has-active" : ""}`)}${list}</div>`;
+  };
+  const regionGroups = REGIONS.map((region) => {
+    const members = countries.filter((c) => c.region === region);
+    if (!members.length) return "";
+    const inside = activeRegion === region && f !== `r:${region}`;
+    return `<div class="cgroup region${activeRegion === region ? " open" : ""}">${chip(`r:${region}`, escapeHtml(region), `All clubs in ${region}`, caret, `cchip${inside ? " has-active" : ""}`)}<div class="league-list">${members.map(countryGroup).join("")}</div></div>`;
   });
-  const shown = groups.filter((g) => !g.includes("country-extra"));
-  const extra = groups.filter((g) => g.includes("country-extra"));
-  const expanded = !!state.tableCountriesOpen;
-  // Phones: a row with the selected country's leagues under the chips
-  const openCountry = countries.find((c) => c.name === activeCountry && c.leagues.length > 1);
-  const leagueRow = openCountry ? `<div class="league-row">${openCountry.leagues.map((id) =>
-    chip(String(id), escapeHtml(SHORT_NAMES[id] || state.data.competitions[id].name), "")).join("")}</div>` : "";
+
+  // Phones (no hover): rows under the chips with the selected region's countries and country's leagues
+  const regionRow = activeRegion ? `<div class="league-row">${countries.filter((c) => c.region === activeRegion)
+    .map((c) => chip(c.leagues.length === 1 ? String(c.leagues[0]) : `c:${c.name}`, escapeHtml(c.name), "", "",
+      c.leagues.length > 1 && c.leagues.includes(Number(f)) ? "has-active" : "")).join("")}</div>` : "";
+  const leagueRow = activeCountry && activeCountry.leagues.length > 1
+    ? `<div class="league-row">${activeCountry.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), "")).join("")}</div>` : "";
   wrap.innerHTML = `<div class="cgroups">
       ${chip("all", "All", "All leagues")}
-      ${shown.join("")}
-      <div class="country-more"${expanded ? "" : " hidden"}>${extra.join("")}</div>
-      ${extra.length ? `<button type="button" class="filter-chip filter-more country-toggle" data-country-toggle>${expanded ? "&#9652; Fewer" : `&#9662; ${extra.length} more`}</button>` : ""}
-    </div>${leagueRow}`;
+      ${countries.filter((c) => !c.region).map(countryGroup).join("")}
+      ${regionGroups.join("")}
+    </div>${regionRow}${leagueRow}`;
 }
 
 function renderFilterChips(kind) {
@@ -1423,10 +1437,6 @@ window.addEventListener("hashchange", route);
 window.addEventListener("popstate", route);
 $("#match-filters").addEventListener("click", (e) => onChipClick("match", e));
 $("#table-filters").addEventListener("click", (e) => {
-  if (e.target.closest("[data-country-toggle]")) {
-    state.tableCountriesOpen = !state.tableCountriesOpen;
-    return renderTableFilters();
-  }
   const btn = e.target.closest("[data-filter]");
   if (!btn) return;
   state.tableFilter = btn.dataset.filter;
