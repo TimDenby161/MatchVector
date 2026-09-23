@@ -657,9 +657,10 @@ function defaultDate() {
 const COUNTRY_FIRST = ["England", "Germany", "Spain", "Italy", "France"];
 // Every other country goes under a region; anything not listed here is "Rest of Europe"
 // (UEFA members such as Turkey, Israel and Kazakhstan included).
-const REGIONS = ["Rest of Europe", "South America", "Africa", "Oceania", "Asia", "North America"];
+const REGIONS = ["Rest of Europe", "Scandinavia", "South America", "Africa", "Oceania", "Asia", "North America"];
 const REGION_OF = {};
 for (const [region, list] of Object.entries({
+  "Scandinavia": ["Denmark", "Norway", "Sweden", "Finland", "Iceland"],
   "South America": ["Argentina", "Brazil", "Chile", "Colombia", "Uruguay", "Paraguay", "Peru", "Ecuador", "Bolivia", "Venezuela"],
   "Africa": ["Egypt", "Morocco", "South Africa", "Nigeria", "Tunisia", "Algeria", "Ghana", "Senegal", "Ivory Coast", "Cameroon", "Kenya", "Tanzania", "Zambia"],
   "Oceania": ["Australia", "New Zealand", "Fiji"],
