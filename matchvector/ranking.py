@@ -15,9 +15,17 @@ Summary figures (Ranking tab), where history = [starting rank, rank after each m
     rank_100 = mean of the last 100 history values
     st_algo  = 0.6*current + 0.2*mean(last 3) + 0.1*rank_30 + 0.1*rank_100
     lt_algo  = 0.1*st_algo + 0.3*rank_30 + 0.6*rank_100
+
+Reliability (0-100, not in the sheet):
+    games_factor     = 1 - exp(-played / 35)       (66% after 38 games, 89% after 76)
+    rank_volatility  = standard deviation of the last 30 rank changes
+    stability_factor = min(1, (18 / rank_volatility) ** 1.5)   (1 if under 5 games)
+    reliability      = 100 * games_factor * stability_factor
 """
 import io
 import logging
+import math
+import statistics
 from dataclasses import dataclass
 from datetime import date
 
@@ -28,6 +36,12 @@ log = logging.getLogger(__name__)
 HOME_ADVANTAGE = 1.09
 K_FACTOR = 10
 DEFAULT_STARTING_RANK = 650
+
+# Reliability score tuning
+GAMES_SCALE = 35          # games for the games factor to reach ~63%
+VOLATILITY_WINDOW = 30    # recent matches used to measure rank swings
+TYPICAL_VOLATILITY = 18   # median spread of rank changes; at or below this = fully stable
+MIN_VOLATILITY_GAMES = 5
 
 
 @dataclass
@@ -70,8 +84,15 @@ def summarise(history):
     rank_30, rank_100 = mean(history[-30:]), mean(history[-100:])
     st = 0.6 * history[-1] + 0.2 * mean(history[-3:]) + 0.1 * rank_30 + 0.1 * rank_100
     lt = 0.1 * st + 0.3 * rank_30 + 0.6 * rank_100
+    changes = [b - a for a, b in zip(history, history[1:])][-VOLATILITY_WINDOW:]
+    volatility = statistics.stdev(changes) if len(changes) >= 2 else None
+    games_factor = 1 - math.exp(-played / GAMES_SCALE)
+    stability = 1.0
+    if len(changes) >= MIN_VOLATILITY_GAMES and volatility:
+        stability = min(1.0, (TYPICAL_VOLATILITY / volatility) ** 1.5)
     return {"played": played, "current_rank": history[-1], "rank_30": rank_30,
-            "rank_100": rank_100, "st_algo": st, "lt_algo": lt}
+            "rank_100": rank_100, "st_algo": st, "lt_algo": lt,
+            "rank_volatility": volatility, "reliability": 100 * games_factor * stability}
 
 
 # --------------------------------------------------------------------------- database
@@ -185,11 +206,12 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
             team, latest_league.get(team, first_comp.get(team)), hist[0], s["played"],
             last_match[team].isoformat(), s["current_rank"], s["st_algo"], s["rank_30"],
             s["rank_100"], s["lt_algo"], avg(g["hg"]), avg(g["ha"]), avg(g["ag"]), avg(g["aa"]),
+            r"\N" if s["rank_volatility"] is None else s["rank_volatility"], s["reliability"],
         ))) + "\n")
     with conn.cursor() as cur:
         cur.execute("truncate team_rankings")
         with cur.copy("copy team_rankings (team_id, league_id, starting_rank, played, last_match, "
-                      "current_rank, st_algo, rank_30, rank_100, lt_algo, hg, ha, ag, aa) "
-                      "from stdin") as cp:
+                      "current_rank, st_algo, rank_30, rank_100, lt_algo, hg, ha, ag, aa, "
+                      "rank_volatility, reliability) from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: summary rebuilt for %d teams", len(history))

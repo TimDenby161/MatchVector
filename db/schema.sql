@@ -210,6 +210,8 @@ create table if not exists team_rankings (
     ag             double precision,
     aa             double precision
 );
+alter table team_rankings add column if not exists rank_volatility double precision;
+alter table team_rankings add column if not exists reliability double precision;
 
 -- Supabase exposes the public schema through its REST API; enable RLS with no
 -- policies so these tables are only reachable via the postgres/service role.
