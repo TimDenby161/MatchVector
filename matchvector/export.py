@@ -136,6 +136,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     export_stats(conn, out_dir)
     export_bets(conn, out_dir)
     export_players(conn, out_dir)
+    export_player_seasons(conn, out_dir)
     export_clubs(conn, out_dir)
 
 
@@ -334,6 +335,59 @@ def export_players(conn, out_dir=OUT_DIR):
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))
+
+
+def _club_spells(rows):
+    """[(player, key, team, minutes, club rank, rating)] -> {player: {key: [[team, mins, rank, rating], ...]}},
+    clubs by minutes, most first."""
+    out = defaultdict(dict)
+    for player, key, team, mins, rank, rating in rows:
+        out[player].setdefault(key, []).append(
+            [team, int(mins), round(float(rank)) if rank is not None else None,
+             round(float(rating), 2) if rating is not None else None])
+    for seasons in out.values():
+        for spells in seasons.values():
+            spells.sort(key=lambda x: -x[1])
+    return out
+
+
+def export_player_seasons(conn, out_dir=OUT_DIR):
+    """Hover detail for the Players table (player_seasons.json, loaded when that view opens).
+
+    For each exported player and each season in PLAYER_SEASONS, and for "now" (his last 20
+    appearances, the ones the current rank is built from): the clubs he played for, his minutes
+    for each, the club's average rank over those matches and his average match rating.
+    """
+    ids = [r[0] for r in conn.execute(
+        "select player_id from players where current_rank is not null and rank_minutes >= 450")]
+    per_club = """sum(fp.minutes),
+                  sum(h.rank_before * fp.minutes) / nullif(sum(fp.minutes) filter (where h.rank_before is not null), 0),
+                  sum(fp.rating * fp.minutes) filter (where fp.rating is not null)
+                    / nullif(sum(fp.minutes) filter (where fp.rating is not null), 0)"""
+    seasons = conn.execute(
+        f"""select fp.player_id, f.season, fp.team_id, {per_club}
+            from fixture_players fp join fixtures f using (fixture_id)
+            left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
+            where fp.player_id = any(%s) and f.season = any(%s) and f.status_short = any(%s) and fp.minutes > 0
+            group by 1, 2, 3""", [ids, PLAYER_SEASONS, list(config.FINISHED_STATUSES)]).fetchall()
+    recent = conn.execute(
+        f"""with apps as (
+                select fp.*, row_number() over (partition by fp.player_id order by f.kickoff desc) as n
+                from fixture_players fp join fixtures f using (fixture_id)
+                where fp.player_id = any(%s) and f.status_short = any(%s) and fp.minutes > 0
+                  and f.kickoff > now() - interval '540 days')
+            select fp.player_id, 'now', fp.team_id, {per_club}
+            from apps fp left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
+            where fp.n <= 20 group by 1, 3""", [ids, list(config.FINISHED_STATUSES)]).fetchall()
+    spells = _club_spells(seasons + recent)
+    team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}
+    names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))
+    (out_dir / "player_seasons.json").write_text(json.dumps({
+        "fields": ["team", "minutes", "club_rank", "rating"],
+        "teams": {str(t): names.get(t) for t in team_ids},
+        "players": {str(p): {str(k): v for k, v in d.items()} for p, d in spells.items()},
+    }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    log.info("Exported season detail for %d players", len(spells))
 
 
 CLUB_ACTIVE_DAYS = 400

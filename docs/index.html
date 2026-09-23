@@ -257,6 +257,8 @@
     font-weight: 400; text-transform: none; letter-spacing: 0; pointer-events: none;
     box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
   .col-tip[hidden] { display: none; }
+  .col-tip { white-space: pre-line; }
+  td.tip-cell { cursor: help; }
   th[data-tip] { cursor: help; }
   th.sortable[data-tip] { cursor: pointer; }
   table.leaderboard th {
@@ -1052,9 +1054,48 @@ function fitTopRows(wrap, capped = true) {
 }
 window.addEventListener("resize", () => { if (state.rankings && state.tab === "table") fitTopRows($("#table-wrap"), tableFilterIsWide() || !!state.tableSearch.trim()); });
 
+const CALENDAR_YEAR_LEAGUES = new Set([253, 103, 71, 128, 113, 244, 365, 362]);   // MLS, Norway, Brazil, Argentina, Sweden, Finland, Latvia, Lithuania
+function loadPlayerSeasons() {
+  if (state.playerSeasons || state.playerSeasonsLoading) return;
+  state.playerSeasonsLoading = fetch("data/player_seasons.json", { cache: "no-store" })
+    .then((res) => res.json()).then((d) => { state.playerSeasons = d; }).catch(() => {});
+}
+// Hover text for a Now or season cell: the rank, then the clubs, minutes, club level and rating
+function playerCellTip(pid, key) {
+  const p = (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(pid);
+  if (!p) return "";
+  const seasons = state.players.seasons || [];
+  const detail = state.playerSeasons;
+  const club = (id) => detail?.teams?.[id] || teamName(id);
+  const fmt = (v) => v == null ? "–" : Math.round(v);
+  let head, rankLine, spells, during;
+  if (key === "now") {
+    head = `${p.name} · now`;
+    rankLine = `Rank now: ${fmt(p.rank)}`;
+    during = "Last 20 appearances:";
+    spells = detail?.players?.[pid]?.now;
+  } else {
+    const y = Number(key), i = seasons.indexOf(y);
+    const current = y === Math.max(...seasons);
+    const calendarYear = CALENDAR_YEAR_LEAGUES.has(p.league);    // seasons run January to December
+    head = `${p.name} · ${calendarYear ? y : `${y}/${String(y + 1).slice(2)}`}${current ? " (so far)" : ""}`;
+    rankLine = `Rank at the start of the season: ${fmt(p.starts?.[i])}`;
+    during = current ? "This season so far:" : "During the season:";
+    spells = detail?.players?.[pid]?.[key];
+  }
+  const lines = [head, rankLine, "", during];
+  if (!detail) lines.push("Loading…");
+  else if (!spells?.length) lines.push("No minutes in the covered leagues.");
+  else for (const [team, mins, rank, rating] of spells)
+    lines.push(`${club(team)}: ${mins.toLocaleString()} mins`,
+               `   club rank ${fmt(rank)} · match rating ${rating == null ? "–" : rating.toFixed(2)}`);
+  return lines.join("\n");
+}
+
 function renderPlayers() {
   const wrap = $("#table-wrap");
   if (!state.players) { wrap.innerHTML = `<div class="empty-state">No player ranks yet.</div>`; return; }
+  loadPlayerSeasons();
   const ids = tableLeagueIds();
   const q = state.tableSearch.trim().toLowerCase();
   const all = tableFilterIsWide();
@@ -1083,14 +1124,14 @@ function renderPlayers() {
         ${seasons.map((y, i) => th(`s${y}`, String(y).slice(2), `Rank at the start of the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway): his rank going into his first match that season, built only from earlier matches. Blank if he had no earlier minutes in these leagues.`, ` col-season col-s${i}`)).join("")}
       </tr></thead>
       <tbody>${rows.map((p, i) => `
-        <tr data-team="${p.team}">
+        <tr data-team="${p.team}" data-player="${p.id}">
           <td>${i + 1}</td>
           <td><div class="pl-cell"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
             <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${all || q ? ` · ${escapeHtml(countryLeagueText(p.league))}` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-mins">${p.minutes.toLocaleString()}</td>
-          <td class="num">${rankChipSmall(p.rank)}</td>
-          ${seasons.map((y, i) => `<td class="num col-season col-s${i}">${p.starts?.[i] == null ? `<span class="dim">–</span>` : Math.round(p.starts[i])}</td>`).join("")}
+          <td class="num tip-cell" data-key="now">${rankChipSmall(p.rank)}</td>
+          ${seasons.map((y, i) => `<td class="num col-season col-s${i} tip-cell" data-key="${y}">${p.starts?.[i] == null ? `<span class="dim">–</span>` : Math.round(p.starts[i])}</td>`).join("")}
         </tr>`).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
@@ -1611,16 +1652,18 @@ const colTip = Object.assign(document.createElement("div"), { className: "col-ti
 colTip.setAttribute("role", "tooltip");
 document.body.appendChild(colTip);
 $("#table-wrap").addEventListener("mouseover", (e) => {
-  const h = e.target.closest("th[data-tip]");
+  const h = e.target.closest("th[data-tip], td.tip-cell");
   if (!h) return;
-  colTip.textContent = h.dataset.tip;
+  colTip.textContent = h.dataset.tip || playerCellTip(h.closest("tr").dataset.player, h.dataset.key);
+  if (!colTip.textContent) return;
   colTip.hidden = false;
   const b = h.getBoundingClientRect(), w = colTip.offsetWidth;
   colTip.style.left = `${Math.max(8, Math.min(b.left + b.width / 2 - w / 2, innerWidth - w - 8))}px`;
   colTip.style.top = `${b.bottom + 6}px`;
 });
 $("#table-wrap").addEventListener("mouseout", (e) => {
-  if (e.target.closest("th[data-tip]") && !e.relatedTarget?.closest?.("th[data-tip]")) colTip.hidden = true;
+  const tip = "th[data-tip], td.tip-cell";
+  if (e.target.closest(tip) && e.relatedTarget?.closest?.(tip) !== e.target.closest(tip)) colTip.hidden = true;
 });
 $("#table-wrap").addEventListener("scroll", () => { colTip.hidden = true; }, true);
 
