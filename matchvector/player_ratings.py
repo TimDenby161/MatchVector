@@ -84,6 +84,9 @@ FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull 
 PRIOR_SEASON_MINUTES = 1350  # weight of last season's score at the start of a season (15 full games)
 ANCHOR_MINUTES = 1500      # a season with this many minutes is measured well enough to estimate others from
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
+YOUNG_STEP_17 = 0.15       # age curve below 18 (not measurable: too few regulars): yearly gain at 17,
+YOUNG_STEP_EXTRA = 0.05    # plus this for each year younger (16: 0.20, 15: 0.25, 14: 0.30); set so
+                           # Lamine Yamal is ~63 at 14 and 78 at 15 going back from his first full season
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -356,6 +359,8 @@ def _season_ranks(conn, norms):
     def step(a):                         # typical change in score from age a to a + 1
         if a is None or not curve:
             return 0.0
+        if a < 18:                       # too few regulars this young to measure: teenagers
+            return YOUNG_STEP_17 + YOUNG_STEP_EXTRA * (17 - a)   # develop fast, faster the younger
         a = min(max(a, min(curve)), max(curve))
         return curve.get(a, 0.0)
     anchors = defaultdict(list)
