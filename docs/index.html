@@ -793,17 +793,18 @@ function rankChipSmall(r) {
 
 const TOP_ROWS = 10;
 // Show the first TOP_ROWS rows; the rest scroll inside the box
-function fitTopRows(wrap) {
+// capped=false (a single league) shows every row
+function fitTopRows(wrap, capped = true) {
   const box = wrap.querySelector(".table-scroll");
   if (!box) return;
   const rows = box.querySelectorAll("tbody tr");
-  if (rows.length <= TOP_ROWS) { box.style.maxHeight = "none"; return; }
+  if (!capped || rows.length <= TOP_ROWS) { box.style.maxHeight = "none"; return; }
   let h = box.querySelector("thead").offsetHeight;
   for (let i = 0; i < TOP_ROWS; i++) h += rows[i].offsetHeight;
   box.style.maxHeight = `${h + 2}px`;
 }
-function countNote(n, noun) {
-  return `<div class="table-count">${n > TOP_ROWS ? `Top ${TOP_ROWS} shown · scroll the box for all ${n.toLocaleString()} ${noun}` : `${n} ${noun}`}</div>`;
+function countNote(n, noun, capped = true) {
+  return `<div class="table-count">${capped && n > TOP_ROWS ? `Top ${TOP_ROWS} shown · scroll the box for all ${n.toLocaleString()} ${noun}` : `${n} ${noun}`}</div>`;
 }
 
 function renderPlayers() {
@@ -830,9 +831,9 @@ function renderPlayers() {
           <td class="num">${rankChipSmall(p.rank)}</td>
         </tr>`).join("")}</tbody>
     </table></div>
-    ${countNote(rows.length, "players")}
+    ${countNote(rows.length, "players", all || !!q)}
     <div class="stats-note" style="margin-top:8px">Rank 0–100 from per-90 stats over each player's last 20 appearances. Positions come from where he has started in recent line-ups (e.g. LB, DM, RW); he's compared with regulars in the same role (left and right together) and adjusted for team strength. 50 = an average regular in that role; 90 = better than 90% of them.</div>`;
-  fitTopRows(wrap);
+  fitTopRows(wrap, all || !!q);
 }
 
 function renderTable() {
@@ -875,8 +876,8 @@ function renderTable() {
         </tr>`).join("")}
       </tbody>
     </table></div>
-    ${countNote(rows.length, "clubs")}`;
-  fitTopRows(wrap);
+    ${countNote(rows.length, "clubs", all || !!q)}`;
+  fitTopRows(wrap, all || !!q);
 }
 
 // ------------------------------------------------------------------ stats
