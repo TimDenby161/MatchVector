@@ -268,6 +268,7 @@
   table.leaderboard th:first-child, table.leaderboard td:first-child { width: 34px; color: var(--text-muted); }
   table.leaderboard th:nth-child(n+3), table.leaderboard td:nth-child(n+3) { width: 56px; }
   table.leaderboard td:nth-child(2) { overflow-wrap: anywhere; }
+  table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: 40px; }
   table.leaderboard tbody tr { cursor: pointer; }
   table.leaderboard tbody tr:active { background: var(--chip-bg); }
   .club-sub { display: block; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
@@ -339,6 +340,8 @@
     table.leaderboard { font-size: 12px; }
     table.leaderboard th:nth-child(n+3), table.leaderboard td:nth-child(n+3) { width: 46px; }
     table.leaderboard th:first-child, table.leaderboard td:first-child { width: 28px; }
+    table.leaderboard.clubs th:nth-child(n+3), table.leaderboard.clubs td:nth-child(n+3) { width: 42px; padding-left: 2px; padding-right: 2px; }
+    table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: 32px; }
   }
 </style>
 </head>
@@ -816,9 +819,10 @@ function renderTable() {
   const th = (k, label, title) =>
     `<th class="num sortable${key === k ? " active" : ""}" data-sort="${k}" title="${title}">${label}</th>`;
   wrap.innerHTML = `
-    <table class="leaderboard">
+    <table class="leaderboard clubs">
       <thead><tr>
         <th>#</th><th>Club</th>
+        ${th("played", "Pl", "Matches played")}
         ${th("current", "Now", "Current rank, after the latest match")}
         ${th("st", "ST", "Short-term rank (ST ALGO)")}
         ${th("lt", "LT", "Long-term rank (LT ALGO)")}
@@ -829,6 +833,7 @@ function renderTable() {
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
           <td>${escapeHtml(teamName(r.team))}${q || all ? countryLeague(r.league) : ""}</td>
+          <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num">${Math.round(r.current)}</td>
           <td class="num">${Math.round(r.st)}</td>
           <td class="num"><b>${Math.round(r.lt)}</b></td>
