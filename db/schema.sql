@@ -213,6 +213,47 @@ create table if not exists team_rankings (
 alter table team_rankings add column if not exists rank_volatility double precision;
 alter table team_rankings add column if not exists reliability double precision;
 
+-- Projected score and win/draw/loss chances for upcoming fixtures (see
+-- matchvector/predictions.py). Rebuilt nightly after the rankings.
+create table if not exists fixture_predictions (
+    fixture_id        int primary key,
+    kickoff           timestamptz,
+    league_id         int,
+    home_team_id      int,
+    away_team_id      int,
+    home_rank         double precision,
+    away_rank         double precision,
+    exp_diff          double precision,   -- expected goal difference (home - away)
+    home_xg           double precision,   -- projected home goals
+    away_xg           double precision,   -- projected away goals
+    p_home            double precision,
+    p_draw            double precision,
+    p_away            double precision,
+    likely_score      text,               -- single most likely scoreline
+    home_reliability  double precision,
+    away_reliability  double precision,
+    updated_at        timestamptz not null default now()
+);
+
+create or replace view upcoming_predictions as
+select p.kickoff, l.name as competition, l.country, f.round,
+       h.name as home_team, a.name as away_team,
+       round(p.home_xg::numeric, 2) as home_goals, round(p.away_xg::numeric, 2) as away_goals,
+       p.likely_score,
+       round((100 * p.p_home)::numeric, 1) as home_win_pct,
+       round((100 * p.p_draw)::numeric, 1) as draw_pct,
+       round((100 * p.p_away)::numeric, 1) as away_win_pct,
+       round(p.exp_diff::numeric, 2) as expected_margin,
+       round(p.home_rank::numeric, 0) as home_rank, round(p.away_rank::numeric, 0) as away_rank,
+       round(least(p.home_reliability, p.away_reliability)::numeric, 0) as reliability,
+       p.fixture_id
+from fixture_predictions p
+join fixtures f using (fixture_id)
+join leagues l on l.league_id = p.league_id
+join teams h on h.team_id = p.home_team_id
+join teams a on a.team_id = p.away_team_id
+order by p.kickoff;
+
 -- Supabase exposes the public schema through its REST API; enable RLS with no
 -- policies so these tables are only reachable via the postgres/service role.
 alter table leagues            enable row level security;
@@ -228,3 +269,4 @@ alter table bet_types          enable row level security;
 alter table odds               enable row level security;
 alter table team_rank_history  enable row level security;
 alter table team_rankings      enable row level security;
+alter table fixture_predictions enable row level security;

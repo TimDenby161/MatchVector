@@ -8,12 +8,13 @@
     python -m matchvector sync odds
     python -m matchvector nightly        # refresh everything that changes (scheduled task)
     python -m matchvector rank           # recalculate club rankings from every fixture
+    python -m matchvector predict        # projected scores / W-D-L for upcoming fixtures
 """
 import argparse
 import logging
 import sys
 
-from . import config, ingest, ranking
+from . import config, ingest, predictions, ranking
 from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
@@ -30,6 +31,7 @@ def main(argv=None):
     nightly.add_argument("--leagues", type=int, nargs="+", default=list(config.LEAGUES))
 
     sub.add_parser("rank", help="Recalculate club rankings from every finished fixture")
+    sub.add_parser("predict", help="Project scores and W/D/L chances for upcoming fixtures")
 
     sync = sub.add_parser("sync", help="Pull data from API-Football")
     sync.add_argument("target", choices=TARGETS + ["all"])
@@ -54,6 +56,9 @@ def main(argv=None):
             return 0
         if args.command == "rank":
             ranking.update_rankings(conn)
+            return 0
+        if args.command == "predict":
+            predictions.update_predictions(conn)
             return 0
 
         api = ApiFootball()

@@ -39,6 +39,7 @@ API-Football only serves **odds** from about 14 days before kickoff, so you can'
 3. Fetches stats for newly finished matches.
 4. Pulls odds for upcoming matches.
 5. Updates the club rankings (see below).
+6. Projects the score and win/draw/loss chances for every upcoming fixture.
 
 A normal night uses about 350–500 API calls and takes a few minutes. If one competition fails, the others still run, and the exit code is non-zero.
 
@@ -72,6 +73,21 @@ python -m matchvector rank   # the nightly job runs this after syncing
 
 Every run replays all fixtures from scratch, which takes seconds. Late results, corrected scores and changes to `starting_rank` are all picked up automatically.
 
+## Match predictions
+
+`fixture_predictions` holds one row per upcoming fixture. The `upcoming_predictions` view adds team and competition names, and shows percentages. The method is based on the sheet's RG tabs:
+
+1. **Expected margin:** (home rank − away rank + 30) / 100.
+2. **Base goals for each side:** the average of the team's own goals scored and the opponent's goals conceded, at home for the home side and away for the away side. The averages cover the last 12 months and are shrunk towards the competition average by 6 games.
+3. **Projected goals:** the sheet's "Buff" shifts goals from one side to the other so the projected margin equals the expected margin, while total goals stay the same.
+4. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is multiplied by 1.1 because plain Poisson under-predicts draws.
+
+The sheet's "36% × strength ratio" blend is dropped, because in backtesting it made predictions worse. On 51,000 matches from 2024 to 2026, log loss was 1.016 with the sheet's method and 1.005 with this one; guessing base rates scores about 1.07.
+
+```bash
+python -m matchvector predict   # the nightly job runs this after the rankings
+```
+
 ## Tables
 
-`leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`, `team_rank_history`, `team_rankings`. See `db/schema.sql`.
+`leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`, `team_rank_history`, `team_rankings`, `fixture_predictions` (and the view `upcoming_predictions`). See `db/schema.sql`.
