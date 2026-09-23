@@ -266,6 +266,7 @@
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
+  table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 74px; }
   .table-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border);
     border-radius: 10px; background: var(--surface-1); }
   .table-scroll table.leaderboard th { background: var(--surface-1); z-index: 1; }
@@ -428,6 +429,7 @@
     table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 28px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs .rel-chip { min-width: 28px; padding: 2px 3px; }
+    table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 46px; }
     .club-logo { width: 20px; height: 20px; }
     .club-meta { white-space: normal; margin-left: 0; display: block; }
   }
@@ -986,11 +988,11 @@ function renderTable() {
       <thead><tr>
         <th>#</th><th></th><th>Club</th>
         ${th("played", "Pl", "Matches played")}
+        ${th("reliability", "Rel", "Reliability 0-100")}
         ${th("current", "Now", "Current rank, after the latest match")}
         ${th("st", "ST", "Short-term rank (ST ALGO)")}
         ${th("lt", "LT", "Long-term rank (LT ALGO)")}
         ${th("form", "Form", "Rank change over the last 6 games")}
-        ${th("reliability", "Rel", "Reliability 0-100")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
@@ -998,11 +1000,11 @@ function renderTable() {
           <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td>${clubLink(r.team)}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
+          <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
           <td class="num">${Math.round(r.current)}</td>
           <td class="num">${Math.round(r.st)}</td>
           <td class="num"><b>${Math.round(r.lt)}</b></td>
           <td class="num">${formHtml(r.form)}</td>
-          <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
         </tr>`).join("")}
       </tbody>
     </table></div>
