@@ -20,12 +20,18 @@ Player rank
     rank     = stat pct x min(club / CLUB_RANK_MAX, 1): even a perfect player is capped by his
                club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1200 = 80
 
-Season rank (player_season_ranks), from that season's own matches only
-    score    = the same stat score from his season totals, pulled toward MINUTES_PRIOR by
-               SHRINK_MINUTES x (club games that season / FULL_SEASON_GAMES), so a thin season is
-               marked down but a season in progress isn't punished for being young
-    rank     = percentile among player-seasons with 900+ minutes in the same role group
-               x min(club / CLUB_RANK_MAX, 1), club = his clubs' average rank over his matches
+Season rank (player_season_ranks), from that season's own matches
+    score    = the same stat score from his season totals, blended with
+               - his previous season's score, weighted PRIOR_SEASON_MINUTES x (1 - club games /
+                 FULL_SEASON_GAMES): early in a season it leans on last season, and by the end it
+                 stands on its own (no previous season: an average regular, 0)
+               - MINUTES_PRIOR, weighted SHRINK_MINUTES x club games / FULL_SEASON_GAMES, so a
+                 completed season with few minutes is marked down
+    pct      = percentile among player-seasons with 900+ minutes in the same role group, except
+               the top decile, which is spread by how far the score is above the 90th percentile
+               (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
+               apart instead of all sitting at ~99
+    rank     = pct x min(club / CLUB_RANK_MAX, 1), club = his clubs' average rank over his matches
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
@@ -53,6 +59,7 @@ CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is 
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
 FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull on season ranks
+PRIOR_SEASON_MINUTES = 1350  # weight of last season's score at the start of a season (15 full games)
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -233,7 +240,8 @@ def _season_ranks(conn, norms):
         e["games"] = max(e["games"], team_games.get((row[2], row[1]), 0))
     scored = []
     ref = defaultdict(list)
-    for (player, season), e in seasons.items():
+    final = {}                 # (player, season) -> blended score, for the next season's prior
+    for (player, season), e in sorted(seasons.items(), key=lambda kv: kv[0][1]):
         mins = e["sums"]["minutes"]
         if mins <= 0:
             continue
@@ -242,19 +250,31 @@ def _season_ranks(conn, norms):
         s = _stat_score(e["sums"], pos, norms)
         if s is None:
             continue
-        prior = SHRINK_MINUTES * min(e["games"] / FULL_SEASON_GAMES, 1)
-        s = (s * mins + MINUTES_PRIOR * prior) / (mins + prior)
+        done = min(e["games"] / FULL_SEASON_GAMES, 1)
+        prev = final.get((player, season - 1), final.get((player, season - 2), 0.0))
+        w_prev = PRIOR_SEASON_MINUTES * (1 - done)
+        w_low = SHRINK_MINUTES * done
+        s = (s * mins + prev * w_prev + MINUTES_PRIOR * w_low) / (mins + w_prev + w_low)
+        final[(player, season)] = s
         club = e["club"][0] / e["club"][1] if e["club"][1] else None
         scored.append((player, season, s, pos, club, int(mins)))
         if mins >= 900:
             ref[pos].append(s)
     for v in ref.values():
         v.sort()
+
+    def pct(score, ref):
+        n = len(ref)
+        p = 100 * bisect.bisect_left(ref, score) / n
+        if p < 90:
+            return p
+        lo, hi = ref[int(0.9 * n)], ref[min(int(0.999 * n), n - 1)]
+        return 90 + 10 * min(max((score - lo) / (hi - lo), 0), 1) if hi > lo else p
+
     rows = []
     for player, season, s, pos, club, mins in scored:
         if ref.get(pos) and club:
-            pct = 100 * bisect.bisect_left(ref[pos], s) / len(ref[pos])
-            rows.append((player, season, round(pct * min(club / CLUB_RANK_MAX, 1), 1), mins))
+            rows.append((player, season, round(pct(s, ref[pos]) * min(club / CLUB_RANK_MAX, 1), 1), mins))
     return rows
 
 
