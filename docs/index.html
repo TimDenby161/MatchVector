@@ -339,6 +339,35 @@
   .pos { color: var(--status-good); font-weight: 700; } .neg { color: var(--status-critical); font-weight: 700; }
   .bets-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 
+  a.team-link { color: inherit; text-decoration: none; }
+  a.team-link:hover, a.team-link:focus-visible { text-decoration: underline; }
+  .club-back { appearance: none; border: none; background: transparent; color: var(--series-blue); font: inherit;
+    font-size: 13px; font-weight: 700; padding: 4px 0; cursor: pointer; margin-bottom: 6px; }
+  .club-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .club-logo-lg { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+  .club-head h2 { margin: 0; font-size: 22px; line-height: 1.15; }
+  .club-head .club-sub { font-size: 12px; }
+  .club-section { margin-top: 16px; }
+  .chart-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px 8px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chart-title { font-size: 13px; font-weight: 700; }
+  .chart-ranges { display: flex; gap: 4px; }
+  .chart-ranges .filter-chip { padding: 4px 9px; font-size: 11px; }
+  .chart-wrap { position: relative; margin-top: 6px; touch-action: pan-y; }
+  .chart-wrap svg { display: block; width: 100%; overflow: visible; }
+  .chart-grid line { stroke: var(--gridline); stroke-width: 1; }
+  .chart-axis text { fill: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .chart-line { fill: none; stroke: var(--series-blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart-cross { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .chart-dot { fill: var(--series-blue); stroke: var(--surface-1); stroke-width: 2; }
+  .chart-tip { position: absolute; top: 0; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; font-size: 11px; line-height: 1.35; box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+    white-space: nowrap; color: var(--text-secondary); }
+  .chart-tip b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .chart-summary { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .goal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .rank-move { font-size: 11px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
   footer { color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 16px 24px; line-height: 1.5; }
 
   @media (max-width: 480px) {
@@ -433,6 +462,10 @@
       <button type="button" class="filter-chip" data-market="BTTS" aria-pressed="false">Both score</button>
     </div>
     <div id="bets-body"></div>
+  </section>
+
+  <section class="panel" data-tab="club">
+    <div id="club-body"></div>
   </section>
 </main>
 
@@ -535,6 +568,7 @@ async function loadData() {
     renderTable();
     renderStats();
     renderBets();
+    route();
   } catch (err) {
     console.error(err);
     $("#status-line").textContent = "Couldn't load data";
@@ -563,6 +597,8 @@ function countryLeague(id) {
 }
 const teamName = (id) => state.data.teams[id] || `Team ${id}`;
 const teamLogo = (id) => `https://media.api-sports.io/football/teams/${id}.png`;
+const clubHref = (id) => `#/club/${id}`;
+const clubLink = (id, text = teamName(id)) => `<a class="team-link" href="${clubHref(id)}">${escapeHtml(text)}</a>`;
 
 function idsForFilter(filter) {
   if (filter === "all") return null;
@@ -710,12 +746,12 @@ function matchCard(m) {
       </div>
       <div class="match-teams">
         <div class="match-team">
-          <button type="button" class="team-link" data-team="${m.home}">${escapeHtml(teamName(m.home))}</button>
+          ${clubLink(m.home)}
           ${rankChip(hRank)}
         </div>
         ${scoreCentre(m)}
         <div class="match-team away">
-          <button type="button" class="team-link" data-team="${m.away}">${escapeHtml(teamName(m.away))}</button>
+          ${clubLink(m.away)}
           ${rankChip(aRank)}
         </div>
       </div>
@@ -825,7 +861,7 @@ function renderPlayers() {
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}">
           <td>${i + 1}</td>
-          <td>${escapeHtml(p.name)}<span class="club-sub">${escapeHtml(teamName(p.team))}</span>${all || q ? countryLeague(p.league) : ""}</td>
+          <td>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}</span>${all || q ? countryLeague(p.league) : ""}</td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
@@ -866,7 +902,7 @@ function renderTable() {
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
           <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
-          <td>${escapeHtml(teamName(r.team))}${q || all ? countryLeague(r.league) : ""}</td>
+          <td>${clubLink(r.team)}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num">${Math.round(r.current)}</td>
           <td class="num">${Math.round(r.st)}</td>
@@ -1047,10 +1083,189 @@ function xiBlock(teamId) {
       <span class="team-row-opp">${escapeHtml(name)}</span><span class="team-row-res">${rankChipSmall(rank)}</span></div>`).join("")}`;
 }
 
+// ------------------------------------------------------------------ club page
+const clubCache = new Map();
+const CHART_RANGES = [["6m", "6M", 183], ["1y", "1Y", 365], ["3y", "3Y", 1095], ["all", "All", null]];
+
+async function openClubPage(id) {
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", "false"));
+  document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === "club"));
+  window.scrollTo(0, 0);
+  const body = $("#club-body");
+  body.innerHTML = `<div class="empty-state">Loading ${escapeHtml(teamName(id))}…</div>`;
+  let club = clubCache.get(id);
+  if (!club) {
+    club = await fetch(`data/clubs/${id}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    if (club) { club.rows = rowsToObjects(club.fields, club.matches); clubCache.set(id, club); }
+  }
+  state.club = { id, data: club, range: state.club?.range || "1y" };
+  renderClubPage();
+}
+
+function renderClubPage() {
+  const { id, data } = state.club;
+  const r = state.rankByTeam.get(id);
+  const body = $("#club-body");
+  const comp = r ? state.data.competitions[r.league] : null;
+  const country = comp ? (comp.country === "World" ? "International" : comp.country.replace(/-/g, " ")) : "";
+  const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
+  const rel = r ? `<span class="rel-chip rel-${relTier(r.reliability)}" style="font-size:16px">${Math.round(r.reliability)}</span>` : "–";
+  const oppName = (o) => data?.teams?.[o] || teamName(o);
+
+  // upcoming from the matches file
+  const upcoming = state.data.matches.filter((m) => (m.home === id || m.away === id) && !FINISHED.has(m.status) && !LIVE.has(m.status) && m.status !== "CANC").slice(0, 6);
+  const nextRows = upcoming.map((m) => {
+    const home = m.home === id, opp = home ? m.away : m.home;
+    const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
+    const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
+    return `<div class="team-row"><span class="team-row-date">${escapeHtml(fmtShortDate(m.kickoff))}</span>
+      <span class="team-row-opp">${home ? "" : "@ "}${clubLink(opp)} <span class="club-sub" style="display:inline">${escapeHtml(compLabel(m.league))}</span></span>
+      <span class="team-row-res" style="font-weight:600;color:var(--text-muted)">${proj}</span>
+      <span class="team-row-res">${win != null ? win + "% win" : ""}</span></div>`;
+  }).join("");
+
+  // recent results from the club file (newest first)
+  const rows = data?.rows || [];
+  const recent = rows.slice(-12).reverse().map((m, i, arr) => {
+    const idx = rows.length - 1 - i;
+    const before = idx > 0 ? rows[idx - 1].rank : data.start;
+    const move = before != null ? m.rank - before : null;
+    const cls = m.gf > m.ga ? "res-w" : m.gf === m.ga ? "res-d" : "res-l";
+    return `<div class="team-row"><span class="team-row-date">${escapeHtml(fmtShortDate(m.date))}</span>
+      <span class="team-row-opp">${m.home ? "" : "@ "}${clubLink(m.opponent, oppName(m.opponent))}</span>
+      <span class="team-row-res ${cls}">${m.gf}–${m.ga}</span>
+      <span class="rank-move ${move > 0 ? "form-up" : move < 0 ? "form-down" : ""}">${move == null ? "" : (move > 0 ? "+" : "") + move.toFixed(1)}</span></div>`;
+  }).join("");
+
+  // players
+  const squad = (state.players?.list || []).filter((p) => p.team === id).sort((a, b) => b.rank - a.rank);
+  const squadRows = squad.map((p) => `<div class="team-row"><span class="team-row-date">${POS_LABEL[p.position] || p.position || ""}</span>
+    <span class="team-row-opp">${escapeHtml(p.name)}</span><span class="team-row-res" style="color:var(--text-muted);font-weight:600">${p.minutes.toLocaleString()}′</span>
+    <span class="team-row-res">${rankChipSmall(p.rank)}</span></div>`).join("");
+
+  const ga = data?.goal_averages;
+  body.innerHTML = `
+    <button type="button" class="club-back" id="club-back">‹ Back</button>
+    <div class="club-head">
+      <img class="club-logo-lg" src="${teamLogo(id)}" alt="" onerror="this.style.visibility='hidden'">
+      <div><h2>${escapeHtml(teamName(id))}</h2><span class="club-sub">${escapeHtml(country)}</span><span class="club-sub">${escapeHtml(comp ? (SHORT_NAMES[r.league] || comp.name) : "")}</span></div>
+    </div>
+    ${r ? `<div class="team-stats">
+      ${tile("Played", r.played)}${tile("Now", Math.round(r.current))}${tile("ST", Math.round(r.st))}
+      ${tile("LT", Math.round(r.lt))}${tile("Form", formHtml(r.form) || "–")}${tile("Reliability", rel)}
+    </div>` : ""}
+    <div class="chart-card">
+      <div class="chart-head">
+        <span class="chart-title">Club rank over time</span>
+        <div class="chart-ranges" id="chart-ranges">${CHART_RANGES.map(([k, label]) =>
+          `<button type="button" class="filter-chip" data-range="${k}" aria-pressed="${state.club.range === k}">${label}</button>`).join("")}</div>
+      </div>
+      <div class="chart-wrap" id="chart-wrap"></div>
+      <div class="chart-summary" id="chart-summary"></div>
+    </div>
+    ${ga ? `<div class="club-section"><div class="modal-section">Goals per game, last 12 months</div><div class="goal-grid">
+      ${tile("Home scored", ga[0].toFixed(2))}${tile("Home conceded", ga[1].toFixed(2))}${tile("Away scored", ga[2].toFixed(2))}${tile("Away conceded", ga[3].toFixed(2))}
+    </div></div>` : ""}
+    ${nextRows ? `<div class="club-section"><div class="modal-section">Next matches</div>${nextRows}</div>` : ""}
+    ${recent ? `<div class="club-section"><div class="modal-section">Recent results · rank change</div>${recent}</div>` : ""}
+    ${xiBlock(id) ? `<div class="club-section">${xiBlock(id)}</div>` : ""}
+    ${squadRows ? `<div class="club-section"><div class="modal-section">Squad player ranks (${squad.length})</div>${squadRows}</div>` : ""}`;
+  $("#club-back").addEventListener("click", () => { if (history.length > 1) history.back(); else { location.hash = ""; showTab("table"); } });
+  $("#chart-ranges").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-range]");
+    if (!b) return;
+    state.club.range = b.dataset.range;
+    document.querySelectorAll("#chart-ranges [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    drawRankChart();
+  });
+  drawRankChart();
+}
+
+function niceTicks(lo, hi, count) {
+  const step0 = (hi - lo) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0) || step0;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v);
+  return out;
+}
+
+function drawRankChart() {
+  const wrap = $("#chart-wrap"), summary = $("#chart-summary");
+  const { data, range } = state.club;
+  const rows = data?.rows || [];
+  if (rows.length < 2) { wrap.innerHTML = `<div class="empty-state" style="padding:20px">Not enough matches yet.</div>`; summary.textContent = ""; return; }
+  const days = CHART_RANGES.find(([k]) => k === range)[2];
+  const cutoff = days ? Date.now() - days * 864e5 : -Infinity;
+  let pts = rows.map((m) => ({ ...m, t: new Date(m.date).getTime() })).filter((m) => m.t >= cutoff);
+  if (pts.length < 2) pts = rows.slice(-2).map((m) => ({ ...m, t: new Date(m.date).getTime() }));
+
+  const W = Math.max(280, wrap.clientWidth), H = 190, L = 38, R = 8, T = 10, B = 22;
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  let lo = Math.min(...pts.map((p) => p.rank)), hi = Math.max(...pts.map((p) => p.rank));
+  const pad = Math.max(10, (hi - lo) * 0.12); lo -= pad; hi += pad;
+  const x = (t) => L + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const yTicks = niceTicks(lo, hi, 4);
+  const spanDays = (t1 - t0) / 864e5;
+  const xTicks = [];
+  const d = new Date(t0); d.setDate(1);
+  const stepMonths = spanDays > 900 ? 12 : spanDays > 400 ? 6 : spanDays > 200 ? 3 : 1;
+  if (stepMonths === 12) { d.setMonth(0); }
+  while (d.getTime() <= t1) {
+    if (d.getTime() >= t0) xTicks.push(new Date(d));
+    d.setMonth(d.getMonth() + stepMonths);
+  }
+  const fmtTick = (dt) => stepMonths === 12 ? String(dt.getFullYear()) : dt.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.rank).toFixed(1)}`).join("");
+  const first = pts[0].rank, last = pts[pts.length - 1].rank;
+  const peak = pts.reduce((a, b) => (b.rank > a.rank ? b : a)), low = pts.reduce((a, b) => (b.rank < a.rank ? b : a));
+
+  wrap.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${escapeHtml(teamName(state.club.id))} rank from ${Math.round(first)} to ${Math.round(last)} over ${pts.length} matches">
+      <g class="chart-grid">${yTicks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`).join("")}</g>
+      <g class="chart-axis">
+        ${yTicks.map((v) => `<text x="${L - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`).join("")}
+        ${xTicks.map((dt) => `<text x="${x(dt.getTime()).toFixed(1)}" y="${H - 6}" text-anchor="middle">${fmtTick(dt)}</text>`).join("")}
+      </g>
+      <path class="chart-line" d="${path}"/>
+      <line class="chart-cross" id="chart-cross" y1="${T}" y2="${H - B}" visibility="hidden"/>
+      <circle class="chart-dot" id="chart-dot" r="4.5" visibility="hidden"/>
+      <rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent" id="chart-hit"/>
+    </svg>
+    <div class="chart-tip" id="chart-tip" hidden></div>`;
+  summary.innerHTML = `${pts.length} matches · ${Math.round(first)} → <b style="color:var(--text-primary)">${Math.round(last)}</b> (${last - first >= 0 ? "+" : ""}${Math.round(last - first)}) · high ${Math.round(peak.rank)}, low ${Math.round(low.rank)}`;
+
+  const hit = $("#chart-hit"), cross = $("#chart-cross"), dot = $("#chart-dot"), tip = $("#chart-tip");
+  const oppName = (o) => data?.teams?.[o] || teamName(o);
+  const show = (evt) => {
+    const rect = hit.getBoundingClientRect();
+    const px = (evt.clientX - rect.left) / rect.width * (W - L - R) + L;
+    let best = pts[0], bd = Infinity;
+    for (const p of pts) { const dd = Math.abs(x(p.t) - px); if (dd < bd) { bd = dd; best = p; } }
+    const cx = x(best.t), cy = y(best.rank);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", cx); dot.setAttribute("cy", cy); dot.setAttribute("visibility", "visible");
+    const res = best.gf > best.ga ? "W" : best.gf === best.ga ? "D" : "L";
+    tip.innerHTML = `${escapeHtml(new Date(best.t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }))}<br>
+      Rank <b>${best.rank.toFixed(1)}</b><br>${res} ${best.gf}–${best.ga} ${best.home ? "v" : "@"} ${escapeHtml(oppName(best.opponent))}<br>
+      <span style="color:var(--text-muted)">${escapeHtml(compLabel(best.league))}</span>`;
+    tip.hidden = false;
+    const tw = tip.offsetWidth, wrapW = wrap.clientWidth, sx = cx / W * wrapW;
+    tip.style.left = `${Math.min(Math.max(sx - tw / 2, 0), wrapW - tw)}px`;
+    tip.style.top = `${Math.max(0, cy / H * H - tip.offsetHeight - 12)}px`;
+  };
+  const hide = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); };
+  hit.addEventListener("pointermove", show);
+  hit.addEventListener("pointerdown", show);
+  hit.addEventListener("pointerleave", hide);
+}
+window.addEventListener("resize", () => { if (state.club && $("#club-body").offsetParent) drawRankChart(); });
+
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
   const r = state.rankByTeam.get(teamId);
-  $("#team-modal-title").textContent = teamName(teamId);
+  $("#team-modal-title").innerHTML = `${escapeHtml(teamName(teamId))} <a class="team-link" style="font-size:12px;color:var(--series-blue);margin-left:6px" href="${clubHref(teamId)}">Club page ›</a>`;
   $("#team-modal-sub").textContent = r ? compLabel(r.league) : "";
   const games = state.data.matches.filter((m) => m.home === teamId || m.away === teamId);
   const results = games.filter((m) => FINISHED.has(m.status) && m.hg != null).reverse();
@@ -1084,10 +1299,22 @@ function openTeam(teamId) {
 }
 
 // ------------------------------------------------------------------ wiring
+function showTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === tab));
+}
 document.querySelectorAll("nav.tabs button").forEach((btn) => btn.addEventListener("click", () => {
-  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
-  document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === btn.dataset.tab));
+  if (location.hash.startsWith("#/club/")) history.pushState(null, "", location.pathname + location.search);
+  showTab(btn.dataset.tab);
 }));
+function route() {
+  const m = location.hash.match(/^#\/club\/(\d+)/);
+  if (m && state.data) { $("#team-modal").hidden = true; openClubPage(Number(m[1])); }
+  else if (!m) showTab(state.tab || "table");
+}
+window.addEventListener("hashchange", route);
+window.addEventListener("popstate", route);
 $("#match-filters").addEventListener("click", (e) => onChipClick("match", e));
 $("#table-filters").addEventListener("click", (e) => onChipClick("table", e));
 $("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
@@ -1124,8 +1351,7 @@ $("#table-view").addEventListener("click", (e) => {
 });
 
 $("#matches-list").addEventListener("click", (e) => {
-  const team = e.target.closest("[data-team]");
-  if (team) return openTeam(Number(team.dataset.team));
+  if (e.target.closest("a")) return;
   const ratedCard = e.target.closest(".match-card.rated");
   if (ratedCard) {
     const d = ratedCard.querySelector(".rating-detail");
@@ -1145,6 +1371,7 @@ $("#matches-list").addEventListener("click", (e) => {
 $("#table-wrap").addEventListener("click", (e) => {
   const th = e.target.closest("th[data-sort]");
   if (th) { state.tableSort = th.dataset.sort; return renderTable(); }
+  if (e.target.closest("a")) return;
   const tr = e.target.closest("tr[data-team]");
   if (tr) openTeam(Number(tr.dataset.team));
 });

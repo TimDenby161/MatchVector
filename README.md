@@ -183,6 +183,16 @@ A line-up adjustment (the strength of the starting XI against normal) was backte
 - **Matches:** projected scores, win/draw/loss chances and results. Filter by competition and day.
 - **Rankings:** club rankings with form and reliability. Tap a club to see its fixtures.
 
+**Club pages.** Club names link to `#/club/<team_id>`. The page shows:
+- the stat tiles
+- a rank-over-time chart with a hover readout
+- 12-month goal averages
+- next matches with projections
+- recent results with each match's rank change
+- the predicted XI and the squad's player ranks
+
+Each club's history comes from `docs/data/clubs/<team_id>.json`, which is written by `export_clubs` for clubs active in the last 400 days and loaded only when the page opens.
+
 The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `docs/data/rankings.json`. These are written by `python -m matchvector export`, and the nightly workflow commits them, so the site never needs database credentials. To view it on this PC, run `python -m http.server` in `docs/` and open http://localhost:8000.
 
 **Recording projections.** Predictions for a fixture stop updating at kickoff, so the last nightly projection before the match is kept. `fixture_predictions.source` shows where each projection came from:

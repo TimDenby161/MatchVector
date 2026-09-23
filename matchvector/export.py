@@ -119,6 +119,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     export_stats(conn, out_dir)
     export_bets(conn, out_dir)
     export_players(conn, out_dir)
+    export_clubs(conn, out_dir)
 
 
 STAT_RANGES = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
@@ -300,3 +301,46 @@ def export_players(conn, out_dir=OUT_DIR):
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))
+
+
+CLUB_ACTIVE_DAYS = 400
+
+
+def export_clubs(conn, out_dir=OUT_DIR):
+    """One small file per active club for its club page: docs/data/clubs/<team_id>.json.
+
+    history: every match since 2020 as [date, rank after, opponent, home?, goals for, against,
+    competition]; plus 12-month home/away goal averages. Loaded only when the page opens.
+    """
+    now = datetime.now(timezone.utc)
+    active = {r[0] for r in conn.execute(
+        """select team_id from team_rankings where last_match >= %s
+           union select home_team_id from fixtures where status_short in ('NS','TBD') and kickoff > now()
+           union select away_team_id from fixtures where status_short in ('NS','TBD') and kickoff > now()""",
+        [now - timedelta(days=CLUB_ACTIVE_DAYS)])}
+    history = {}
+    for team, kickoff, rank_after, rank_before, opp, is_home, hg, ag, league in conn.execute(
+            """select h.team_id, h.kickoff, h.rank_after, h.rank_before, h.opponent_id, h.is_home,
+                      f.home_goals, f.away_goals, f.league_id
+               from team_rank_history h join fixtures f using (fixture_id)
+               where h.team_id = any(%s) order by h.team_id, h.match_no""", [list(active)]):
+        rows = history.setdefault(team, {"start": round(rank_before), "matches": []})["matches"]
+        gf, ga = (hg, ag) if is_home else (ag, hg)
+        rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 1 if is_home else 0, gf, ga, league])
+    stats = {t: [_r(x) for x in rest] for t, *rest in conn.execute(
+        "select team_id, hg, ha, ag, aa from team_rankings where team_id = any(%s)", [list(active)])}
+    club_dir = out_dir / "clubs"
+    club_dir.mkdir(parents=True, exist_ok=True)
+    for old in club_dir.glob("*.json"):
+        if int(old.stem) not in active:
+            old.unlink()
+    names = dict(conn.execute("select team_id, name from teams"))
+    for team in active:
+        h = history.get(team, {"start": None, "matches": []})
+        opponents = {m[2] for m in h["matches"]}
+        payload = {"id": team, "start": h["start"],
+                   "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league"],
+                   "matches": h["matches"], "goal_averages": stats.get(team),
+                   "teams": {o: names.get(o) for o in opponents}}
+        (club_dir / f"{team}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    log.info("Exported %d club pages", len(active))
