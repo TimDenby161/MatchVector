@@ -1062,42 +1062,21 @@ function fitTopRows(wrap, capped = true) {
 }
 window.addEventListener("resize", () => { if (state.rankings && state.tab === "table") fitTopRows($("#table-wrap"), tableFilterIsWide() || !!state.tableSearch.trim()); });
 
-const CALENDAR_YEAR_LEAGUES = new Set([253, 103, 71, 128, 113, 244, 365, 362]);   // MLS, Norway, Brazil, Argentina, Sweden, Finland, Latvia, Lithuania
 function loadPlayerSeasons() {
   if (state.playerSeasons || state.playerSeasonsLoading) return;
   state.playerSeasonsLoading = fetch("data/player_seasons.json", { cache: "no-store" })
     .then((res) => res.json()).then((d) => { state.playerSeasons = d; }).catch(() => {});
 }
-// Hover text for a Now or season cell: the rank, then the clubs, minutes, club level and rating
+// Hover text for a season cell: per club that season, "Team – club rank" then "minutes – match rating"
 function playerCellTip(pid, key) {
-  const p = (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(pid);
-  if (!p) return "";
-  const seasons = state.players.seasons || [];
   const detail = state.playerSeasons;
-  const club = (id) => detail?.teams?.[id] || teamName(id);
-  const fmt = (v) => v == null ? "–" : Math.round(v);
-  let head, rankLine, spells, during;
-  if (key === "now") {
-    head = `${p.name} · now`;
-    rankLine = `Rank now: ${fmt(p.rank)}`;
-    during = "Last 20 appearances:";
-    spells = detail?.players?.[pid]?.now;
-  } else {
-    const y = Number(key), i = seasons.indexOf(y);
-    const current = y === Math.max(...seasons);
-    const calendarYear = CALENDAR_YEAR_LEAGUES.has(p.league);    // seasons run January to December
-    head = `${p.name} · ${calendarYear ? y : `${y}/${String(y + 1).slice(2)}`}${current ? " (so far)" : ""}`;
-    rankLine = `Rank for the season${current ? " so far" : ""}: ${fmt(p.seasons?.[i])}`;
-    during = current ? "This season so far:" : "During the season:";
-    spells = detail?.players?.[pid]?.[key];
-  }
-  const lines = [head, rankLine, "", during];
-  if (!detail) lines.push("Loading…");
-  else if (!spells?.length) lines.push("No minutes in the covered leagues.");
-  else for (const [team, mins, rank, rating] of spells)
-    lines.push(`${club(team)}: ${mins.toLocaleString()} mins`,
-               `   club rank ${fmt(rank)} · match rating ${rating == null ? "–" : rating.toFixed(2)}`);
-  return lines.join("\n");
+  if (!detail) return "Loading…";
+  const spells = detail.players?.[pid]?.[key];
+  if (!spells?.length) return "No minutes";
+  const club = (id) => detail.teams?.[id] || teamName(id);
+  return spells.map(([team, mins, rank, rating]) =>
+    `${club(team)} – ${rank == null ? "–" : rank}\n${mins.toLocaleString()} mins – ${rating == null ? "–" : rating.toFixed(2)}`)
+    .join("\n\n");
 }
 
 function renderPlayers() {
