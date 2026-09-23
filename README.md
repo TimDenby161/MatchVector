@@ -67,6 +67,40 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 - Azerbaijan has no match ratings, and no player data for 2025 or 2026.
 - Ukraine and Slovakia have little or no player data for 2026 so far.
 
+## Player ranks and team XI ratings
+
+`matchvector/player_ratings.py` gives every player a **rank from 0 to 100** from his stats, for the 10 leagues with per-match player data (`config.INJURY_MODEL_LEAGUES`). Everything is **backdated**: it's replayed in kickoff order, so every number is what could have been known before that match.
+
+**Player rank**
+1. Take the player's last 20 appearances within 18 months.
+2. Work out his per-90 stats and ratios by position:
+   - Forwards: goals, shots on target, assists, key passes, dribbles and duels.
+   - Midfielders: key passes, assists, goals, tackles + interceptions, passing and dribbles.
+   - Defenders: tackles + interceptions, duels won, blocks and passing, with fouls and cards counting against.
+   - Goalkeepers: save rate and goals conceded.
+   - Every position also includes the average match rating.
+3. Compare each stat with other players in the same position, and adjust for team strength, because stats come more easily in weaker teams.
+4. Pull players with few minutes towards the average.
+5. Turn the result into a **percentile among regulars in that position**: 50 is an average regular, and 90 is better than 90% of them.
+
+**Where it's stored**
+- `fixture_players.player_rank` holds each player's rank going into every match.
+- `players.current_rank` holds his rank now.
+
+**Team ratings** (`fixture_team_ratings`, for every match and team)
+- **Predicted XI rating:** the average rank of the predicted XI. That's 1 goalkeeper plus 10 outfield players with the most minutes over the last 5 matches, leaving out anyone on the injury list.
+- **Recent rating:** the average rank of the XIs actually started in the last 5 matches.
+- **Actual XI rating:** the average rank of the XI that started, for finished matches.
+- `predicted_lineups` holds the predicted XI for upcoming matches.
+
+The site shows player ranks on the Rankings tab (Players view), the predicted XI for a team's next match in the team pop-up, and the XI ratings on match cards.
+
+**Backtest (2024/25 onwards):** home XI rating minus away XI rating added nothing on top of the team ranks. Predicted XI against the recent average gave a tiny gain in the unexpected direction, so the XI ratings are shown but not used in the projections.
+
+```bash
+python -m matchvector player-ratings   # the nightly job runs this after the club rankings
+```
+
 ## Club ranking
 
 This is based on the Club Ranking Google Sheet. Every finished fixture is replayed oldest first, ordered by kickoff time, with the fixture ID breaking ties. For each fixture:

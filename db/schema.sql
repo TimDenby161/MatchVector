@@ -267,7 +267,54 @@ create table if not exists fixture_players (
     primary key (fixture_id, player_id)
 );
 create index if not exists fixture_players_team_idx on fixture_players (team_id, fixture_id);
+-- Per-match stat line (smallint; nulls take no space)
+alter table fixture_players add column if not exists goals smallint;
+alter table fixture_players add column if not exists assists smallint;
+alter table fixture_players add column if not exists shots smallint;
+alter table fixture_players add column if not exists shots_on smallint;
+alter table fixture_players add column if not exists key_passes smallint;
+alter table fixture_players add column if not exists passes smallint;
+alter table fixture_players add column if not exists passes_accurate smallint;
+alter table fixture_players add column if not exists tackles smallint;
+alter table fixture_players add column if not exists interceptions smallint;
+alter table fixture_players add column if not exists blocks smallint;
+alter table fixture_players add column if not exists duels smallint;
+alter table fixture_players add column if not exists duels_won smallint;
+alter table fixture_players add column if not exists dribbles smallint;
+alter table fixture_players add column if not exists dribbles_won smallint;
+alter table fixture_players add column if not exists fouls_committed smallint;
+alter table fixture_players add column if not exists fouls_drawn smallint;
+alter table fixture_players add column if not exists yellow_cards smallint;
+alter table fixture_players add column if not exists red_cards smallint;
+alter table fixture_players add column if not exists saves smallint;
+alter table fixture_players add column if not exists goals_conceded smallint;
+alter table fixture_players add column if not exists penalties_saved smallint;
+-- Player rank (0-100) going into this match, from matches before it (player_ratings.py)
+alter table fixture_players add column if not exists player_rank numeric(4,1);
 alter table fixtures add column if not exists players_fetched_at timestamptz;
+
+-- Team ratings per fixture from player ranks (player_ratings.py), all as known before kickoff
+create table if not exists fixture_team_ratings (
+    fixture_id           int not null,
+    team_id              int not null,
+    predicted_xi_rating  numeric(5,2),   -- average rank of the predicted XI
+    predicted_xi_size    smallint,
+    recent_xi_rating     numeric(5,2),   -- average rank of the XIs started in the last 5 matches
+    actual_xi_rating     numeric(5,2),   -- average rank of the XI that started (finished matches)
+    primary key (fixture_id, team_id)
+);
+-- Predicted XI for upcoming fixtures (rebuilt nightly)
+create table if not exists predicted_lineups (
+    fixture_id   int not null,
+    team_id      int not null,
+    player_id    int not null,
+    position     text,
+    player_rank  numeric(4,1),
+    primary key (fixture_id, player_id)
+);
+alter table players add column if not exists current_rank numeric(4,1);
+alter table players add column if not exists rank_position text;
+alter table players add column if not exists rank_minutes int;
 
 -- Club ranking (see matchvector/ranking.py). Rebuilt from scratch on every run.
 -- Every team starts from leagues.starting_rank of the first league it plays in.
@@ -414,3 +461,5 @@ alter table player_seasons     enable row level security;
 alter table injuries           enable row level security;
 alter table fixture_players    enable row level security;
 alter table paper_bets         enable row level security;
+alter table fixture_team_ratings enable row level security;
+alter table predicted_lineups  enable row level security;

@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 from . import betting, config
 from .api import QuotaExhausted
 from .db import upsert
+from .player_ratings import compute_player_ratings
 from .predictions import backfill_predictions, update_predictions
 from .ranking import update_rankings
 from .rating import rate_fixtures
@@ -418,6 +419,7 @@ def sync_nightly(api, conn, league_ids):
             step("players", sync_players, [league_id], [season])
             step("injuries", sync_injuries, [league_id], [season])
     step("rankings", lambda api, conn: update_rankings(conn))
+    step("player ratings", lambda api, conn: compute_player_ratings(conn))
     step("predictions", lambda api, conn: update_predictions(conn))
     step("prediction backfill", lambda api, conn: backfill_predictions(conn))
     step("prediction ratings", lambda api, conn: rate_fixtures(conn))
@@ -547,10 +549,25 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
                     minutes = _int(games.get("minutes"))
                     if not minutes or not p["player"].get("id"):
                         continue
+                    st = (p.get("statistics") or [{}])[0]
+                    g = lambda section, key: _int((st.get(section) or {}).get(key))
                     rows.append({"fixture_id": fid, "team_id": team_id, "player_id": p["player"]["id"],
                                  "minutes": minutes, "started": games.get("substitute") is False,
                                  "position": games.get("position"),
-                                 "rating": _parse_stat(games.get("rating"))})
+                                 "rating": _parse_stat(games.get("rating")),
+                                 "goals": g("goals", "total"), "assists": g("goals", "assists"),
+                                 "shots": g("shots", "total"), "shots_on": g("shots", "on"),
+                                 "key_passes": g("passes", "key"), "passes": g("passes", "total"),
+                                 # per-match "accuracy" is the number of accurate passes
+                                 "passes_accurate": g("passes", "accuracy"),
+                                 "tackles": g("tackles", "total"), "interceptions": g("tackles", "interceptions"),
+                                 "blocks": g("tackles", "blocks"), "duels": g("duels", "total"),
+                                 "duels_won": g("duels", "won"), "dribbles": g("dribbles", "attempts"),
+                                 "dribbles_won": g("dribbles", "success"),
+                                 "fouls_committed": g("fouls", "committed"), "fouls_drawn": g("fouls", "drawn"),
+                                 "yellow_cards": g("cards", "yellow"), "red_cards": g("cards", "red"),
+                                 "saves": g("goals", "saves"), "goals_conceded": g("goals", "conceded"),
+                                 "penalties_saved": g("penalty", "saved")})
             kickoff = datetime.fromisoformat(f["fixture"]["date"])
             if f.get("players") or now - kickoff > STATS_RETRY_WINDOW:
                 done.append(fid)

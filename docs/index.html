@@ -380,7 +380,11 @@
       <div class="filter-row"></div>
       <div class="filter-row filter-row-more" hidden></div>
     </div>
-    <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search clubs">
+    <div class="filter-row range-row" id="table-view" style="margin-bottom:10px">
+      <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
+      <button type="button" class="filter-chip" data-view="players" aria-pressed="false">Players</button>
+    </div>
+    <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
     <div id="table-wrap"></div>
   </section>
 
@@ -466,6 +470,7 @@ const state = {
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
+  players: null, tableView: "clubs",
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -496,6 +501,8 @@ async function loadData() {
     ]);
     state.stats = st;
     state.bets = await fetch("data/bets.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
+    const pj = await fetch("data/players.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
+    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
@@ -688,6 +695,7 @@ function matchCard(m) {
       </div>
       ${probBar(m)}
       ${m.p_over25 != null && !(FINISHED.has(m.status) && m.hg != null) ? `<div class="market-line">Over 2.5 goals <b>${Math.round(m.p_over25 * 100)}%</b> · Both teams score <b>${Math.round(m.p_btts * 100)}%</b></div>` : ""}
+      ${m.home_xi != null && m.away_xi != null ? `<div class="market-line" title="Average player rank (0-100) of the ${FINISHED.has(m.status) ? "starting" : "predicted"} XI; brackets = average of each side's last 5 starting XIs">${FINISHED.has(m.status) ? "Starting" : "Predicted"} XI rating <b>${Math.round(m.home_xi)}</b>${m.home_recent_xi != null ? ` (${Math.round(m.home_recent_xi)})` : ""} · <b>${Math.round(m.away_xi)}</b>${m.away_recent_xi != null ? ` (${Math.round(m.away_recent_xi)})` : ""}</div>` : ""}
       ${m.home_missing != null || m.away_missing != null ? `<div class="market-line" title="Players listed injured, suspended or doubtful, weighted by their share of their team's recent minutes (1.0 = one ever-present player)">Missing players <b>${(m.home_missing ?? 0).toFixed(1)}</b> · <b>${(m.away_missing ?? 0).toFixed(1)}</b></div>` : ""}
       ${m.m_home != null ? `<div class="market-line" title="Average bookmaker odds, margin removed">Bookmakers <b>${Math.round(m.m_home * 100)}%</b> · <b>${Math.round(m.m_draw * 100)}%</b> · <b>${Math.round(m.m_away * 100)}%</b></div>` : ""}
       ${detail}
@@ -746,7 +754,39 @@ function formHtml(f) {
   return v > 0 ? `<span class="form-up">+${v}</span>` : v < 0 ? `<span class="form-down">${v}</span>` : "0";
 }
 
+const POS_LABEL = { G: "GK", D: "DEF", M: "MID", F: "FWD" };
+function rankChipSmall(r) {
+  if (r == null) return "–";
+  const t = r >= 80 ? 4 : r >= 60 ? 3 : r >= 35 ? 2 : 1;
+  return `<span class="rel-chip rel-${t}">${Math.round(r)}</span>`;
+}
+
+function renderPlayers() {
+  const wrap = $("#table-wrap");
+  if (!state.players) { wrap.innerHTML = `<div class="empty-state">No player ranks yet.</div>`; return; }
+  const league = Number(state.tableFilter);
+  const q = state.tableSearch.trim().toLowerCase();
+  let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
+               : state.players.list.filter((p) => p.league === league);
+  rows = rows.slice(0, 300);
+  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No player ranks for this league (ranks cover the 10 leagues with per-match player data).</div>`; return; }
+  wrap.innerHTML = `
+    <table class="leaderboard">
+      <thead><tr><th>#</th><th>Player</th><th class="num">Pos</th><th class="num">Mins</th><th class="num">Rank</th></tr></thead>
+      <tbody>${rows.map((p, i) => `
+        <tr data-team="${p.team}">
+          <td>${i + 1}</td>
+          <td>${escapeHtml(p.name)}<span class="club-sub">${escapeHtml(teamName(p.team))}</span></td>
+          <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
+          <td class="num">${p.minutes.toLocaleString()}</td>
+          <td class="num">${rankChipSmall(p.rank)}</td>
+        </tr>`).join("")}</tbody>
+    </table>
+    <div class="stats-note" style="margin-top:8px">Rank 0–100 from per-90 stats over each player's last 20 appearances, compared with players in the same position and adjusted for team strength. 50 = an average regular; 90 = better than 90% of regulars in his position.</div>`;
+}
+
 function renderTable() {
+  if (state.tableView === "players") return renderPlayers();
   const wrap = $("#table-wrap");
   const league = Number(state.tableFilter);
   const q = state.tableSearch.trim().toLowerCase();
@@ -927,6 +967,19 @@ function renderBets() {
     ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}`;
 }
 
+function xiBlock(teamId) {
+  const xi = state.players?.nextXi?.[String(teamId)];
+  if (!xi || !xi.players.length) return "";
+  const m = state.data.matches.find((x) => x.id === xi.fixture);
+  const home = m && m.home === teamId;
+  const rating = m ? (home ? m.home_xi : m.away_xi) : null;
+  const recent = m ? (home ? m.home_recent_xi : m.away_recent_xi) : null;
+  const opp = m ? `${home ? "v" : "@"} ${teamName(home ? m.away : m.home)}` : "next match";
+  return `<div class="modal-section">Predicted XI, ${escapeHtml(opp)}${rating != null ? ` · rating ${Math.round(rating)}${recent != null ? ` (recent ${Math.round(recent)})` : ""}` : ""}</div>
+    ${xi.players.map(([, name, pos, rank]) => `<div class="team-row"><span class="team-row-date">${POS_LABEL[pos] || pos || ""}</span>
+      <span class="team-row-opp">${escapeHtml(name)}</span><span class="team-row-res">${rankChipSmall(rank)}</span></div>`).join("")}`;
+}
+
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
   const r = state.rankByTeam.get(teamId);
@@ -957,6 +1010,7 @@ function openTeam(teamId) {
       ${stat("Rank", Math.round(r.lt))}${stat("Now", Math.round(r.current))}${stat("Reliability", Math.round(r.reliability))}
       ${stat("Form", formHtml(r.form) || "–")}${stat("Played", r.played)}${stat("ST Algo", Math.round(r.st))}
     </div>` : "") +
+    xiBlock(teamId) +
     (upcoming.length ? `<div class="modal-section">Next matches</div>${upcoming.map((m) => row(m, false)).join("")}` : "") +
     (results.length ? `<div class="modal-section">Recent results</div>${results.slice(0, 8).map((m) => row(m, true)).join("")}` : "");
   $("#team-modal").hidden = false;
@@ -993,6 +1047,14 @@ $("#date-today").addEventListener("click", () => { state.date = localDateStr(new
 $("#date-input").addEventListener("change", (e) => { if (e.target.value) { state.date = e.target.value; renderMatches(); } });
 $("#refresh-btn").addEventListener("click", loadData);
 $("#table-search").addEventListener("input", (e) => { state.tableSearch = e.target.value; renderTable(); });
+$("#table-view").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-view]");
+  if (!btn) return;
+  state.tableView = btn.dataset.view;
+  document.querySelectorAll("#table-view [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+  $("#table-search").placeholder = state.tableView === "players" ? "Search players or clubs" : "Search clubs";
+  renderTable();
+});
 
 $("#matches-list").addEventListener("click", (e) => {
   const team = e.target.closest("[data-team]");

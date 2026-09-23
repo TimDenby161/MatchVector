@@ -16,7 +16,7 @@ import argparse
 import logging
 import sys
 
-from . import config, export, ingest, matchday, predictions, ranking
+from . import config, export, ingest, matchday, player_ratings, predictions, ranking
 from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
@@ -36,6 +36,7 @@ def main(argv=None):
     sub.add_parser("rank", help="Recalculate club rankings from every finished fixture")
     sub.add_parser("predict", help="Project scores and W/D/L chances for upcoming fixtures")
     sub.add_parser("export", help="Write JSON for the website to docs/data")
+    sub.add_parser("player-ratings", help="Recalculate player ranks and team XI ratings (backdated)")
     sub.add_parser("matchday", help="Pre-kickoff odds and injuries, late paper bets, settle bets")
 
     sync = sub.add_parser("sync", help="Pull data from API-Football")
@@ -61,6 +62,9 @@ def main(argv=None):
             return 0
         if args.command == "rank":
             ranking.update_rankings(conn)
+            return 0
+        if args.command == "player-ratings":
+            player_ratings.compute_player_ratings(conn)
             return 0
         if args.command == "predict":
             predictions.update_predictions(conn)

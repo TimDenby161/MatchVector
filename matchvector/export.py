@@ -55,13 +55,18 @@ def export_site_data(conn, out_dir=OUT_DIR):
                       p.p_home, p.p_draw, p.p_away, p.home_xg, p.away_xg, p.likely_score,
                       p.home_rank, p.away_rank, p.source, p.rating, p.rating_winner,
                       p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals,
-                      p.home_missing, p.away_missing, p.p_over25, p.p_btts
+                      p.home_missing, p.away_missing, p.p_over25, p.p_btts,
+                      coalesce(rh.actual_xi_rating, rh.predicted_xi_rating), rh.recent_xi_rating,
+                      coalesce(ra.actual_xi_rating, ra.predicted_xi_rating), ra.recent_xi_rating
                from fixtures f left join fixture_predictions p using (fixture_id)
+               left join fixture_team_ratings rh on rh.fixture_id = f.fixture_id and rh.team_id = f.home_team_id
+               left join fixture_team_ratings ra on ra.fixture_id = f.fixture_id and ra.team_id = f.away_team_id
                where f.kickoff between %s and %s
                order by f.kickoff, f.fixture_id""",
             [now - timedelta(days=PAST_DAYS), now + timedelta(days=FUTURE_DAYS)]):
         (fid, kickoff, lid, rnd, home, away, status, hg, ag, ph, pa_, p_h, p_d, p_a,
-         hxg, axg, likely, hr, ar, source, *ratings, h_miss, a_miss, p_over, p_btts) = row
+         hxg, axg, likely, hr, ar, source, *ratings, h_miss, a_miss, p_over, p_btts,
+         h_xi, h_recent, a_xi, a_recent) = row
         team_ids.update((home, away))
         matches.append([
             fid, kickoff.isoformat(), lid, rnd, home, away, status, hg, ag, ph, pa_,
@@ -69,6 +74,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
             source, *ratings,
             *[_r(x, 3) for x in market.get(fid, (None, None, None))],
             _r(h_miss), _r(a_miss), _r(p_over, 3), _r(p_btts, 3),
+            _r(h_xi, 1), _r(h_recent, 1), _r(a_xi, 1), _r(a_recent, 1),
         ])
 
     # Form: total rank change over each team's last FORM_GAMES games
@@ -97,7 +103,8 @@ def export_site_data(conn, out_dir=OUT_DIR):
                    "pen_h", "pen_a", "p_home", "p_draw", "p_away", "home_xg", "away_xg",
                    "likely", "home_rank", "away_rank", "source", "rating", "r_winner",
                    "r_margin", "r_clean_sheets", "r_shape", "r_goals", "m_home", "m_draw", "m_away",
-                   "home_missing", "away_missing", "p_over25", "p_btts"],
+                   "home_missing", "away_missing", "p_over25", "p_btts",
+                   "home_xi", "home_recent_xi", "away_xi", "away_recent_xi"],
         "matches": matches,
         "competitions": competitions,
         "teams": teams,
@@ -111,6 +118,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     log.info("Exported %d matches and %d rankings to %s", len(matches), len(rankings), out_dir)
     export_stats(conn, out_dir)
     export_bets(conn, out_dir)
+    export_players(conn, out_dir)
 
 
 STAT_RANGES = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
@@ -257,3 +265,36 @@ def export_bets(conn, out_dir=OUT_DIR):
         "summary": summary, "bets": bets,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d paper bets", len(bets))
+
+
+def export_players(conn, out_dir=OUT_DIR):
+    """Current player ranks and each team's predicted XI for its next match (players.json)."""
+    players = conn.execute(
+        """select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, x.team_id,
+                  f.league_id
+           from players p
+           join lateral (select fp.team_id, fp.fixture_id from fixture_players fp
+                         where fp.player_id = p.player_id order by fp.fixture_id desc limit 1) x on true
+           join fixtures f on f.fixture_id = x.fixture_id
+           where p.current_rank is not null and p.rank_minutes >= 450
+           order by p.current_rank desc""").fetchall()
+    lineups = conn.execute(
+        """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
+                  p.name, pl.position, pl.player_rank
+           from predicted_lineups pl join players p using (player_id) join fixtures f using (fixture_id)
+           where (pl.team_id, f.kickoff) in (select pl2.team_id, min(f2.kickoff) from predicted_lineups pl2
+                                             join fixtures f2 using (fixture_id) group by pl2.team_id)
+           order by pl.team_id, pl.player_id""").fetchall()
+    next_xi = {}
+    for team, fid, player, name, pos, rank in lineups:
+        entry = next_xi.setdefault(str(team), {"fixture": fid, "players": []})
+        entry["players"].append([player, name, pos, float(rank) if rank is not None else None])
+    order = {"G": 0, "D": 1, "M": 2, "F": 3}
+    for entry in next_xi.values():
+        entry["players"].sort(key=lambda x: (order.get(x[2], 4), -(x[3] or 0)))
+    (out_dir / "players.json").write_text(json.dumps({
+        "fields": ["id", "name", "position", "rank", "minutes", "team", "league"],
+        "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6]] for r in players],
+        "next_xi": next_xi,
+    }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))
