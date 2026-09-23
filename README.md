@@ -48,6 +48,22 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 - `API_FOOTBALL_KEY`
 - `DATABASE_URL`: use the Supabase **Session pooler** string.
 
+## Players and injuries
+
+For the leagues in `config.PLAYER_LEAGUES` (the English top five, La Liga, Serie A, the Bundesliga and Ligue 1), the sync pulls:
+- `players`: profiles.
+- `player_seasons`: one row per player per club per league-season, with appearances, starts, minutes, rating, goals, assists, shots, passes, tackles, duels, cards and penalties.
+- `injuries`: players listed as missing or doubtful for each fixture, with the reason.
+
+The nightly job refreshes the current season. To backfill or add a league:
+
+```bash
+python -m matchvector sync players  --leagues 39 140 --seasons 2024 2025
+python -m matchvector sync injuries --leagues 39 140 --seasons 2024 2025
+```
+
+API-Football only has injury lists from 2021 for the big five and the Championship, and only from 2025 (partly) for League One, League Two and the National League. The National League has no player data for 2025 or 2026.
+
 ## Club ranking
 
 This is based on the Club Ranking Google Sheet. Every finished fixture is replayed oldest first, ordered by kickoff time, with the fixture ID breaking ties. For each fixture:

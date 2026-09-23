@@ -90,6 +90,9 @@ LEAGUES = {
 # API-Football seasons are keyed by the year the season starts (2025 = 2025/26).
 DEFAULT_SEASONS = list(range(2020, 2027))
 
+# Leagues with player data and injury lists: English top five + the other big four
+PLAYER_LEAGUES = [39, 40, 41, 42, 43, 140, 135, 78, 61]
+
 FINISHED_STATUSES = ("FT", "AET", "PEN")
 
 # Odds markets to keep (API-Football bet ids). Everything else is discarded.

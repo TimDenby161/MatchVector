@@ -174,6 +174,82 @@ create table if not exists odds (
 );
 create index if not exists odds_fixture_idx on odds (fixture_id);
 
+-- Players (config.PLAYER_LEAGUES) and their per-season stats from API-Football /players
+create table if not exists players (
+    player_id    int primary key,
+    name         text not null,
+    firstname    text,
+    lastname     text,
+    birth_date   date,
+    nationality  text,
+    height_cm    int,
+    weight_kg    int,
+    photo        text,
+    updated_at   timestamptz not null default now()
+);
+
+-- One row per player per team per league season (a mid-season transfer gives two rows)
+create table if not exists player_seasons (
+    player_id           int not null references players(player_id),
+    team_id             int not null,
+    league_id           int not null,
+    season              int not null,
+    position            text,
+    shirt_number        int,
+    appearances         int,
+    starts              int,
+    minutes             int,
+    rating              numeric(5,3),
+    captain             boolean,
+    subbed_in           int,
+    subbed_out          int,
+    bench               int,
+    goals               int,
+    assists             int,
+    goals_conceded      int,
+    saves               int,
+    shots               int,
+    shots_on            int,
+    passes              int,
+    key_passes          int,
+    pass_accuracy       int,
+    tackles             int,
+    blocks              int,
+    interceptions       int,
+    duels               int,
+    duels_won           int,
+    dribbles            int,
+    dribbles_won        int,
+    dribbled_past       int,
+    fouls_drawn         int,
+    fouls_committed     int,
+    yellow_cards        int,
+    yellow_red_cards    int,
+    red_cards           int,
+    penalties_won       int,
+    penalties_committed int,
+    penalties_scored    int,
+    penalties_missed    int,
+    penalties_saved     int,
+    updated_at          timestamptz not null default now(),
+    primary key (player_id, team_id, league_id, season)
+);
+create index if not exists player_seasons_team_idx on player_seasons (team_id, season);
+
+-- Players listed as missing or doubtful for a fixture (API-Football /injuries)
+create table if not exists injuries (
+    fixture_id   int not null,
+    player_id    int not null,
+    team_id      int not null,
+    league_id    int,
+    season       int,
+    type         text,     -- 'Missing Fixture' or 'Questionable'
+    reason       text,     -- e.g. 'Hamstring Injury', 'Suspended'
+    updated_at   timestamptz not null default now(),
+    primary key (fixture_id, player_id)
+);
+create index if not exists injuries_team_idx on injuries (team_id, fixture_id);
+
 -- Club ranking (see matchvector/ranking.py). Rebuilt from scratch on every run.
 -- Every team starts from leagues.starting_rank of the first league it plays in.
 alter table leagues add column if not exists starting_rank numeric;
@@ -282,3 +358,6 @@ alter table odds               enable row level security;
 alter table team_rank_history  enable row level security;
 alter table team_rankings      enable row level security;
 alter table fixture_predictions enable row level security;
+alter table players            enable row level security;
+alter table player_seasons     enable row level security;
+alter table injuries           enable row level security;

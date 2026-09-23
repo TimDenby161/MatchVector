@@ -388,6 +388,10 @@ def sync_nightly(api, conn, league_ids):
     step("stats", sync_fixture_stats, league_ids)
     for pair in pairs:
         step("odds", sync_odds, [pair])
+    for league_id, season in pairs:
+        if league_id in config.PLAYER_LEAGUES:
+            step("players", sync_players, [league_id], [season])
+            step("injuries", sync_injuries, [league_id], [season])
     step("rankings", lambda api, conn: update_rankings(conn))
     step("predictions", lambda api, conn: update_predictions(conn))
     step("prediction backfill", lambda api, conn: backfill_predictions(conn))
@@ -401,3 +405,96 @@ def _dedupe(rows, key):
     """Postgres rejects an upsert batch that touches the same key twice; keep the last."""
     keys = key if isinstance(key, tuple) else (key,)
     return list({tuple(r[k] for k in keys): r for r in rows}.values())
+
+
+# --------------------------------------------------------------------------- players
+
+def sync_players(api, conn, league_ids, seasons):
+    """Player profiles and per-season stats (/players, 20 per page)."""
+    for league_id in league_ids:
+        for season in seasons:
+            resp = api.get_all_pages("players", league=league_id, season=season)
+            players, stats = {}, {}
+            for item in resp:
+                p = item["player"]
+                players[p["id"]] = _player_row(p)
+                for st in item.get("statistics", []):
+                    if (st.get("league") or {}).get("id") != league_id or not (st.get("team") or {}).get("id"):
+                        continue
+                    row = _player_season_row(p["id"], league_id, season, st)
+                    stats[(row["player_id"], row["team_id"])] = row
+            upsert(conn, "players", list(players.values()), ["player_id"])
+            upsert(conn, "player_seasons", list(stats.values()),
+                   ["player_id", "team_id", "league_id", "season"])
+            conn.commit()
+            log.info("Players league=%s season=%s: %d players, %d season rows",
+                     league_id, season, len(players), len(stats))
+
+
+def _int(v):
+    v = _parse_stat(v)
+    return None if v is None else int(v)
+
+
+def _player_row(p):
+    birth = p.get("birth") or {}
+    return {
+        "player_id": p["id"],
+        "name": p.get("name") or f"Player {p['id']}",
+        "firstname": p.get("firstname"),
+        "lastname": p.get("lastname"),
+        "birth_date": birth.get("date"),
+        "nationality": p.get("nationality"),
+        "height_cm": _int((p.get("height") or "").replace("cm", "").strip() or None),
+        "weight_kg": _int((p.get("weight") or "").replace("kg", "").strip() or None),
+        "photo": p.get("photo"),
+    }
+
+
+def _player_season_row(player_id, league_id, season, st):
+    g = lambda section, key: (st.get(section) or {}).get(key)
+    return {
+        "player_id": player_id, "team_id": st["team"]["id"], "league_id": league_id, "season": season,
+        "position": g("games", "position"), "shirt_number": _int(g("games", "number")),
+        "appearances": _int(g("games", "appearences")), "starts": _int(g("games", "lineups")),
+        "minutes": _int(g("games", "minutes")), "rating": _parse_stat(g("games", "rating")),
+        "captain": g("games", "captain"),
+        "subbed_in": _int(g("substitutes", "in")), "subbed_out": _int(g("substitutes", "out")),
+        "bench": _int(g("substitutes", "bench")),
+        "goals": _int(g("goals", "total")), "assists": _int(g("goals", "assists")),
+        "goals_conceded": _int(g("goals", "conceded")), "saves": _int(g("goals", "saves")),
+        "shots": _int(g("shots", "total")), "shots_on": _int(g("shots", "on")),
+        "passes": _int(g("passes", "total")), "key_passes": _int(g("passes", "key")),
+        "pass_accuracy": _int(g("passes", "accuracy")),
+        "tackles": _int(g("tackles", "total")), "blocks": _int(g("tackles", "blocks")),
+        "interceptions": _int(g("tackles", "interceptions")),
+        "duels": _int(g("duels", "total")), "duels_won": _int(g("duels", "won")),
+        "dribbles": _int(g("dribbles", "attempts")), "dribbles_won": _int(g("dribbles", "success")),
+        "dribbled_past": _int(g("dribbles", "past")),
+        "fouls_drawn": _int(g("fouls", "drawn")), "fouls_committed": _int(g("fouls", "committed")),
+        "yellow_cards": _int(g("cards", "yellow")), "yellow_red_cards": _int(g("cards", "yellowred")),
+        "red_cards": _int(g("cards", "red")),
+        "penalties_won": _int(g("penalty", "won")), "penalties_committed": _int(g("penalty", "commited")),
+        "penalties_scored": _int(g("penalty", "scored")), "penalties_missed": _int(g("penalty", "missed")),
+        "penalties_saved": _int(g("penalty", "saved")),
+    }
+
+
+def sync_injuries(api, conn, league_ids, seasons):
+    """Players listed as missing/doubtful per fixture (/injuries)."""
+    for league_id in league_ids:
+        for season in seasons:
+            resp = api.get("injuries", league=league_id, season=season)
+            rows = {}
+            for item in resp:
+                p, fx = item.get("player") or {}, item.get("fixture") or {}
+                if not p.get("id") or not fx.get("id"):
+                    continue
+                rows[(fx["id"], p["id"])] = {
+                    "fixture_id": fx["id"], "player_id": p["id"], "team_id": item["team"]["id"],
+                    "league_id": league_id, "season": season,
+                    "type": p.get("type"), "reason": p.get("reason"),
+                }
+            upsert(conn, "injuries", list(rows.values()), ["fixture_id", "player_id"])
+            conn.commit()
+            log.info("Injuries league=%s season=%s: %d", league_id, season, len(rows))

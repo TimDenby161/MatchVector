@@ -19,7 +19,7 @@ from . import config, export, ingest, predictions, ranking
 from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
-TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds"]
+TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "players", "injuries"]
 
 
 def main(argv=None):
@@ -86,6 +86,10 @@ def main(argv=None):
                     ingest.sync_standings(api, conn, args.leagues, args.seasons)
                 elif target == "stats":
                     ingest.sync_fixture_stats(api, conn, args.leagues, args.seasons, limit=args.limit)
+                elif target in ("players", "injuries"):
+                    leagues = [l for l in args.leagues if l in config.PLAYER_LEAGUES] or args.leagues
+                    fn = ingest.sync_players if target == "players" else ingest.sync_injuries
+                    fn(api, conn, leagues, args.seasons)
                 elif target == "odds":
                     ingest.sync_odds(api, conn, ingest.active_seasons(conn, args.leagues))
         except QuotaExhausted as exc:
