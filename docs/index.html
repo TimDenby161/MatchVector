@@ -267,7 +267,7 @@
   table.leaderboard .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.leaderboard th:first-child, table.leaderboard td:first-child { width: 34px; color: var(--text-muted); }
   table.leaderboard th:nth-child(n+3), table.leaderboard td:nth-child(n+3) { width: 56px; }
-  table.leaderboard td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.leaderboard td:nth-child(2) { overflow-wrap: anywhere; }
   table.leaderboard tbody tr { cursor: pointer; }
   table.leaderboard tbody tr:active { background: var(--chip-bg); }
   .club-sub { display: block; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
@@ -822,6 +822,7 @@ function renderTable() {
         ${th("current", "Now", "Current rank, after the latest match")}
         ${th("st", "ST", "Short-term rank (ST ALGO)")}
         ${th("lt", "LT", "Long-term rank (LT ALGO)")}
+        ${th("form", "Form", "Rank change over the last 6 games")}
         ${th("reliability", "Rel", "Reliability 0-100")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
@@ -831,6 +832,7 @@ function renderTable() {
           <td class="num">${Math.round(r.current)}</td>
           <td class="num">${Math.round(r.st)}</td>
           <td class="num"><b>${Math.round(r.lt)}</b></td>
+          <td class="num">${formHtml(r.form)}</td>
           <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
         </tr>`).join("")}
       </tbody>
