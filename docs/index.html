@@ -375,7 +375,7 @@
   @media (min-width: 1160px) {
     section[data-tab="table"] { position: relative; }
     #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
-    #table-side .side-stick { position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow-y: auto; padding-right: 4px; }
+    #table-side .side-stick { position: sticky; top: 56px; max-height: calc(100vh - 68px); overflow-y: auto; padding-right: 4px; }
     .side-brand { display: flex; align-items: center; gap: 7px; order: 0; font-size: 18px; font-weight: 800; margin: 2px 0 12px; }
     #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
@@ -385,9 +385,11 @@
     #table-filters .more-country { margin-top: 8px; }
     body[data-tab="table"] header .app-bar { display: none; }
     body[data-tab="table"] nav.tabs { margin-bottom: 0; }
-    body[data-tab="table"] main { padding-top: 10px; }
-    table.leaderboard.clubs td { padding-top: 3px; padding-bottom: 3px; }
-    table.leaderboard.clubs th { padding-top: 5px; padding-bottom: 5px; }
+    table.leaderboard.clubs td { padding-top: 4.5px; padding-bottom: 4.5px; }
+    table.leaderboard.clubs th { padding-top: 4px; padding-bottom: 4px; }
+    body[data-tab="table"] header { padding-top: 6px; padding-bottom: 6px; }
+    body[data-tab="table"] nav.tabs button { padding-top: 6px; padding-bottom: 6px; }
+    body[data-tab="table"] main { padding-top: 8px; }
     .club-logo { width: 20px; height: 20px; }
   }
 
@@ -843,15 +845,19 @@ function rankChipSmall(r) {
 const TOP_ROWS = 10;
 // Show the first TOP_ROWS rows; the rest scroll inside the box
 // capped=false (a single league) shows every row
+// Long lists (All, search): the box fills the rest of the screen - at least TOP_ROWS rows -
+// and scrolls inside. A single league shows every row.
 function fitTopRows(wrap, capped = true) {
   const box = wrap.querySelector(".table-scroll");
   if (!box) return;
   const rows = box.querySelectorAll("tbody tr");
   if (!capped || rows.length <= TOP_ROWS) { box.style.maxHeight = "none"; return; }
-  let h = box.querySelector("thead").offsetHeight;
-  for (let i = 0; i < TOP_ROWS; i++) h += rows[i].offsetHeight;
-  box.style.maxHeight = `${h + 2}px`;
+  let minH = box.querySelector("thead").offsetHeight;
+  for (let i = 0; i < TOP_ROWS; i++) minH += rows[i].offsetHeight;
+  const room = window.innerHeight - box.getBoundingClientRect().top - 12;
+  box.style.maxHeight = `${Math.max(minH + 2, room)}px`;
 }
+window.addEventListener("resize", () => { if (state.rankings && state.tab === "table") fitTopRows($("#table-wrap"), state.tableFilter === "all" || !!state.tableSearch.trim()); });
 
 function renderPlayers() {
   const wrap = $("#table-wrap");
