@@ -39,7 +39,8 @@ Season rank (player_season_ranks), from that season's own matches
                the top decile, which is spread by how far the score is above the 90th percentile
                (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
                apart instead of all sitting at ~99
-    rank     = pct x club_factor(club), club = his clubs' average rank over his matches
+    rank     = pct x club_factor(club), club = his clubs' average rank over his matches;
+               keepers use keeper_rank instead (mostly club level, rating nudges it)
     keepers  = a keeper's season score is blended with his other seasons, weighted 1 for the
                season itself and 0.5 ^ years apart for the rest: a keeper's season rating repeats
                only ~0.28 from one season to the next (outfield ~0.55), so one season says little
@@ -249,6 +250,27 @@ def _norms(conn):
     return norms
 
 
+GK_CLUB_OFFSET = 10        # keeper rank = 100 x club / CLUB_RANK_MAX - this + GK_RATING_WEIGHT x (pct - 50)
+GK_RATING_WEIGHT = 0.2
+GK_FULL_MINUTES = 1500     # keepers with fewer minutes in a season are scaled down, up to 20% (backups)
+
+
+def keeper_rank(pct, club, mins=None):
+    """Keepers: a keeper's rating percentile is mostly noise (season ratings repeat ~0.3, and
+    regular Premier League keepers all sit within 6.8-7.05), so stretching it over the whole
+    scale gave near-random ranks. The rank leans on club level instead - good clubs sign good
+    keepers - and the rating moves it by up to about +/-10. A season with few minutes (a backup)
+    is scaled down by up to 20%, so a No. 2 at a top club isn't rated as elite."""
+    r = 100 * min(club / CLUB_RANK_MAX, 1) - GK_CLUB_OFFSET + GK_RATING_WEIGHT * (pct - 50)
+    if mins is not None:
+        r *= min(1.0, 0.8 + 0.2 * mins / GK_FULL_MINUTES)
+    return min(max(r, 0), 100)
+
+
+def final_rank(pct, club, pos, mins=None):
+    return keeper_rank(pct, club, mins) if pos == "GK" else pct * club_factor(club)
+
+
 def club_factor(club):
     """Multiplier for club level: sqrt(club / CLUB_RANK_MAX), capped at 1. The square root keeps
     the club's level in the rank but halves the gaps (Real Madrid 1063 vs Bayern 1121: 0.94 vs
@@ -410,7 +432,7 @@ def _season_ranks(conn, norms):
     rows = []
     for player, season, s, pos, club, mins in scored:
         if ref.get(pos) and club:
-            rows.append((player, season, round(pct(s, ref[pos]) * club_factor(club), 1), mins))
+            rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, mins), 1), mins))
     return rows
 
 
@@ -511,7 +533,7 @@ def compute_player_ratings(conn):
         """(stat score, club rank) -> stat percentile scaled by the club's level."""
         score, club = s
         ref = cdf.get(pos) or pooled
-        return round(100 * bisect.bisect_left(ref, score) / len(ref) * club_factor(club), 1)
+        return round(final_rank(100 * bisect.bisect_left(ref, score) / len(ref), club, pos), 1)
     log.info("Player ratings: %d appearances, %d team-fixtures, regulars per position %s",
              len(appearance_scores), len(team_rows), {p: len(v) for p, v in cdf.items()})
 
