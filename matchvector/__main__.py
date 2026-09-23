@@ -21,7 +21,7 @@ from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
 TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "players", "injuries",
-           "player_minutes"]
+           "player_minutes", "player_careers"]
 
 
 def main(argv=None):
@@ -104,6 +104,8 @@ def main(argv=None):
                     leagues = [l for l in args.leagues if l in config.PLAYER_LEAGUES] or args.leagues
                     fn = ingest.sync_players if target == "players" else ingest.sync_injuries
                     fn(api, conn, leagues, args.seasons)
+                elif target == "player_careers":
+                    ingest.sync_player_careers(api, conn)
                 elif target == "odds":
                     ingest.sync_odds(api, conn, ingest.active_seasons(conn, args.leagues))
         except QuotaExhausted as exc:

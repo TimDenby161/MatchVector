@@ -311,6 +311,15 @@ alter table fixture_player_ranks drop constraint if exists fixture_player_ranks_
 alter table fixture_players drop column if exists player_rank;
 alter table fixtures add column if not exists players_fetched_at timestamptz;
 
+-- Clubs each player was at, by season, in any league (/players/teams). Used to name the club
+-- (and its level) for seasons with no minutes in the player-data leagues.
+create table if not exists player_career_teams (
+    player_id  int not null,
+    season     int not null,
+    team_id    int not null,
+    primary key (player_id, season, team_id)
+);
+
 -- Player rank for each season: minutes-weighted average of his rank after each match that
 -- season (player_ratings.py, rebuilt on every run)
 create table if not exists player_season_ranks (
@@ -320,6 +329,8 @@ create table if not exists player_season_ranks (
     minutes      int,
     primary key (player_id, season)
 );
+-- for a gap season (minutes = 0): the club he was at, from player_career_teams
+alter table player_season_ranks add column if not exists team_id int;
 
 -- Team ratings per fixture from player ranks (player_ratings.py), all as known before kickoff
 create table if not exists fixture_team_ratings (

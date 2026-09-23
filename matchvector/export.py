@@ -379,7 +379,15 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
             select fp.player_id, 'now', fp.team_id, {per_club}
             from apps fp left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
             where fp.n <= 20 group by 1, 3""", [ids, list(config.FINISHED_STATUSES)]).fetchall()
-    spells = _club_spells(seasons + recent)
+    # gap seasons (no minutes here): the club he was at and its level that season
+    gaps = conn.execute(
+        """select r.player_id, r.season, r.team_id, 0, avg(h.rank_before), null, 0, 0
+           from player_season_ranks r
+           left join fixtures f on f.season = r.season and r.team_id in (f.home_team_id, f.away_team_id)
+           left join team_rank_history h on h.fixture_id = f.fixture_id and h.team_id = r.team_id
+           where r.minutes = 0 and r.team_id is not null and r.player_id = any(%s)
+           group by 1, 2, 3""", [ids]).fetchall()
+    spells = _club_spells(seasons + recent + gaps)
     team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}
     names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))
     (out_dir / "player_seasons.json").write_text(json.dumps({

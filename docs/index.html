@@ -1081,7 +1081,10 @@ function playerCellTip(pid, key) {
 ` : "";
   const spells = detail.players?.[pid]?.[key];
   const i = seasons.indexOf(Number(key));
-  if (pl?.estimated?.includes(i)) return ageLine + "Not in a covered league this season\nEstimated from his other seasons and age";
+  if (pl?.estimated?.includes(i)) {
+    const club = spells?.[0] ? `${detail.teams?.[spells[0][0]] || teamName(spells[0][0])} – ${spells[0][2] ?? "–"}\n` : "";
+    return ageLine + club + "Not in a covered league this season\nEstimated from his other seasons and age";
+  }
   if (!spells?.length) return ageLine + "No minutes";
   const club = (id) => detail.teams?.[id] || teamName(id);
   return ageLine + spells.map(([team, mins, rank, rating, goals, assists]) =>

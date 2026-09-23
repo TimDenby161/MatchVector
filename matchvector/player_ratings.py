@@ -32,8 +32,10 @@ Season rank (player_season_ranks), from that season's own matches
                  debut season sits a normal amount below his first full season. With no such
                  season anywhere, MINUTES_PRIOR, so a thin season is marked down
     gaps     = a season between his first and last seasons here with no minutes in these leagues
-               (e.g. a year in a league without player data) gets the age-curve estimate alone,
-               with club level from the seasons either side; stored with minutes = 0 so the site
+               (e.g. a year in a league without player data) gets the age-curve estimate alone.
+               His club that season comes from player_career_teams (only clubs we have league
+               fixtures for that season, so its level is its real average rank then); failing
+               that, club level from the seasons either side. Stored with minutes = 0 so the site
                can show it as an estimate
     pct      = percentile among player-seasons with 900+ minutes in the same role group, except
                the top decile, which is spread by how far the score is above the 90th percentile
@@ -288,7 +290,8 @@ def _stat_score(sums, pos, norms):
 
 
 def _season_ranks(conn, norms):
-    """[(player, season, rank, minutes)] from each season's own matches (see module docstring)."""
+    """[(player, season, rank, minutes, gap-season club or None)] from each season's own matches
+    (see module docstring)."""
     cols = ", ".join(f"sum(coalesce(fp.{c}, 0))" for c in STATS[3:])
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
                                    "club": [0.0, 0.0], "games": 0})
@@ -413,6 +416,13 @@ def _season_ranks(conn, norms):
     log.info("Age curve (score change per year by age): %s",
              {a: round(v, 3) for a, v in sorted(curve.items())})
     # Gaps inside a player's span of seasons: estimate from the age curve (minutes = 0)
+    team_level = {(t, y): (float(r), n) for t, y, r, n in conn.execute(
+        """select h.team_id, f.season, avg(h.rank_before), count(*) from team_rank_history h
+           join fixtures f using (fixture_id) group by 1, 2""")}
+    careers = defaultdict(list)
+    for p, y, t in conn.execute("select player_id, season, team_id from player_career_teams where season > 0"):
+        careers[(p, y)].append(t)
+    gap_team = {}
     by_player = defaultdict(dict)
     for player, season, s, pos, club, mins in scored:
         by_player[player][season] = (pos, club)
@@ -425,10 +435,17 @@ def _season_ranks(conn, norms):
                 continue
             near = sorted(have, key=lambda y: abs(y - season))
             pos = have[near[0]][0]
-            either_side = [have[y][1] for y in (max((y for y in have if y < season), default=None),
-                                                 min((y for y in have if y > season), default=None))
-                           if y is not None and have[y][1]]
-            club = sum(either_side) / len(either_side) if either_side else None
+            known = [(team_level[(t, season)][1], t) for t in careers.get((player, season), [])
+                     if (t, season) in team_level]
+            if known:
+                team = max(known)[1]          # the club with most matches in our data that season
+                gap_team[(player, season)] = team
+                club = team_level[(team, season)][0]
+            else:
+                either_side = [have[y][1] for y in (max((y for y in have if y < season), default=None),
+                                                     min((y for y in have if y > season), default=None))
+                               if y is not None and have[y][1]]
+                club = sum(either_side) / len(either_side) if either_side else None
             scored.append((player, season, est, pos, club, 0))
 
     rows = []
@@ -436,7 +453,8 @@ def _season_ranks(conn, norms):
         if ref.get(pos) and club:
             games = season_games.get((player, season))
             share = min(mins / (games * 90), 1) if games else None
-            rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, share), 1), mins))
+            rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, share), 1), mins,
+                         gap_team.get((player, season))))
     return rows
 
 
@@ -597,8 +615,8 @@ def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_
         cur.execute("""update players pl set current_rank = t.r, rank_position = t.pos, rank_minutes = t.mins
                        from tmp_cur t where pl.player_id = t.player_id""")
         cur.execute("truncate player_season_ranks")
-        with cur.copy("copy player_season_ranks (player_id, season, season_rank, minutes) from stdin") as cp:
-            cp.write("".join(f"{p}\t{y}\t{r}\t{m}\n" for p, y, r, m in season_rows))
+        with cur.copy("copy player_season_ranks (player_id, season, season_rank, minutes, team_id) from stdin") as cp:
+            cp.write("".join(f"{p}\t{y}\t{r}\t{m}\t{t if t else chr(92) + 'N'}\n" for p, y, r, m, t in season_rows))
     conn.commit()
     log.info("Player ratings written: %d current player ranks, %d predicted-lineup rows, %d player-seasons",
              len(current), len(lineups), len(season_rows))

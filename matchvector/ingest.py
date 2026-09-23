@@ -427,12 +427,54 @@ def sync_nightly(api, conn, league_ids):
             step("injuries", sync_injuries, [league_id], [season])
     step("rankings", lambda api, conn: update_rankings(conn))
     step("player ratings", lambda api, conn: compute_player_ratings(conn))
+    step("player careers", sync_player_careers)
     step("predictions", lambda api, conn: update_predictions(conn))
     step("prediction backfill", lambda api, conn: backfill_predictions(conn))
     step("prediction ratings", lambda api, conn: rate_fixtures(conn))
     step("settle paper bets", lambda api, conn: betting.settle_bets(conn))
     step("early paper bets", lambda api, conn: betting.place_early(conn))
     return failures
+
+
+def sync_player_careers(api, conn, player_ids=None):
+    """Clubs by season for players with gap seasons (/players/teams, one call per player).
+
+    A gap season is a season with no minutes in the player-data leagues between a player's first
+    and last seasons there (player_season_ranks.minutes = 0). Fetched once per player; players
+    already in player_career_teams are skipped. Keeps national and youth sides out by storing
+    only teams we know as clubs, or ones the API doesn't flag as national.
+    """
+    if player_ids is None:
+        player_ids = [p for (p,) in conn.execute(
+            """select distinct r.player_id from player_season_ranks r
+               where r.minutes = 0
+                 and not exists (select 1 from player_career_teams c where c.player_id = r.player_id)""")]
+    log.info("Player careers to fetch: %d", len(player_ids))
+    for n, player in enumerate(player_ids, 1):
+        resp = api.get("players/teams", player=player)
+        items = resp["response"] if isinstance(resp, dict) else resp
+        rows, teams = [], []
+        for item in items or []:
+            t = item["team"]
+            name = t.get("name") or ""
+            if t.get("national") or " U1" in name or " U2" in name:
+                continue
+            teams.append({"team_id": t["id"], "name": name, "logo": t.get("logo")})
+            rows.extend({"player_id": player, "season": int(y), "team_id": t["id"]}
+                        for y in item.get("seasons") or [] if str(y).isdigit())   # the API has some blank seasons
+        if teams:
+            conn.execute("""insert into teams (team_id, name, logo) select * from unnest(%s::int[], %s::text[], %s::text[])
+                            on conflict (team_id) do nothing""",
+                         [[t["team_id"] for t in teams], [t["name"] for t in teams], [t["logo"] for t in teams]])
+        if rows:
+            upsert(conn, "player_career_teams", _dedupe(rows, ("player_id", "season", "team_id")),
+                   ["player_id", "season", "team_id"])
+        else:   # remember we looked, so the player isn't fetched every night
+            conn.execute("insert into player_career_teams values (%s, 0, 0) on conflict do nothing", [player])
+        if n % 50 == 0:
+            conn.commit()
+            log.info("Player careers: %d/%d", n, len(player_ids))
+    conn.commit()
 
 
 # --------------------------------------------------------------------------- helpers
