@@ -536,6 +536,13 @@ function buildCompetitionLabels() {
   }
 }
 const compLabel = (id) => state.compLabels[id] || `Competition ${id}`;
+// Country line then league line, for rows that span several leagues
+function countryLeague(id) {
+  const c = state.data.competitions[id];
+  if (!c) return "";
+  const country = c.country === "World" ? "International" : c.country.replace(/-/g, " ");
+  return `<span class="club-sub">${escapeHtml(country)}</span><span class="club-sub">${escapeHtml(SHORT_NAMES[id] || c.name)}</span>`;
+}
 const teamName = (id) => state.data.teams[id] || `Team ${id}`;
 
 function idsForFilter(filter) {
@@ -784,7 +791,7 @@ function renderPlayers() {
       <tbody>${rows.map((p, i) => `
         <tr data-team="${p.team}">
           <td>${i + 1}</td>
-          <td>${escapeHtml(p.name)}<span class="club-sub">${escapeHtml(teamName(p.team))}${all || q ? ` · ${escapeHtml(compLabel(p.league))}` : ""}</span></td>
+          <td>${escapeHtml(p.name)}<span class="club-sub">${escapeHtml(teamName(p.team))}</span>${all || q ? countryLeague(p.league) : ""}</td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num">${p.minutes.toLocaleString()}</td>
           <td class="num">${rankChipSmall(p.rank)}</td>
@@ -820,7 +827,7 @@ function renderTable() {
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
-          <td>${escapeHtml(teamName(r.team))}${q || all ? `<span class="club-sub">${escapeHtml(compLabel(r.league))}</span>` : ""}</td>
+          <td>${escapeHtml(teamName(r.team))}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num"><b>${Math.round(r.lt)}</b></td>
           <td class="num">${Math.round(r.current)}</td>
           <td class="num">${formHtml(r.form)}</td>
