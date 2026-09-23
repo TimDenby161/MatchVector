@@ -36,6 +36,7 @@ LEAGUES = {
     # Big 5 (rest)
     140: "La Liga",
     135: "Serie A",
+    136: "Serie B",
     78: "Bundesliga",
     79: "2. Bundesliga",
     61: "Ligue 1",
