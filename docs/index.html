@@ -360,17 +360,32 @@
   .goal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .rank-move { font-size: 11px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
-  /* Wide screens: league filters in a column to the left of the ranked list, which stays
-     centred on the page (the filters sit in the left margin, outside the centred column) */
+  /* Rankings side panel: brand, view toggle, search and league filters.
+     Phones: stacked above the list (filters, toggle, search). */
+  .side-stick { display: flex; flex-direction: column; }
+  .side-brand { display: none; }
+  #table-filters { order: 1; }
+  #table-view { order: 2; margin-bottom: 10px; }
+  #table-search { order: 3; }
+  /* Wide screens: the panel becomes a column in the left margin, so the ranked list stays
+     centred; the header drops the name row on this tab to fit a full league on one screen */
   @media (min-width: 1160px) {
     section[data-tab="table"] { position: relative; }
-    #table-filters { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 200px; margin: 0; }
-    #table-filters .filter-stick { position: sticky; top: 108px; max-height: calc(100vh - 124px); overflow-y: auto;
-      padding-right: 4px; }
+    #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
+    #table-side .side-stick { position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow-y: auto; padding-right: 4px; }
+    .side-brand { display: flex; align-items: center; gap: 7px; order: 0; font-size: 18px; font-weight: 800; margin: 2px 0 12px; }
+    #table-view { order: 1; margin-bottom: 8px; }
+    #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
+    #table-filters { order: 3; margin: 0; }
     #table-filters .filter-row { flex-direction: column; align-items: stretch; gap: 4px; }
     #table-filters .filter-chip { text-align: left; border-radius: 8px; white-space: normal; }
-    #table-filters .filter-more { text-align: left; }
     #table-filters .more-country { margin-top: 8px; }
+    body[data-tab="table"] header .app-bar { display: none; }
+    body[data-tab="table"] nav.tabs { margin-bottom: 0; }
+    body[data-tab="table"] main { padding-top: 10px; }
+    table.leaderboard.clubs td { padding-top: 3px; padding-bottom: 3px; }
+    table.leaderboard.clubs th { padding-top: 5px; padding-bottom: 5px; }
+    .club-logo { width: 20px; height: 20px; }
   }
 
   footer { color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 16px 24px; line-height: 1.5; }
@@ -394,7 +409,7 @@
   }
 </style>
 </head>
-<body>
+<body data-tab="table">
 
 <header>
   <nav class="tabs" role="tablist">
@@ -424,17 +439,20 @@
   </section>
 
   <section class="panel" data-tab="table" data-active="true">
-    <div class="filters-wrap" id="table-filters">
-      <div class="filter-stick">
-        <div class="filter-row"></div>
-        <div class="filter-row filter-row-more" hidden></div>
+    <div id="table-side">
+      <div class="side-stick">
+        <div class="side-brand"><span class="brand-mark" aria-hidden="true"></span><span>MatchVector</span></div>
+        <div class="filters-wrap" id="table-filters">
+          <div class="filter-row"></div>
+          <div class="filter-row filter-row-more" hidden></div>
+        </div>
+        <div class="filter-row range-row" id="table-view">
+          <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
+          <button type="button" class="filter-chip" data-view="players" aria-pressed="false">Players</button>
+        </div>
+        <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
       </div>
     </div>
-    <div class="filter-row range-row" id="table-view" style="margin-bottom:10px">
-      <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
-      <button type="button" class="filter-chip" data-view="players" aria-pressed="false">Players</button>
-    </div>
-    <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
     <div id="table-wrap"></div>
   </section>
 
@@ -1084,6 +1102,7 @@ const clubCache = new Map();
 const CHART_RANGES = [["6m", "6M", 183], ["1y", "1Y", 365], ["3y", "3Y", 1095], ["all", "All", null]];
 
 async function openClubPage(id) {
+  document.body.dataset.tab = "club";
   document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", "false"));
   document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === "club"));
   window.scrollTo(0, 0);
@@ -1297,6 +1316,7 @@ function openTeam(teamId) {
 // ------------------------------------------------------------------ wiring
 function showTab(tab) {
   state.tab = tab;
+  document.body.dataset.tab = tab;
   document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === tab));
 }
