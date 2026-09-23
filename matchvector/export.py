@@ -334,13 +334,13 @@ def export_players(conn, out_dir=OUT_DIR):
 
 
 def _club_spells(rows):
-    """[(player, key, team, minutes, club rank, rating)] -> {player: {key: [[team, mins, rank, rating], ...]}},
-    clubs by minutes, most first."""
+    """[(player, key, team, minutes, club rank, rating, goals, assists)]
+    -> {player: {key: [[team, mins, rank, rating, goals, assists], ...]}}, clubs by minutes, most first."""
     out = defaultdict(dict)
-    for player, key, team, mins, rank, rating in rows:
+    for player, key, team, mins, rank, rating, goals, assists in rows:
         out[player].setdefault(key, []).append(
             [team, int(mins), round(float(rank)) if rank is not None else None,
-             round(float(rating), 2) if rating is not None else None])
+             round(float(rating), 2) if rating is not None else None, int(goals or 0), int(assists or 0)])
     for seasons in out.values():
         for spells in seasons.values():
             spells.sort(key=lambda x: -x[1])
@@ -359,7 +359,8 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
     per_club = """sum(fp.minutes),
                   sum(h.rank_before * fp.minutes) / nullif(sum(fp.minutes) filter (where h.rank_before is not null), 0),
                   sum(fp.rating * fp.minutes) filter (where fp.rating is not null)
-                    / nullif(sum(fp.minutes) filter (where fp.rating is not null), 0)"""
+                    / nullif(sum(fp.minutes) filter (where fp.rating is not null), 0),
+                  sum(fp.goals), sum(fp.assists)"""
     seasons = conn.execute(
         f"""select fp.player_id, f.season, fp.team_id, {per_club}
             from fixture_players fp join fixtures f using (fixture_id)
@@ -379,8 +380,10 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
     team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}
     names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))
     (out_dir / "player_seasons.json").write_text(json.dumps({
-        "fields": ["team", "minutes", "club_rank", "rating"],
+        "fields": ["team", "minutes", "club_rank", "rating", "goals", "assists"],
         "teams": {str(t): names.get(t) for t in team_ids},
+        "born": {str(p): b.isoformat() for p, b in conn.execute(
+            "select player_id, birth_date from players where player_id = any(%s) and birth_date is not null", [ids])},
         "players": {str(p): {str(k): v for k, v in d.items()} for p, d in spells.items()},
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported season detail for %d players", len(spells))

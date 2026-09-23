@@ -1067,15 +1067,22 @@ function loadPlayerSeasons() {
   state.playerSeasonsLoading = fetch("data/player_seasons.json", { cache: "no-store" })
     .then((res) => res.json()).then((d) => { state.playerSeasons = d; }).catch(() => {});
 }
-// Hover text for a season cell: per club that season, "Team – club rank" then "minutes – match rating"
+// Hover text for a season cell: his age that season, then per club "Team – club rank" and
+// "minutes – match rating – goals G, assists A"
 function playerCellTip(pid, key) {
   const detail = state.playerSeasons;
   if (!detail) return "Loading…";
+  const born = detail.born?.[pid];
+  let ageLine = "";
+  if (born) {        // age on 1 July at the start of the season
+    const [by, bm, bd] = born.split("-").map(Number);
+    ageLine = `Age ${Number(key) - by - (bm > 7 || (bm === 7 && bd > 1) ? 1 : 0)}\n`;
+  }
   const spells = detail.players?.[pid]?.[key];
-  if (!spells?.length) return "No minutes";
+  if (!spells?.length) return ageLine + "No minutes";
   const club = (id) => detail.teams?.[id] || teamName(id);
-  return spells.map(([team, mins, rank, rating]) =>
-    `${club(team)} – ${rank == null ? "–" : rank}\n${mins.toLocaleString()} mins – ${rating == null ? "–" : rating.toFixed(2)}`)
+  return ageLine + spells.map(([team, mins, rank, rating, goals, assists]) =>
+    `${club(team)} – ${rank == null ? "–" : rank}\n${mins.toLocaleString()} mins – ${rating == null ? "–" : rating.toFixed(2)} – ${goals ?? 0} G, ${assists ?? 0} A`)
     .join("\n\n");
 }
 
