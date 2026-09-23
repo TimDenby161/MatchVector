@@ -296,7 +296,7 @@
     font-weight: 700; font-size: 15px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
   .modal-close { appearance: none; border: none; background: transparent; color: var(--text-muted);
     font-size: 22px; line-height: 1; padding: 0 4px; cursor: pointer; }
-  .team-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .team-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; margin-bottom: 12px; }
   .team-stat { background: var(--chip-bg); border-radius: 8px; padding: 8px; text-align: center; }
   .team-stat-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .team-stat-value { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
@@ -990,7 +990,6 @@ function renderTable() {
         ${th("played", "Pl", "Matches played")}
         ${th("reliability", "Rel", "Reliability 0-100")}
         ${th("current", "Now", "Current rank, after the latest match")}
-        ${th("st", "ST", "Short-term rank (ST ALGO)")}
         ${th("lt", "LT", "Long-term rank (LT ALGO)")}
         ${th("form", "Form", "Rank change over the last 6 games")}
       </tr></thead>
@@ -1002,7 +1001,6 @@ function renderTable() {
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
           <td class="num">${Math.round(r.current)}</td>
-          <td class="num">${Math.round(r.st)}</td>
           <td class="num"><b>${Math.round(r.lt)}</b></td>
           <td class="num">${formHtml(r.form)}</td>
         </tr>`).join("")}
@@ -1248,7 +1246,7 @@ function renderClubPage() {
       <div><h2>${escapeHtml(teamName(id))}</h2><span class="club-sub">${escapeHtml(country)}</span><span class="club-sub">${escapeHtml(comp ? (SHORT_NAMES[r.league] || comp.name) : "")}</span></div>
     </div>
     ${r ? `<div class="team-stats">
-      ${tile("Played", r.played)}${tile("Now", Math.round(r.current))}${tile("ST", Math.round(r.st))}
+      ${tile("Played", r.played)}${tile("Now", Math.round(r.current))}
       ${tile("LT", Math.round(r.lt))}${tile("Form", formHtml(r.form) || "–")}${tile("Reliability", rel)}
     </div>` : ""}
     <div class="chart-card">
@@ -1387,7 +1385,7 @@ function openTeam(teamId) {
   const stat = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
   $("#team-modal-body").innerHTML = (r ? `<div class="team-stats">
       ${stat("Rank", Math.round(r.lt))}${stat("Now", Math.round(r.current))}${stat("Reliability", Math.round(r.reliability))}
-      ${stat("Form", formHtml(r.form) || "–")}${stat("Played", r.played)}${stat("ST Algo", Math.round(r.st))}
+      ${stat("Form", formHtml(r.form) || "–")}${stat("Played", r.played)}
     </div>` : "") +
     xiBlock(teamId) +
     (upcoming.length ? `<div class="modal-section">Next matches</div>${upcoming.map((m) => row(m, false)).join("")}` : "") +
