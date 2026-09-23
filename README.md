@@ -88,6 +88,16 @@ The sheet's "36% × strength ratio" blend is dropped, because in backtesting it 
 python -m matchvector predict   # the nightly job runs this after the rankings
 ```
 
+## Website
+
+`docs/index.html` is a single-page site in the same style as MatchLab. It has two tabs:
+- **Matches:** projected scores, win/draw/loss chances and results. Filter by competition and day.
+- **Rankings:** club rankings with form and reliability. Tap a club to see its fixtures.
+
+The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `docs/data/rankings.json`. These are written by `python -m matchvector export`, and the nightly workflow commits them, so the site never needs database credentials. To view it on this PC, run `python -m http.server` in `docs/` and open http://localhost:8000.
+
+Predictions for a fixture stop updating at kickoff, so results show the last pre-match projection next to the score.
+
 ## Tables
 
 `leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`, `team_rank_history`, `team_rankings`, `fixture_predictions` (and the view `upcoming_predictions`). See `db/schema.sql`.

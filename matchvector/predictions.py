@@ -110,12 +110,22 @@ def update_predictions(conn):
         rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank, exp_diff,
                      home_xg, away_xg, p_home, p_draw, p_away, likely, h_rel, a_rel))
 
+    # Upsert only upcoming fixtures: once a match kicks off its row is left alone, so it
+    # keeps the last pre-kickoff projection for comparing with the result.
     with conn.cursor() as cur:
-        cur.execute("truncate fixture_predictions")
         cur.executemany(
             """insert into fixture_predictions (fixture_id, kickoff, league_id, home_team_id,
                away_team_id, home_rank, away_rank, exp_diff, home_xg, away_xg, p_home, p_draw,
                p_away, likely_score, home_reliability, away_reliability)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", rows)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               on conflict (fixture_id) do update set
+                 kickoff = excluded.kickoff, league_id = excluded.league_id,
+                 home_team_id = excluded.home_team_id, away_team_id = excluded.away_team_id,
+                 home_rank = excluded.home_rank, away_rank = excluded.away_rank,
+                 exp_diff = excluded.exp_diff, home_xg = excluded.home_xg,
+                 away_xg = excluded.away_xg, p_home = excluded.p_home, p_draw = excluded.p_draw,
+                 p_away = excluded.p_away, likely_score = excluded.likely_score,
+                 home_reliability = excluded.home_reliability,
+                 away_reliability = excluded.away_reliability, updated_at = now()""", rows)
     conn.commit()
     log.info("Predictions: %d upcoming fixtures", len(rows))
