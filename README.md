@@ -38,6 +38,7 @@ API-Football only serves **odds** from about 14 days before kickoff, so you can'
 2. Refreshes teams, fixtures/results and standings for every current season, plus any season that ended in the last 14 days.
 3. Fetches stats for newly finished matches.
 4. Pulls odds for upcoming matches.
+5. Updates the club rankings (see below).
 
 A normal night uses about 350–500 API calls and takes a few minutes. If one competition fails, the others still run, and the exit code is non-zero.
 
@@ -46,6 +47,26 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 - `API_FOOTBALL_KEY`
 - `DATABASE_URL`: use the Supabase **Session pooler** string.
 
+## Club ranking
+
+This is a port of the Club Ranking Google Sheet. Every finished fixture is replayed oldest first, ordered by kickoff time, with the fixture ID breaking ties. For each fixture:
+
+- Expected goal difference = (home rank × 1.09 − away rank) / 100
+- Rank change = (actual goal difference − expected goal difference) × 10
+- The home team gains the rank change and the away team loses it.
+
+A team's first rank is `leagues.starting_rank` of the first league it plays in. For a team that only ever appears in cups, it's the `starting_rank` of the first cup it plays in.
+
+- `team_rank_history` holds each team's rank before and after every match, like the Ranking Breakdown tab.
+- `team_rankings` holds the current summary, like the Ranking tab: current rank, 30 and 100 Ranking, ST ALGO, LT ALGO, and HG/HA/AG/AA over the last 12 months.
+
+```bash
+python -m matchvector rank          # new or changed fixtures only (the nightly job runs this)
+python -m matchvector rank --full   # replay everything, e.g. after changing starting ranks
+```
+
+The incremental run rewinds to the oldest new or changed fixture and replays forward from there, so late results still go in date order.
+
 ## Tables
 
-`leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`. See `db/schema.sql`.
+`leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`, `team_rank_history`, `team_rankings`. See `db/schema.sql`.

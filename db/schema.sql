@@ -174,6 +174,43 @@ create table if not exists odds (
 );
 create index if not exists odds_fixture_idx on odds (fixture_id);
 
+-- Club ranking (see matchvector/ranking.py). Rebuilt from scratch on every run.
+-- Every team starts from leagues.starting_rank of the first league it plays in.
+alter table leagues add column if not exists starting_rank numeric;
+
+create table if not exists team_rank_history (
+    fixture_id   int not null,
+    team_id      int not null,
+    match_no     int not null,
+    kickoff      timestamptz,
+    is_home      boolean,
+    opponent_id  int,
+    rank_before  double precision,
+    rank_after   double precision,
+    exp_diff     double precision,
+    act_diff     int,
+    rank_change  double precision,
+    primary key (fixture_id, team_id)
+);
+create index if not exists team_rank_history_team_idx on team_rank_history (team_id, match_no);
+
+create table if not exists team_rankings (
+    team_id        int primary key,
+    league_id      int,
+    starting_rank  double precision,
+    played         int,
+    last_match     timestamptz,
+    current_rank   double precision,
+    st_algo        double precision,
+    rank_30        double precision,
+    rank_100       double precision,
+    lt_algo        double precision,
+    hg             double precision,
+    ha             double precision,
+    ag             double precision,
+    aa             double precision
+);
+
 -- Supabase exposes the public schema through its REST API; enable RLS with no
 -- policies so these tables are only reachable via the postgres/service role.
 alter table leagues            enable row level security;
@@ -187,3 +224,5 @@ alter table standings          enable row level security;
 alter table bookmakers         enable row level security;
 alter table bet_types          enable row level security;
 alter table odds               enable row level security;
+alter table team_rank_history  enable row level security;
+alter table team_rankings      enable row level security;

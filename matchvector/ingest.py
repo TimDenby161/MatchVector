@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 from . import config
 from .api import QuotaExhausted
 from .db import upsert
+from .ranking import update_rankings
 
 log = logging.getLogger(__name__)
 
@@ -385,6 +386,7 @@ def sync_nightly(api, conn, league_ids):
     step("stats", sync_fixture_stats, league_ids)
     for pair in pairs:
         step("odds", sync_odds, [pair])
+    step("rankings", lambda api, conn: update_rankings(conn))
     return failures
 
 

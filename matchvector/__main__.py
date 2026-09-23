@@ -7,12 +7,13 @@
     python -m matchvector sync stats --limit 2000
     python -m matchvector sync odds
     python -m matchvector nightly        # refresh everything that changes (scheduled task)
+    python -m matchvector rank [--full]  # update club rankings (--full replays every fixture)
 """
 import argparse
 import logging
 import sys
 
-from . import config, ingest
+from . import config, ingest, ranking
 from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
@@ -27,6 +28,10 @@ def main(argv=None):
     sub.add_parser("status", help="Show API-Football account quota")
     nightly = sub.add_parser("nightly", help="Refresh current seasons, new stats and odds")
     nightly.add_argument("--leagues", type=int, nargs="+", default=list(config.LEAGUES))
+
+    rank = sub.add_parser("rank", help="Update club rankings from finished fixtures")
+    rank.add_argument("--full", action="store_true",
+                      help="Replay every fixture from scratch (after changing starting ranks)")
 
     sync = sub.add_parser("sync", help="Pull data from API-Football")
     sync.add_argument("target", choices=TARGETS + ["all"])
@@ -48,6 +53,9 @@ def main(argv=None):
         if args.command == "init-db":
             init_schema(conn)
             print("Schema created.")
+            return 0
+        if args.command == "rank":
+            ranking.update_rankings(conn, full=args.full)
             return 0
 
         api = ApiFootball()
