@@ -11,16 +11,14 @@ Player rank
                z-score against players in the same role group (GK, CB, FB, DM, CM, AM, W, ST;
                norms: player-seasons with 900+ minutes - a distribution, not any one player's future)
     score    = sum(weight * z) for the player's role group
-               + TEAM_WEIGHT * club strength, where club strength = z of the club rank at the
-                 time, averaged over the window's matches by minutes (the clubs he actually
-                 played those matches for, as good as they were then). TEAM_WEIGHT = 1 makes
-                 club level count about as much as his own stats (sd 0.59 vs 0.67 among regulars),
-                 so players at weak clubs are marked down.
     score    = (score x minutes + MINUTES_PRIOR x SHRINK_MINUTES) / (minutes + SHRINK_MINUTES)
                (few minutes -> pulled toward a below-average level, so they're marked down)
-    rank     = percentile of the score among regulars (900+ window minutes) in the same position
-               across all matches, so 50 = an average regular in that position, 90 = better than
-               90% of them
+    stat pct = percentile of the score among regulars (900+ window minutes) in the same position
+               across all matches (50 = an average regular in that position)
+    club     = club rank at the time, averaged over the window's matches by minutes (the clubs he
+               actually played those matches for, as good as they were then)
+    rank     = stat pct x min(club / CLUB_RANK_MAX, 1): even a perfect player is capped by his
+               club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1300 = 74
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
@@ -44,7 +42,7 @@ log = logging.getLogger(__name__)
 WINDOW_APPS = 20
 WINDOW_DAYS = 540
 SHRINK_MINUTES = 900
-TEAM_WEIGHT = 1.0
+CLUB_RANK_MAX = 1300       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
 
@@ -107,7 +105,7 @@ class Window:
 
     def __init__(self):
         self.apps = deque()                # (kickoff, stats dict, role, broad position)
-        self.sums = dict.fromkeys(STATS + ("club_mins",), 0.0)   # club_mins: club strength x minutes
+        self.sums = dict.fromkeys(STATS + ("club_mins",), 0.0)   # club_mins: club rank x minutes
         self.roles = Counter()             # starting roles (LB, DM, ...)
         self.broad = Counter()             # API positions (G/D/M/F)
 
@@ -188,7 +186,6 @@ def compute_player_ratings(conn):
         "select fixture_id, team_id, rank_before from team_rank_history")}
     ranks = list(team_rank.values())
     tr_mean = sum(ranks) / len(ranks)
-    tr_sd = math.sqrt(sum((r - tr_mean) ** 2 for r in ranks) / len(ranks))
 
     fixtures = conn.execute(
         """select fixture_id, kickoff, home_team_id, away_team_id, status_short in ('NS', 'TBD')
@@ -224,12 +221,12 @@ def compute_player_ratings(conn):
                 mean, sd = norms[pos][k]
                 score += weight * (m[k] - mean) / sd
         minutes = w.sums["minutes"]
-        score += TEAM_WEIGHT * w.sums["club_mins"] / minutes
-        return (score * minutes + MINUTES_PRIOR * SHRINK_MINUTES) / (minutes + SHRINK_MINUTES), pos, minutes
+        score = (score * minutes + MINUTES_PRIOR * SHRINK_MINUTES) / (minutes + SHRINK_MINUTES)
+        return (score, w.sums["club_mins"] / minutes), pos, minutes     # (stat score, club rank)
 
     # One replay collects raw scores; ranks are scaled afterwards by the spread among regulars
     sample = defaultdict(list) # position -> raw scores of players with a full window of minutes
-    appearance_scores = []     # (fixture, player, raw score, position)
+    appearance_scores = []     # (fixture, player, (stat score, club rank), position)
     team_rows = []             # (fixture, team, predicted XI [(player, pos, raw)], actual XI [(raw, pos)], upcoming)
     for fid, kickoff, home, away, upcoming in fixtures:
         for team in (home, away):
@@ -255,7 +252,7 @@ def compute_player_ratings(conn):
                 if s is not None:
                     appearance_scores.append((fid, a["player"], s, pos))
                     if mins >= SHRINK_MINUTES:
-                        sample[pos].append(s)
+                        sample[pos].append(s[0])
                     if a["started"]:
                         actual.append((s, pos))
             team_rows.append((fid, team, [(p, pos, s, windows[p].label()) for p, pos, s, _ in predicted],
@@ -263,8 +260,7 @@ def compute_player_ratings(conn):
         # after the match: update windows and team history
         for a in apps.get(fid, []):
             st = _row_stats(a)
-            club_z = (team_rank.get((fid, a["team"]), tr_mean) - tr_mean) / tr_sd
-            st["club_mins"] = club_z * (a["minutes"] or 0)
+            st["club_mins"] = team_rank.get((fid, a["team"]), tr_mean) * (a["minutes"] or 0)
             windows[a["player"]].add(kickoff, st, a["role"], a["position"])
         for team in (home, away):
             played = {a["player"]: a["minutes"] for a in apps.get(fid, []) if a["team"] == team}
@@ -275,8 +271,10 @@ def compute_player_ratings(conn):
     pooled = sorted(x for v in sample.values() for x in v)
 
     def to_rank(s, pos):
+        """(stat score, club rank) -> stat percentile scaled by the club's level."""
+        score, club = s
         ref = cdf.get(pos) or pooled
-        return round(100 * bisect.bisect_left(ref, s) / len(ref), 1)
+        return round(100 * bisect.bisect_left(ref, score) / len(ref) * min(club / CLUB_RANK_MAX, 1), 1)
     log.info("Player ratings: %d appearances, %d team-fixtures, regulars per position %s",
              len(appearance_scores), len(team_rows), {p: len(v) for p, v in cdf.items()})
 
