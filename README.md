@@ -61,11 +61,10 @@ A team's first rank is `leagues.starting_rank` of the first league it plays in. 
 - `team_rankings` holds the current summary, like the Ranking tab: current rank, 30 and 100 Ranking, ST ALGO, LT ALGO, and HG/HA/AG/AA over the last 12 months.
 
 ```bash
-python -m matchvector rank          # new or changed fixtures only (the nightly job runs this)
-python -m matchvector rank --full   # replay everything, e.g. after changing starting ranks
+python -m matchvector rank   # the nightly job runs this after syncing
 ```
 
-The incremental run rewinds to the oldest new or changed fixture and replays forward from there, so late results still go in date order.
+Every run replays all fixtures from scratch, which takes seconds. Late results, corrected scores and changes to `starting_rank` are all picked up automatically.
 
 ## Tables
 

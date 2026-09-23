@@ -76,12 +76,11 @@ def summarise(history):
 
 # --------------------------------------------------------------------------- database
 
-def update_rankings(conn, full=False):
-    """Bring team_rank_history up to date, strictly in kickoff order, then rebuild team_rankings.
+def update_rankings(conn):
+    """Replay every finished fixture in kickoff order and rebuild both ranking tables.
 
-    full=True replays every fixture from scratch (use after changing starting ranks).
-    Otherwise only replays from the earliest new or changed fixture onwards, so a late
-    result or a corrected score still lands in date order.
+    A full replay takes seconds, so it always starts from scratch: late results,
+    corrected scores and starting_rank changes are all picked up automatically.
     """
     levels = dict(conn.execute(
         "select league_id, starting_rank from leagues where starting_rank is not null").fetchall())
@@ -114,46 +113,18 @@ def update_rankings(conn, full=False):
         league_id = first_league.get(team, first_comp.get(team))
         return float(levels.get(league_id, DEFAULT_STARTING_RANK))
 
-    replay_from = None if full else _replay_point(conn, fixtures)
-    if replay_from is False:
-        log.info("Rankings: no new or changed fixtures")
-    else:
-        _replay(conn, fixtures, replay_from, starting_rank)
+    _replay(conn, fixtures, starting_rank)
     _rebuild_summary(conn, fixtures, first_league, first_comp)
     conn.commit()
 
 
-def _replay_point(conn, fixtures):
-    """Kickoff to replay from: None = everything, False = nothing to do."""
-    done = {r[0]: (r[1], r[2]) for r in conn.execute(
-        "select fixture_id, kickoff, act_diff from team_rank_history where is_home")}
-    if not done:
-        return None
-    current = {f[0]: f for f in fixtures}
-    changed = [f[1] for f in fixtures
-               if f[0] not in done or done[f[0]][1] != f[6] - f[7] or done[f[0]][0] != f[1]]
-    # Fixtures ranked before but no longer finished (e.g. result annulled)
-    changed += [kickoff for fid, (kickoff, _) in done.items() if fid not in current]
-    # A moved kickoff also has to be undone from its old position
-    changed += [done[f[0]][0] for f in fixtures if f[0] in done and done[f[0]][0] != f[1]]
-    return min(changed) if changed else False
+def _replay(conn, fixtures, starting_rank):
+    conn.execute("truncate team_rank_history")
+    matches = [Match(f[0], f[4], f[5], f[6], f[7]) for f in fixtures]
+    kickoffs = {f[0]: f[1] for f in fixtures}
+    rows, _ = run(matches, starting_rank)
 
-
-def _replay(conn, fixtures, replay_from, starting_rank):
-    current, match_no = {}, {}
-    if replay_from is not None:
-        conn.execute("delete from team_rank_history where kickoff >= %s", [replay_from])
-        for team, n, rank in conn.execute(
-                "select distinct on (team_id) team_id, match_no, rank_after "
-                "from team_rank_history order by team_id, match_no desc"):
-            current[team], match_no[team] = rank, n
-    else:
-        conn.execute("truncate team_rank_history")
-
-    todo = [f for f in fixtures if replay_from is None or f[1] >= replay_from]
-    matches = [Match(f[0], f[4], f[5], f[6], f[7]) for f in todo]
-    kickoffs = {f[0]: f[1] for f in todo}
-    rows, _ = run(matches, lambda t: current[t] if t in current else starting_rank(t))
+    match_no = {}
 
     buf = io.StringIO()
     for m, h, a, exp_diff, act_diff, change in rows:
@@ -171,7 +142,7 @@ def _replay(conn, fixtures, replay_from, starting_rank):
                       "opponent_id, rank_before, rank_after, exp_diff, act_diff, rank_change) "
                       "from stdin") as cp:
             cp.write(buf.getvalue())
-    log.info("Rankings: replayed %d fixtures from %s", len(rows), replay_from or "the start")
+    log.info("Rankings: replayed %d fixtures", len(rows))
 
 
 def _rebuild_summary(conn, fixtures, first_league, first_comp):

@@ -7,7 +7,7 @@
     python -m matchvector sync stats --limit 2000
     python -m matchvector sync odds
     python -m matchvector nightly        # refresh everything that changes (scheduled task)
-    python -m matchvector rank [--full]  # update club rankings (--full replays every fixture)
+    python -m matchvector rank           # recalculate club rankings from every fixture
 """
 import argparse
 import logging
@@ -29,9 +29,7 @@ def main(argv=None):
     nightly = sub.add_parser("nightly", help="Refresh current seasons, new stats and odds")
     nightly.add_argument("--leagues", type=int, nargs="+", default=list(config.LEAGUES))
 
-    rank = sub.add_parser("rank", help="Update club rankings from finished fixtures")
-    rank.add_argument("--full", action="store_true",
-                      help="Replay every fixture from scratch (after changing starting ranks)")
+    sub.add_parser("rank", help="Recalculate club rankings from every finished fixture")
 
     sync = sub.add_parser("sync", help="Pull data from API-Football")
     sync.add_argument("target", choices=TARGETS + ["all"])
@@ -55,7 +53,7 @@ def main(argv=None):
             print("Schema created.")
             return 0
         if args.command == "rank":
-            ranking.update_rankings(conn, full=args.full)
+            ranking.update_rankings(conn)
             return 0
 
         api = ApiFootball()
