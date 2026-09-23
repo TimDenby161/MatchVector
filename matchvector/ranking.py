@@ -6,6 +6,12 @@ Per match:
     rank_change = (act_diff - exp_diff) * K_FACTOR
     home_rank  += rank_change;  away_rank -= rank_change
 
+In European and Club World Cup matches each team's rank also gets leagues.europe_bonus for
+its domestic league that season (manual; e.g. Premier League sides beat their domestic rank in
+Europe). Within a league everyone shares the bonus, so league and domestic cup games ignore it.
+team_rankings adds the bonus of each team's current league to its rank figures, so teams
+compare fairly across leagues; team_rank_history keeps the raw ranks.
+
 Differences from the sheet (exp_diff = (home*1.09 - away)/100, K = 10, no cap), chosen by
 backtesting 2023-26 predictions: the x1.09 multiplier gave 0.4-1.1 goals of home advantage
 (real: ~0.3 for everyone), and a smaller K plus a goal cap stops one freak result or cup
@@ -31,6 +37,7 @@ import io
 import logging
 import math
 import statistics
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 
@@ -58,6 +65,8 @@ class Match:
     away: object
     home_goals: int
     away_goals: int
+    home_bonus: float = 0.0   # leagues.europe_bonus, European / CWC matches only
+    away_bonus: float = 0.0
 
 
 def run(matches, starting_rank):
@@ -72,7 +81,7 @@ def run(matches, starting_rank):
                 current[team] = starting_rank(team)
                 history[team] = [current[team]]
         h, a = current[m.home], current[m.away]
-        exp_diff = (h - a + HOME_ADVANTAGE_POINTS) / 100
+        exp_diff = (h + m.home_bonus - a - m.away_bonus + HOME_ADVANTAGE_POINTS) / 100
         act_diff = m.home_goals - m.away_goals
         capped = max(-MAX_GOAL_DIFF, min(MAX_GOAL_DIFF, act_diff))
         change = (capped - exp_diff) * K_FACTOR
@@ -113,6 +122,8 @@ def update_rankings(conn):
     """
     levels = dict(conn.execute(
         "select league_id, starting_rank from leagues where starting_rank is not null").fetchall())
+    bonus = {k: float(v) for k, v in conn.execute(
+        "select league_id, europe_bonus from leagues where coalesce(europe_bonus, 0) <> 0")}
     missing = conn.execute(
         "select name || ' (' || country || ')' from leagues where starting_rank is null").fetchall()
     if missing:
@@ -123,7 +134,7 @@ def update_rankings(conn):
     fixtures = conn.execute(
         """
         select f.fixture_id, f.kickoff, f.league_id, l.type, f.home_team_id, f.away_team_id,
-               f.home_goals, f.away_goals, l.country
+               f.home_goals, f.away_goals, l.country, f.season
         from fixtures f join leagues l using (league_id)
         where f.status_short = any(%s) and f.home_goals is not null and f.away_goals is not null
         order by f.kickoff, f.fixture_id
@@ -131,25 +142,39 @@ def update_rankings(conn):
         [list(config.FINISHED_STATUSES)],
     ).fetchall()
 
-    first_league, first_comp = {}, {}
-    for _, _, league_id, ltype, home, away, _, _, _ in fixtures:
+    first_league, first_comp, league_games = {}, {}, Counter()
+    for _, _, league_id, ltype, home, away, _, _, _, season in fixtures:
         for team in (home, away):
             first_comp.setdefault(team, league_id)
             if ltype == "League":
                 first_league.setdefault(team, league_id)
+                league_games[(team, season, league_id)] += 1
+    # Domestic league per (team, season): the league it played most games in
+    domestic = {}
+    for (team, season, league_id), n in sorted(league_games.items(), key=lambda kv: kv[1]):
+        domestic[(team, season)] = league_id
+
+    def europe_bonus(team, season):
+        league_id = domestic.get((team, season)) or domestic.get((team, season + 1))
+        return bonus.get(league_id, 0.0)
 
     def starting_rank(team):
         league_id = first_league.get(team, first_comp.get(team))
         return float(levels.get(league_id, DEFAULT_STARTING_RANK))
 
-    _replay(conn, fixtures, starting_rank)
-    _rebuild_summary(conn, fixtures, first_league, first_comp)
+    _replay(conn, fixtures, starting_rank, europe_bonus if bonus else None)
+    _rebuild_summary(conn, fixtures, first_comp, bonus)
     conn.commit()
 
 
-def _replay(conn, fixtures, starting_rank):
+def _replay(conn, fixtures, starting_rank, europe_bonus=None):
     conn.execute("truncate team_rank_history")
-    matches = [Match(f[0], f[4], f[5], f[6], f[7]) for f in fixtures]
+    matches = []
+    for f in fixtures:
+        m = Match(f[0], f[4], f[5], f[6], f[7])
+        if europe_bonus and f[8] == "World":
+            m.home_bonus, m.away_bonus = europe_bonus(f[4], f[9]), europe_bonus(f[5], f[9])
+        matches.append(m)
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, _ = run(matches, starting_rank)
 
@@ -174,8 +199,12 @@ def _replay(conn, fixtures, starting_rank):
     log.info("Rankings: replayed %d fixtures", len(rows))
 
 
-def _rebuild_summary(conn, fixtures, first_league, first_comp):
-    """Recreate team_rankings (the Ranking tab) from the full history."""
+def _rebuild_summary(conn, fixtures, first_comp, bonus):
+    """Recreate team_rankings (the Ranking tab) from the full history.
+
+    Rank figures include the europe_bonus of the team's current league, so teams from
+    different leagues compare fairly.
+    """
     history, last_match = {}, {}
     for team, rank_before, rank_after, kickoff in conn.execute(
             "select team_id, rank_before, rank_after, kickoff from team_rank_history "
@@ -186,7 +215,7 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
         last_match[team] = kickoff
 
     latest_league = {}
-    for _, _, league_id, ltype, home, away, _, _, _ in fixtures:
+    for _, _, league_id, ltype, home, away, _, _, _, _ in fixtures:
         if ltype == "League":
             latest_league[home] = latest_league[away] = league_id
 
@@ -198,7 +227,7 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
     except ValueError:
         one_year_ago = date(today.year - 1, 3, 1)
     goals = {}
-    for _, kickoff, _, _, home, away, hg, ag, _ in fixtures:
+    for _, kickoff, _, _, home, away, hg, ag, _, _ in fixtures:
         if kickoff.date() >= one_year_ago:
             for team in (home, away):
                 goals.setdefault(team, {"hg": [], "ha": [], "ag": [], "aa": []})
@@ -210,16 +239,18 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
     for team, hist in history.items():
         s = summarise(hist)
         g = goals.get(team, {"hg": [], "ha": [], "ag": [], "aa": []})
+        league_id = latest_league.get(team, first_comp.get(team))
+        b = bonus.get(league_id, 0.0)
         buf.write("\t".join(map(str, (
-            team, latest_league.get(team, first_comp.get(team)), hist[0], s["played"],
-            last_match[team].isoformat(), s["current_rank"], s["st_algo"], s["rank_30"],
-            s["rank_100"], s["lt_algo"], avg(g["hg"]), avg(g["ha"]), avg(g["ag"]), avg(g["aa"]),
-            r"\N" if s["rank_volatility"] is None else s["rank_volatility"], s["reliability"],
+            team, league_id, hist[0], s["played"],
+            last_match[team].isoformat(), s["current_rank"] + b, s["st_algo"] + b, s["rank_30"] + b,
+            s["rank_100"] + b, s["lt_algo"] + b, avg(g["hg"]), avg(g["ha"]), avg(g["ag"]), avg(g["aa"]),
+            r"\N" if s["rank_volatility"] is None else s["rank_volatility"], s["reliability"], b,
         ))) + "\n")
     with conn.cursor() as cur:
         cur.execute("truncate team_rankings")
         with cur.copy("copy team_rankings (team_id, league_id, starting_rank, played, last_match, "
                       "current_rank, st_algo, rank_30, rank_100, lt_algo, hg, ha, ag, aa, "
-                      "rank_volatility, reliability) from stdin") as cp:
+                      "rank_volatility, reliability, europe_bonus) from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: summary rebuilt for %d teams", len(history))

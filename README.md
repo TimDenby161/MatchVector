@@ -57,6 +57,8 @@ This is based on the Club Ranking Google Sheet. Every finished fixture is replay
 
 This differs from the sheet, which uses (home × 1.09 − away) / 100, × 10 and no cap. Backtesting 2023–26 showed the ×1.09 gave 0.4–1.1 goals of home advantage, when the real figure is about 0.3 for every team. A smaller K and the goal cap also stop one freak result from swinging a rank. Prediction error fell from 1.77 to 1.68 goals per match. The settings are at the top of `matchvector/ranking.py`.
 
+`leagues.europe_bonus` is set by hand and defaults to 0. It adds rank points to a league's teams in European and Club World Cup matches only. League and domestic cup matches ignore it, because everyone in a league shares it. `team_rankings` includes the bonus of each team's current league in its rank figures, and shows the amount in its own `europe_bonus` column, so teams compare fairly across leagues. The Premier League is set to 100: its teams consistently beat their domestic ranks in Europe, by about 0.5 goals a game.
+
 A team's first rank is `leagues.starting_rank` of the first league it plays in. For a team that only ever appears in cups, it's the `starting_rank` of the first cup it plays in.
 
 - `team_rank_history` holds each team's rank before and after every match, like the Ranking Breakdown tab.
