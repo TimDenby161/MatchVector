@@ -43,8 +43,10 @@ Season rank (player_season_ranks), from that season's own matches
                the top decile, which is spread by how far the score is above the 90th percentile
                (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
                apart instead of all sitting at ~99
-    rank     = pct x club_factor(club), club = his clubs' average rank over his matches;
-               keepers use keeper_rank instead (mostly club level, rating nudges it)
+    rank     = club level first, stats adjust it: 100 x club / CLUB_RANK_MAX - OUT_CLUB_OFFSET
+               + OUT_STATS_WEIGHT x (pct - 50) (outfield_rank; keepers: keeper_rank, smaller stats
+               weight). club = his clubs' average rank over his matches, smoothed over this and
+               earlier seasons; squad players (low share of club minutes) scaled down up to 20%
     keeper club level is smoothed over this and earlier seasons (0.5 ^ years apart), so a move
                to a bigger club lifts him gradually
     smoothing = every season with 900+ minutes is blended with his other such seasons, weighted
@@ -283,8 +285,23 @@ def keeper_rank(pct, club, share=None):
     return min(max(r, 0), 100)
 
 
+OUT_CLUB_OFFSET = 12       # outfield rank = 100 x club / CLUB_RANK_MAX - this + OUT_STATS_WEIGHT x (pct - 50)
+OUT_STATS_WEIGHT = 0.3     # stats move an outfield player up to about +/-15 (keepers +/-10: noisier)
+OUT_FULL_SHARE = 0.7       # outfield players under this share of club minutes are scaled down, up to 20%
+
+
+def outfield_rank(pct, club, share=None):
+    """Outfield players, like keepers, start from club level - a regular for a strong club is
+    good evidence of quality - and their stats move them up or down. A player under
+    OUT_FULL_SHARE of his club's minutes (squad player) is scaled down by up to 20%."""
+    r = 100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + OUT_STATS_WEIGHT * (pct - 50)
+    if share is not None:
+        r *= min(1.0, 0.8 + 0.2 * share / OUT_FULL_SHARE)
+    return min(max(r, 0), 100)
+
+
 def final_rank(pct, club, pos, share=None):
-    return keeper_rank(pct, club, share) if pos == "GK" else pct * club_factor(club)
+    return keeper_rank(pct, club, share) if pos == "GK" else outfield_rank(pct, club, share)
 
 
 def club_factor(club):
@@ -381,12 +398,15 @@ def _season_ranks(conn, norms):
         """Score from his nearest well-measured season, moved through the age curve. With
         any_season, fall back to his nearest season with any minutes if none is well measured."""
         near = [y for y in anchors.get(player, []) if y != season]
+        thin = False
         if not near and any_season:
             near = [y for y in seasons_of.get(player, []) if y != season]
+            thin = True
         if not near:
             return None
         y = min(near, key=lambda x: (abs(x - season), x < season))   # nearest; ties: the later one
-        est = raw[(player, y)][0]
+        # a thin season's raw stats are noise (a 3-minute cameo): use its final, minutes-shrunk score
+        est = final.get((player, y), raw[(player, y)][0]) if thin else raw[(player, y)][0]
         for t in range(season, y):       # anchor later: take off the growth between
             est -= step(age(player, t))
         for t in range(y, season):       # anchor earlier: add it on
@@ -450,6 +470,9 @@ def _season_ranks(conn, norms):
     for p, y, t in conn.execute("select player_id, season, team_id from player_career_teams where season > 0"):
         careers[(p, y)].append(t)
     gap_team = {}
+    gap_share = {}             # estimated seasons at a club we have player data for: he didn't play
+    covered = {(t, y) for t, y in conn.execute(
+        "select distinct fp.team_id, f.season from fixture_players fp join fixtures f using (fixture_id)")}
     by_player = defaultdict(dict)
     for player, season, s, pos, club, mins in scored:
         by_player[player][season] = (pos, club)
@@ -469,6 +492,8 @@ def _season_ranks(conn, norms):
             if known:
                 team = max(known)[1]          # the club with most matches in our data that season
                 gap_team[(player, season)] = team
+                if (team, season) in covered:  # a club we track players for, yet no minutes: squad/youth
+                    gap_share[(player, season)] = 0.0
                 club = team_level[(team, season)][0]
             else:                             # the seasons either side, or the nearest one
                 either_side = [have[y][1] for y in (max((y for y in have if y < season), default=None),
@@ -480,9 +505,9 @@ def _season_ranks(conn, norms):
     # Keepers lean on club level, so smooth that across his career too (weight 0.5 ^ years apart):
     # a move to a bigger club counts, but not fully straight away (Suzuki, Parma 912 -> Villa 1056,
     # would otherwise jump 66 -> 83 in four games)
-    gk_club = defaultdict(dict)
+    gk_club = defaultdict(dict)        # (all players now: rank leans on club level for everyone)
     for player, season, s, pos, club, mins in scored:
-        if pos == "GK" and club:
+        if club:
             gk_club[player][season] = club
     smooth_club = {}
     for player, clubs in gk_club.items():
@@ -490,13 +515,26 @@ def _season_ranks(conn, norms):
             w = {y: 0.5 ** abs(y - season) for y in clubs if y <= season}   # this season and earlier ones
             smooth_club[(player, season)] = sum(clubs[y] * w[y] for y in w) / sum(w.values())
 
+    # share of his club's minutes in each real season; an estimated season with no club data
+    # inherits the share of his nearest real season (a fringe player stays a fringe player)
+    real_share = {}
+    for player, season, s, pos, club, mins in scored:
+        games = season_games.get((player, season))
+        if mins and games:
+            real_share[(player, season)] = min(mins / (games * 90), 1)
+    real_seasons = defaultdict(list)
+    for (player, season) in real_share:
+        real_seasons[player].append(season)
+
     rows = []
     for player, season, s, pos, club, mins in scored:
-        if pos == "GK" and (player, season) in smooth_club:
+        if (player, season) in smooth_club:
             club = smooth_club[(player, season)]
         if ref.get(pos) and club:
-            games = season_games.get((player, season))
-            share = min(mins / (games * 90), 1) if games else None
+            share = real_share.get((player, season)) if mins else gap_share.get((player, season))
+            if share is None and not mins and real_seasons.get(player):
+                nearest = min(real_seasons[player], key=lambda y: abs(y - season))
+                share = real_share[(player, nearest)]
             rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, share), 1), mins,
                          gap_team.get((player, season))))
     return rows
