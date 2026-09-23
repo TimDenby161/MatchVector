@@ -74,6 +74,7 @@ LEAGUES = {
     758: "Gibraltar Premier Division",
     365: "Latvia Virsliga",
     283: "Romania Liga I",
+    210: "Croatia HNL",
     # Rest of world
     71: "Brazil Serie A",
     128: "Argentina Liga Profesional",
