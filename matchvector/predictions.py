@@ -2,8 +2,11 @@
 
 Based on the Club Ranking sheet's RG tabs, improved by backtesting 51,000 matches (2024-26):
 
-    match rank = MATCH_RANK_NOW x Now (current rank) + (1 - MATCH_RANK_NOW) x LT ALGO
-                 (backtested: beat Now alone in 2022-23 and 2024+, log loss 1.0034 -> 1.0007)
+    match rank = w x Now (current rank) + (1 - w) x LT ALGO, where w slides with how far
+                 away the match is: MATCH_RANK_NOW_TODAY on the day down to MATCH_RANK_NOW_YEAR
+                 a year or more out (backtested with ranks as they stood 0/91/182/365 days
+                 before kickoff: the best w was 0.6 / 0.4 / 0.4 / 0.2; Now alone was worse at
+                 every horizon)
     exp_diff   = (home match rank - away match rank + HOME_ADVANTAGE_POINTS) / 100
                  + EUROPE_HOME_BONUS in UEFA club competitions (home sides do ~0.2 goals better)
     base_home  = mean(home team's avg goals scored at home, away team's avg conceded away)
@@ -39,12 +42,16 @@ DRAW_INFLATION = 1.1      # max draw boost (close games); independent Poisson un
 DRAW_FADE_MARGIN = 1.5    # no draw boost once the expected margin reaches this many goals
 EUROPE_HOME_BONUS = 0.2   # extra expected home margin in the Champions/Europa/Conference League
 EUROPE_COMPS = {2, 3, 848}
-MATCH_RANK_NOW = 0.6       # weight of the current rank; the rest is LT ALGO
+MATCH_RANK_NOW_TODAY = 0.6  # weight of the current rank for a match today; the rest is LT ALGO
+MATCH_RANK_NOW_YEAR = 0.2   # ... for a match a year or more away (straight line in between)
 
 
-def match_rank(now, lt):
-    """Rank used for projections: a blend of the current rank and LT ALGO."""
-    return MATCH_RANK_NOW * now + (1 - MATCH_RANK_NOW) * (lt if lt is not None else now)
+def match_rank(now, lt, days_ahead=0.0):
+    """Rank used for projections: the current rank blended with LT ALGO, leaning more on LT
+    the further away the match is."""
+    frac = min(max(days_ahead, 0.0) / 365, 1.0)
+    w = MATCH_RANK_NOW_TODAY + (MATCH_RANK_NOW_YEAR - MATCH_RANK_NOW_TODAY) * frac
+    return w * now + (1 - w) * (lt if lt is not None else now)
 MAX_GOALS = 10
 DEFAULT_HOME_GOALS, DEFAULT_AWAY_GOALS = 1.45, 1.15
 UPCOMING_STATUSES = ("NS", "TBD")
@@ -139,7 +146,7 @@ def update_predictions(conn):
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=365)
 
-    ranks = {t: (match_rank(now, lt), rel) for t, now, lt, rel in conn.execute(
+    ranks = {t: (cur, lt, rel) for t, cur, lt, rel in conn.execute(
         "select team_id, current_rank, lt_algo, reliability from team_rankings")}
     starting = {k: float(v) for k, v in conn.execute(
         "select league_id, starting_rank from leagues where starting_rank is not null")}
@@ -171,8 +178,11 @@ def update_predictions(conn):
         lg_home = sum(g[0] for g in games) / len(games) if games else DEFAULT_HOME_GOALS
         lg_away = sum(g[1] for g in games) / len(games) if games else DEFAULT_AWAY_GOALS
         default_rank = starting.get(league_id, DEFAULT_STARTING_RANK)
-        h_rank, h_rel = ranks.get(home, (default_rank, 0.0))
-        a_rank, a_rel = ranks.get(away, (default_rank, 0.0))
+        days_ahead = (kickoff - now).total_seconds() / 86400
+        h_cur, h_lt, h_rel = ranks.get(home, (default_rank, None, 0.0))
+        a_cur, a_lt, a_rel = ranks.get(away, (default_rank, None, 0.0))
+        h_rank = match_rank(h_cur, h_lt, days_ahead)
+        a_rank = match_rank(a_cur, a_lt, days_ahead)
 
         h_miss, a_miss = missing.get((fid, home)), missing.get((fid, away))
         rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
