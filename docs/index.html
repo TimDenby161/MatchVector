@@ -656,6 +656,7 @@ function matchCard(m) {
         </div>
       </div>
       ${probBar(m)}
+      ${m.home_missing != null || m.away_missing != null ? `<div class="market-line" title="Players listed injured, suspended or doubtful, weighted by their share of their team's recent minutes (1.0 = one ever-present player)">Missing players <b>${(m.home_missing ?? 0).toFixed(1)}</b> · <b>${(m.away_missing ?? 0).toFixed(1)}</b></div>` : ""}
       ${m.m_home != null ? `<div class="market-line" title="Average bookmaker odds, margin removed">Bookmakers <b>${Math.round(m.m_home * 100)}%</b> · <b>${Math.round(m.m_draw * 100)}%</b> · <b>${Math.round(m.m_away * 100)}%</b></div>` : ""}
       ${detail}
     </div>`;

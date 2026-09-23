@@ -19,7 +19,8 @@ from . import config, export, ingest, predictions, ranking
 from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
-TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "players", "injuries"]
+TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "players", "injuries",
+           "player_minutes"]
 
 
 def main(argv=None):
@@ -86,6 +87,9 @@ def main(argv=None):
                     ingest.sync_standings(api, conn, args.leagues, args.seasons)
                 elif target == "stats":
                     ingest.sync_fixture_stats(api, conn, args.leagues, args.seasons, limit=args.limit)
+                elif target == "player_minutes":
+                    ingest.sync_fixture_players(
+                        api, conn, [l for l in args.leagues if l in config.INJURY_MODEL_LEAGUES])
                 elif target in ("players", "injuries"):
                     leagues = [l for l in args.leagues if l in config.PLAYER_LEAGUES] or args.leagues
                     fn = ingest.sync_players if target == "players" else ingest.sync_injuries

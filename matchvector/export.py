@@ -54,19 +54,21 @@ def export_site_data(conn, out_dir=OUT_DIR):
                       f.status_short, f.home_goals, f.away_goals, f.pen_home, f.pen_away,
                       p.p_home, p.p_draw, p.p_away, p.home_xg, p.away_xg, p.likely_score,
                       p.home_rank, p.away_rank, p.source, p.rating, p.rating_winner,
-                      p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals
+                      p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals,
+                      p.home_missing, p.away_missing
                from fixtures f left join fixture_predictions p using (fixture_id)
                where f.kickoff between %s and %s
                order by f.kickoff, f.fixture_id""",
             [now - timedelta(days=PAST_DAYS), now + timedelta(days=FUTURE_DAYS)]):
         (fid, kickoff, lid, rnd, home, away, status, hg, ag, ph, pa_, p_h, p_d, p_a,
-         hxg, axg, likely, hr, ar, source, *ratings) = row
+         hxg, axg, likely, hr, ar, source, *ratings, h_miss, a_miss) = row
         team_ids.update((home, away))
         matches.append([
             fid, kickoff.isoformat(), lid, rnd, home, away, status, hg, ag, ph, pa_,
             _r(p_h, 3), _r(p_d, 3), _r(p_a, 3), _r(hxg), _r(axg), likely, _r(hr, 0), _r(ar, 0),
             source, *ratings,
             *[_r(x, 3) for x in market.get(fid, (None, None, None))],
+            _r(h_miss), _r(a_miss),
         ])
 
     # Form: total rank change over each team's last FORM_GAMES games
@@ -94,7 +96,8 @@ def export_site_data(conn, out_dir=OUT_DIR):
         "fields": ["id", "kickoff", "league", "round", "home", "away", "status", "hg", "ag",
                    "pen_h", "pen_a", "p_home", "p_draw", "p_away", "home_xg", "away_xg",
                    "likely", "home_rank", "away_rank", "source", "rating", "r_winner",
-                   "r_margin", "r_clean_sheets", "r_shape", "r_goals", "m_home", "m_draw", "m_away"],
+                   "r_margin", "r_clean_sheets", "r_shape", "r_goals", "m_home", "m_draw", "m_away",
+                   "home_missing", "away_missing"],
         "matches": matches,
         "competitions": competitions,
         "teams": teams,

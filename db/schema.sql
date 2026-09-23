@@ -250,6 +250,21 @@ create table if not exists injuries (
 );
 create index if not exists injuries_team_idx on injuries (team_id, fixture_id);
 
+-- Who played in each match and for how long (config.INJURY_MODEL_LEAGUES only), from the
+-- player block of /fixtures?ids=. Only players with minutes are stored.
+create table if not exists fixture_players (
+    fixture_id  int not null,
+    team_id     int not null,
+    player_id   int not null,
+    minutes     smallint not null,
+    started     boolean,
+    position    text,          -- G / D / M / F
+    rating      numeric(3,1),
+    primary key (fixture_id, player_id)
+);
+create index if not exists fixture_players_team_idx on fixture_players (team_id, fixture_id);
+alter table fixtures add column if not exists players_fetched_at timestamptz;
+
 -- Club ranking (see matchvector/ranking.py). Rebuilt from scratch on every run.
 -- Every team starts from leagues.starting_rank of the first league it plays in.
 alter table leagues add column if not exists starting_rank numeric;
@@ -316,6 +331,10 @@ create table if not exists fixture_predictions (
 alter table fixture_predictions add column if not exists source text not null default 'live';
 -- 1 (terrible) - 5 (excellent) grade of the projection once the match is finished, plus the
 -- five 0-5 factor scores it is weighted from (see matchvector/rating.py)
+-- Missing-player strength from the injury lists (1.0 = one ever-present player), see
+-- matchvector/injuries.py; null where there's no injury list
+alter table fixture_predictions add column if not exists home_missing double precision;
+alter table fixture_predictions add column if not exists away_missing double precision;
 alter table fixture_predictions add column if not exists rating smallint;
 alter table fixture_predictions add column if not exists rating_winner smallint;
 alter table fixture_predictions add column if not exists rating_margin smallint;
@@ -361,3 +380,4 @@ alter table fixture_predictions enable row level security;
 alter table players            enable row level security;
 alter table player_seasons     enable row level security;
 alter table injuries           enable row level security;
+alter table fixture_players    enable row level security;

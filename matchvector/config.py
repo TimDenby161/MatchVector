@@ -99,6 +99,10 @@ PLAYER_LEAGUES = [
     332,                           # Slovakia
 ]
 
+# Leagues with enough injury history (2021+) for the injury adjustment; per-match player
+# minutes are fetched for these
+INJURY_MODEL_LEAGUES = [39, 40, 140, 135, 78, 61, 203, 88, 253, 103]
+
 FINISHED_STATUSES = ("FT", "AET", "PEN")
 
 # Odds markets to keep (API-Football bet ids). Everything else is discarded.

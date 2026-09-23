@@ -386,6 +386,8 @@ def sync_nightly(api, conn, league_ids):
         step("standings", sync_standings, [league_id], [season])
     # All seasons, so earlier gaps and retries get picked up too.
     step("stats", sync_fixture_stats, league_ids)
+    step("player minutes", sync_fixture_players,
+         [l for l in league_ids if l in config.INJURY_MODEL_LEAGUES])
     for pair in pairs:
         step("odds", sync_odds, [pair])
     for league_id, season in pairs:
@@ -498,3 +500,39 @@ def sync_injuries(api, conn, league_ids, seasons):
             upsert(conn, "injuries", list(rows.values()), ["fixture_id", "player_id"])
             conn.commit()
             log.info("Injuries league=%s season=%s: %d", league_id, season, len(rows))
+
+
+def sync_fixture_players(api, conn, league_ids, batch_size=20):
+    """Per-match player minutes for finished fixtures not fetched yet (/fixtures?ids=)."""
+    pending = [r[0] for r in conn.execute(
+        """select fixture_id from fixtures
+           where players_fetched_at is null and status_short = any(%s) and league_id = any(%s)
+           order by kickoff""", [list(config.FINISHED_STATUSES), list(league_ids)])]
+    log.info("Fixtures needing player minutes: %d (~%d API calls)", len(pending), -(-len(pending) // batch_size))
+    now = datetime.now(timezone.utc)
+    for i in range(0, len(pending), batch_size):
+        resp = api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size])))
+        rows, done = [], []
+        for f in resp:
+            fid = f["fixture"]["id"]
+            for team_block in f.get("players") or []:
+                team_id = team_block["team"]["id"]
+                for p in team_block.get("players") or []:
+                    games = (p.get("statistics") or [{}])[0].get("games") or {}
+                    minutes = _int(games.get("minutes"))
+                    if not minutes or not p["player"].get("id"):
+                        continue
+                    rows.append({"fixture_id": fid, "team_id": team_id, "player_id": p["player"]["id"],
+                                 "minutes": minutes, "started": games.get("substitute") is False,
+                                 "position": games.get("position"),
+                                 "rating": _parse_stat(games.get("rating"))})
+            kickoff = datetime.fromisoformat(f["fixture"]["date"])
+            if f.get("players") or now - kickoff > STATS_RETRY_WINDOW:
+                done.append(fid)
+        upsert(conn, "fixture_players", _dedupe(rows, ("fixture_id", "player_id")),
+               ["fixture_id", "player_id"], touch_updated_at=False)
+        if done:
+            conn.execute("update fixtures set players_fetched_at = now() where fixture_id = any(%s)", [done])
+        conn.commit()
+        if (i // batch_size) % 50 == 0:
+            log.info("Player minutes %d/%d", i + len(resp), len(pending))

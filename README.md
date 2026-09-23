@@ -99,13 +99,20 @@ Every run replays all fixtures from scratch, which takes seconds. Late results, 
 1. **Expected margin:** (home rank − away rank + 30) / 100, plus 0.2 goals in the Champions League, Europa League and Conference League, where home sides do better.
 2. **Base goals for each side:** the average of the team's own goals scored and the opponent's goals conceded, at home for the home side and away for the away side. The averages cover the last 12 months, use **xG instead of goals** for any match that has it, and are shrunk towards the competition average by 6 games.
 3. **Projected goals:** a proportional version of the sheet's "Buff" scales the favourite up and the underdog down by the same factor until the margin matches. The original moved goals in a straight line, which pushed underdogs to around 0 goals and made the model far too sure they wouldn't score.
-4. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is boosted by up to ×1.1 in close games; the boost fades to nothing at a 1.5-goal margin.
+4. **Injuries**, in the 10 leagues in `config.INJURY_MODEL_LEAGUES` that have injury history: the Premier League, Championship, La Liga, Serie A, the Bundesliga, Ligue 1, Turkey, the Netherlands, MLS and Norway.
+   - Each team's **missing strength** is the total, over players listed as out or doubtful, of each player's share of the team's minutes in its last 10 matches. 1.0 means one ever-present player. Long-term absentees have no recent minutes, so they add almost nothing.
+   - The expected margin moves by 0.1 goals per unit of (away missing − home missing).
+   - Minutes come from `fixture_players` (per-match minutes, fetched for these leagues). See `matchvector/injuries.py`.
+   - In a train/test backtest (trained on 2021/22–2023/24, tested on 2024/25 onwards), it improved test log loss from 1.0066 to 1.0059. That's small but consistent.
+   - Match cards show each side's missing strength.
+5. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is boosted by up to ×1.1 in close games; the boost fades to nothing at a 1.5-goal margin.
 
 The sheet's "36% × strength ratio" blend is dropped. Backtested log loss on 51,000 matches from 2024 to 2026: the sheet's method 1.016, the first version 1.0053, the current one 1.0035. Guessing base rates scores about 1.07.
 
 These were tested and not adopted:
 - A faster rank K for the first games after the summer break. It was worse.
 - Pulling ranks towards the league level after the summer. It made no difference.
+- Variations on the injury weighting: 5 or 20 recent matches, rating-weighted, or goalkeepers and attackers weighted more. They made no real difference.
 - Blending in bookmaker odds. On the first 505 matches with odds, the bookmakers alone scored best (log loss 0.975 against the model's 0.991), so blending isn't worth it yet. Re-test once there are a few thousand matches.
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.

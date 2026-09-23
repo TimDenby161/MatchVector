@@ -11,6 +11,8 @@ Based on the Club Ranking sheet's RG tabs, improved by backtesting 51,000 matche
     home_xg    = base_home * x;  away_xg = base_away / x, with x chosen so home_xg - away_xg =
                  exp_diff (a proportional version of the sheet's "Buff", which moved goals in a
                  straight line and pushed underdogs to ~0 goals)
+                 In config.INJURY_MODEL_LEAGUES the margin also shifts by injuries.BETA x
+                 (away missing strength - home missing strength), from the injury lists
     P(score)   = Poisson(home_xg) x Poisson(away_xg), 0-10 goals each
     draw       = P(draw) boosted by up to DRAW_INFLATION in close games (none past a 1.5 goal
                  margin), win/loss rescaled to fill the rest
@@ -25,6 +27,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from . import config
+from .injuries import BETA as INJURY_BETA, missing_strengths
 from .ranking import DEFAULT_STARTING_RANK, HOME_ADVANTAGE_POINTS
 
 log = logging.getLogger(__name__)
@@ -75,7 +78,8 @@ def _shrunk(records, idx, league_avg):
     return (total + league_avg * SHRINK_GAMES) / (len(records) + SHRINK_GAMES)
 
 
-def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, league_id=None):
+def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, league_id=None,
+                  home_missing=0.0, away_missing=0.0):
     """(exp_diff, home_xg, away_xg, p_home, p_draw, p_away, likely_score) for one fixture.
 
     home_records: the home side's home games as (scored, conceded); away_records: the away
@@ -84,6 +88,7 @@ def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, 
     exp_diff = (h_rank - a_rank + HOME_ADVANTAGE_POINTS) / 100
     if league_id in EUROPE_COMPS:
         exp_diff += EUROPE_HOME_BONUS
+    exp_diff += INJURY_BETA * (away_missing - home_missing)
     base_home = (_shrunk(home_records, 0, lg_home) + _shrunk(away_records, 1, lg_home)) / 2
     base_away = (_shrunk(away_records, 0, lg_away) + _shrunk(home_records, 1, lg_away)) / 2
     home_xg, away_xg = project(base_home, base_away, exp_diff)
@@ -130,6 +135,7 @@ def update_predictions(conn):
         away_rec[away].append((af, hf))
         comp_goals[league_id].append((hg, ag))
 
+    missing = missing_strengths(conn)
     upcoming = conn.execute(
         """select fixture_id, kickoff, league_id, home_team_id, away_team_id from fixtures
            where status_short = any(%s) and kickoff >= %s order by kickoff""",
@@ -144,10 +150,11 @@ def update_predictions(conn):
         h_rank, h_rel = ranks.get(home, (default_rank, 0.0))
         a_rank, a_rel = ranks.get(away, (default_rank, 0.0))
 
+        h_miss, a_miss = missing.get((fid, home)), missing.get((fid, away))
         rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
                      *predict_match(h_rank, a_rank, home_rec[home], away_rec[away], lg_home, lg_away,
-                                    league_id),
-                     h_rel, a_rel))
+                                    league_id, h_miss or 0.0, a_miss or 0.0),
+                     h_rel, a_rel, h_miss, a_miss))
 
     # Upsert only upcoming fixtures: once a match kicks off its row is left alone, so it
     # keeps the last pre-kickoff projection for comparing with the result.
@@ -155,8 +162,8 @@ def update_predictions(conn):
         cur.executemany(
             """insert into fixture_predictions (fixture_id, kickoff, league_id, home_team_id,
                away_team_id, home_rank, away_rank, exp_diff, home_xg, away_xg, p_home, p_draw,
-               p_away, likely_score, home_reliability, away_reliability)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               p_away, likely_score, home_reliability, away_reliability, home_missing, away_missing)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                on conflict (fixture_id) do update set
                  kickoff = excluded.kickoff, league_id = excluded.league_id,
                  home_team_id = excluded.home_team_id, away_team_id = excluded.away_team_id,
@@ -165,12 +172,14 @@ def update_predictions(conn):
                  away_xg = excluded.away_xg, p_home = excluded.p_home, p_draw = excluded.p_draw,
                  p_away = excluded.p_away, likely_score = excluded.likely_score,
                  home_reliability = excluded.home_reliability,
-                 away_reliability = excluded.away_reliability, updated_at = now()""", rows)
+                 away_reliability = excluded.away_reliability,
+                 home_missing = excluded.home_missing, away_missing = excluded.away_missing,
+                 updated_at = now()""", rows)
     conn.commit()
     log.info("Predictions: %d upcoming fixtures", len(rows))
 
 
-BACKFILL_FROM = datetime(2023, 7, 1, tzinfo=timezone.utc)
+BACKFILL_FROM = datetime(2021, 7, 1, tzinfo=timezone.utc)
 
 
 def backfill_predictions(conn):
@@ -193,6 +202,7 @@ def backfill_predictions(conn):
 
     window = timedelta(days=365)
     xg = _load_xg(conn)
+    missing = missing_strengths(conn)
     home_rec, away_rec, comp = defaultdict(deque), defaultdict(deque), defaultdict(deque)
 
     def trim(dq, now):
@@ -209,10 +219,12 @@ def backfill_predictions(conn):
             lg_home = sum(g[1] for g in games) / len(games) if games else DEFAULT_HOME_GOALS
             lg_away = sum(g[2] for g in games) / len(games) if games else DEFAULT_AWAY_GOALS
             h_rank, a_rank = ranks_before[(fid, True)], ranks_before[(fid, False)]
+            h_miss, a_miss = missing.get((fid, home)), missing.get((fid, away))
             rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
                          *predict_match(h_rank, a_rank, [r[1:] for r in home_rec[home]],
                                         [r[1:] for r in away_rec[away]], lg_home, lg_away,
-                                        league_id)))
+                                        league_id, h_miss or 0.0, a_miss or 0.0),
+                         h_miss, a_miss))
         hf, af = _form(fid, hg, ag, xg)
         home_rec[home].append((kickoff, hf, af))
         away_rec[away].append((kickoff, af, hf))
@@ -222,8 +234,8 @@ def backfill_predictions(conn):
         cur.executemany(
             """insert into fixture_predictions (fixture_id, kickoff, league_id, home_team_id,
                away_team_id, home_rank, away_rank, exp_diff, home_xg, away_xg, p_home, p_draw,
-               p_away, likely_score, source)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'backfill')
+               p_away, likely_score, home_missing, away_missing, source)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'backfill')
                on conflict (fixture_id) do nothing""", rows)
     conn.commit()
     log.info("Backfilled predictions for %d finished fixtures", len(rows))
