@@ -31,8 +31,10 @@ Season rank (player_season_ranks), from that season's own matches
                  age, measured from players with ANCHOR_MINUTES+ in both seasons). So a 15-year-old's
                  debut season sits a normal amount below his first full season. With no such
                  season anywhere, MINUTES_PRIOR, so a thin season is marked down
-    gaps     = a season between his first and last seasons here with no minutes in these leagues
-               (e.g. a year in a league without player data) gets the age-curve estimate alone.
+    gaps     = any season from FILL_FROM_SEASON to now with no minutes in these leagues (a year in
+               a league without player data, before his debut here, or after he left) gets the
+               age-curve estimate alone, from his nearest well-measured season (or nearest season
+               at all if none is).
                His club that season comes from player_career_teams (only clubs we have league
                fixtures for that season, so its level is its real average rank then); failing
                that, club level from the seasons either side. Stored with minutes = 0 so the site
@@ -81,6 +83,7 @@ PREDICT_MATCHES = 5
 FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull on season ranks
 PRIOR_SEASON_MINUTES = 1350  # weight of last season's score at the start of a season (15 full games)
 ANCHOR_MINUTES = 1500      # a season with this many minutes is measured well enough to estimate others from
+FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -360,9 +363,16 @@ def _season_ranks(conn, norms):
         if mins >= ANCHOR_MINUTES:
             anchors[player].append(season)
 
-    def estimate(player, season):
-        """Score from his nearest well-measured season, moved through the age curve."""
+    seasons_of = defaultdict(list)
+    for (player, season) in raw:
+        seasons_of[player].append(season)
+
+    def estimate(player, season, any_season=False):
+        """Score from his nearest well-measured season, moved through the age curve. With
+        any_season, fall back to his nearest season with any minutes if none is well measured."""
         near = [y for y in anchors.get(player, []) if y != season]
+        if not near and any_season:
+            near = [y for y in seasons_of.get(player, []) if y != season]
         if not near:
             return None
         y = min(near, key=lambda x: (abs(x - season), x < season))   # nearest; ties: the later one
@@ -428,11 +438,13 @@ def _season_ranks(conn, norms):
     by_player = defaultdict(dict)
     for player, season, s, pos, club, mins in scored:
         by_player[player][season] = (pos, club)
+    last_season = max(y for _, y in raw)
     for player, have in by_player.items():
-        for season in range(min(have) + 1, max(have)):
+        # every season from FILL_FROM_SEASON to now, so the site has a number in every cell
+        for season in range(min(FILL_FROM_SEASON, min(have) + 1), last_season + 1):
             if season in have:
                 continue
-            est = estimate(player, season)
+            est = estimate(player, season, any_season=True)
             if est is None:
                 continue
             near = sorted(have, key=lambda y: abs(y - season))
@@ -443,7 +455,7 @@ def _season_ranks(conn, norms):
                 team = max(known)[1]          # the club with most matches in our data that season
                 gap_team[(player, season)] = team
                 club = team_level[(team, season)][0]
-            else:
+            else:                             # the seasons either side, or the nearest one
                 either_side = [have[y][1] for y in (max((y for y in have if y < season), default=None),
                                                      min((y for y in have if y > season), default=None))
                                if y is not None and have[y][1]]
