@@ -6,7 +6,7 @@ on:
   workflow_dispatch:       # "Run workflow" button for manual runs
 
 concurrency:
-  group: nightly-sync
+  group: db-sync            # shared with the match-day job so they never overlap
   cancel-in-progress: false
 
 permissions:
@@ -44,5 +44,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898183+github-actions[bot]@users.noreply.github.com"
           git add docs/data
-          git diff --cached --quiet || git commit -m "Update website data"
-          git push
+          if ! git diff --cached --quiet; then
+            git commit -m "Update website data"
+            git pull --rebase
+            git push
+          fi

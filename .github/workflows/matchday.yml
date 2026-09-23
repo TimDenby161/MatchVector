@@ -1,0 +1,45 @@
+name: Match day
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes; does nothing unless a match is within 3 hours
+  workflow_dispatch:
+
+concurrency:
+  group: db-sync            # shared with the nightly job so they never overlap
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  matchday:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      API_DAILY_RESERVE: "200"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Pre-kickoff odds, injuries, late paper bets, settle
+        run: python -m matchvector matchday
+
+      - name: Commit bets data if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898183+github-actions[bot]@users.noreply.github.com"
+          git add docs/data/bets.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update paper bets"
+            git pull --rebase
+            git push
+          fi

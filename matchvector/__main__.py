@@ -10,12 +10,13 @@
     python -m matchvector rank           # recalculate club rankings from every fixture
     python -m matchvector predict        # projected scores / W-D-L for upcoming fixtures
     python -m matchvector export         # JSON for the website in docs/data
+    python -m matchvector matchday       # pre-kickoff odds/injuries, late paper bets, settle
 """
 import argparse
 import logging
 import sys
 
-from . import config, export, ingest, predictions, ranking
+from . import config, export, ingest, matchday, predictions, ranking
 from .api import ApiFootball, QuotaExhausted
 from .db import connect, init_schema
 
@@ -35,6 +36,7 @@ def main(argv=None):
     sub.add_parser("rank", help="Recalculate club rankings from every finished fixture")
     sub.add_parser("predict", help="Project scores and W/D/L chances for upcoming fixtures")
     sub.add_parser("export", help="Write JSON for the website to docs/data")
+    sub.add_parser("matchday", help="Pre-kickoff odds and injuries, late paper bets, settle bets")
 
     sync = sub.add_parser("sync", help="Pull data from API-Football")
     sync.add_argument("target", choices=TARGETS + ["all"])
@@ -69,6 +71,10 @@ def main(argv=None):
 
         api = ApiFootball()
         try:
+            if args.command == "matchday":
+                matchday.run_matchday(api, conn)
+                export.export_bets(conn)
+                return 0
             if args.command == "nightly":
                 failures = ingest.sync_nightly(api, conn, args.leagues)
                 logging.info("Nightly sync finished with %d failed step(s)", failures)

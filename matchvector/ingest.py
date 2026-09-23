@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
-from . import config
+from . import betting, config
 from .api import QuotaExhausted
 from .db import upsert
 from .predictions import backfill_predictions, update_predictions
@@ -307,34 +307,57 @@ def sync_odds(api, conn, league_seasons, bet_ids=None):
     API-Football only keeps odds from ~14 days before kickoff until shortly
     after, so this has to run regularly to build up history.
     """
-    bet_ids = set(bet_ids or config.ODDS_BET_IDS)
     for league_id, season in league_seasons:
         resp = api.get_all_pages("odds", league=league_id, season=season)
-        bookmakers, bets, rows = {}, {}, []
-        for item in resp:
-            fixture_id = item["fixture"]["id"]
-            updated = item.get("update")
-            for bm in item.get("bookmakers", []):
-                bookmakers[bm["id"]] = {"bookmaker_id": bm["id"], "name": bm["name"]}
-                for bet in bm.get("bets", []):
-                    if bet["id"] not in bet_ids:
-                        continue
-                    bets[bet["id"]] = {"bet_id": bet["id"], "name": bet["name"]}
-                    for v in bet.get("values", []):
-                        rows.append({
-                            "fixture_id": fixture_id,
-                            "bookmaker_id": bm["id"],
-                            "bet_id": bet["id"],
-                            "selection": str(v["value"]),
-                            "odd": _parse_stat(v.get("odd")),
-                            "api_updated_at": updated,
-                        })
-        upsert(conn, "bookmakers", list(bookmakers.values()), ["bookmaker_id"], touch_updated_at=False)
-        upsert(conn, "bet_types", list(bets.values()), ["bet_id"], touch_updated_at=False)
-        upsert(conn, "odds", _dedupe(rows, ("fixture_id", "bookmaker_id", "bet_id", "selection")),
-               ["fixture_id", "bookmaker_id", "bet_id", "selection"])
-        conn.commit()
-        log.info("Odds league=%s season=%s: %d fixtures, %d prices", league_id, season, len(resp), len(rows))
+        n = _store_odds(conn, resp, bet_ids)
+        log.info("Odds league=%s season=%s: %d fixtures, %d prices", league_id, season, len(resp), n)
+
+
+def sync_odds_fixtures(api, conn, fixture_ids, bet_ids=None):
+    """Refresh odds for specific fixtures (one call each) - used close to kickoff."""
+    total = 0
+    for fid in fixture_ids:
+        total += _store_odds(conn, api.get("odds", fixture=fid), bet_ids)
+    log.info("Odds for %d fixtures: %d prices", len(fixture_ids), total)
+
+
+def _store_odds(conn, resp, bet_ids=None):
+    """Upsert odds items. Only fixtures that haven't kicked off are written, so after kickoff
+    the stored price is the closing price; first_odd/first_seen_at keep the opening price."""
+    bet_ids = set(bet_ids or config.ODDS_BET_IDS)
+    now = datetime.now(timezone.utc)
+    bookmakers, bets, rows = {}, {}, []
+    for item in resp:
+        fixture_id = item["fixture"]["id"]
+        kickoff = item["fixture"].get("date")
+        if kickoff and datetime.fromisoformat(kickoff) <= now:
+            continue
+        updated = item.get("update")
+        for bm in item.get("bookmakers", []):
+            bookmakers[bm["id"]] = {"bookmaker_id": bm["id"], "name": bm["name"]}
+            for bet in bm.get("bets", []):
+                if bet["id"] not in bet_ids:
+                    continue
+                bets[bet["id"]] = {"bet_id": bet["id"], "name": bet["name"]}
+                for v in bet.get("values", []):
+                    odd = _parse_stat(v.get("odd"))
+                    rows.append({
+                        "fixture_id": fixture_id,
+                        "bookmaker_id": bm["id"],
+                        "bet_id": bet["id"],
+                        "selection": str(v["value"]),
+                        "odd": odd,
+                        "api_updated_at": updated,
+                        "first_odd": odd,
+                        "first_seen_at": now,
+                    })
+    upsert(conn, "bookmakers", list(bookmakers.values()), ["bookmaker_id"], touch_updated_at=False)
+    upsert(conn, "bet_types", list(bets.values()), ["bet_id"], touch_updated_at=False)
+    upsert(conn, "odds", _dedupe(rows, ("fixture_id", "bookmaker_id", "bet_id", "selection")),
+           ["fixture_id", "bookmaker_id", "bet_id", "selection"],
+           update_cols=["odd", "api_updated_at"])       # opening price is never overwritten
+    conn.commit()
+    return len(rows)
 
 
 # --------------------------------------------------------------------------- nightly
@@ -398,6 +421,8 @@ def sync_nightly(api, conn, league_ids):
     step("predictions", lambda api, conn: update_predictions(conn))
     step("prediction backfill", lambda api, conn: backfill_predictions(conn))
     step("prediction ratings", lambda api, conn: rate_fixtures(conn))
+    step("settle paper bets", lambda api, conn: betting.settle_bets(conn))
+    step("early paper bets", lambda api, conn: betting.place_early(conn))
     return failures
 
 
@@ -536,3 +561,20 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
         conn.commit()
         if (i // batch_size) % 50 == 0:
             log.info("Player minutes %d/%d", i + len(resp), len(pending))
+
+
+def sync_injuries_fixtures(api, conn, fixture_ids):
+    """Refresh the injury list for specific fixtures (one call each) - used close to kickoff."""
+    rows = {}
+    for fid in fixture_ids:
+        for item in api.get("injuries", fixture=fid):
+            p, lg = item.get("player") or {}, item.get("league") or {}
+            if p.get("id"):
+                rows[(fid, p["id"])] = {
+                    "fixture_id": fid, "player_id": p["id"], "team_id": item["team"]["id"],
+                    "league_id": lg.get("id"), "season": lg.get("season"),
+                    "type": p.get("type"), "reason": p.get("reason"),
+                }
+    upsert(conn, "injuries", list(rows.values()), ["fixture_id", "player_id"])
+    conn.commit()
+    log.info("Injuries for %d fixtures: %d players", len(fixture_ids), len(rows))

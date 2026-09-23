@@ -41,6 +41,11 @@ MAX_GOALS = 10
 DEFAULT_HOME_GOALS, DEFAULT_AWAY_GOALS = 1.45, 1.15
 UPCOMING_STATUSES = ("NS", "TBD")
 
+# Goal markets from the same Poisson grid, pulled toward the base rate (fitted on 2021-23,
+# test log loss: over 2.5 0.6805 -> 0.6801, both teams score 0.6887 -> 0.6876)
+OVER25_BASE, OVER25_SHRINK = 0.514, 0.85
+BTTS_BASE, BTTS_SHRINK = 0.519, 0.60
+
 
 def _pmf(lam):
     lam = max(lam, 0.01)
@@ -72,6 +77,16 @@ def outcome_probabilities(home_xg, away_xg):
     return home * scale, draw_adj, away * scale, f"{likely[0]}-{likely[1]}"
 
 
+def goal_markets(home_xg, away_xg):
+    """(P(over 2.5 goals), P(both teams score)), calibrated."""
+    ph, pa = _pmf(home_xg), _pmf(away_xg)
+    total = sum(ph) * sum(pa)
+    under = sum(ph[i] * pa[j] for i in range(3) for j in range(3 - i)) / total
+    btts = (1 - ph[0] / sum(ph)) * (1 - pa[0] / sum(pa))
+    return (OVER25_BASE + OVER25_SHRINK * ((1 - under) - OVER25_BASE),
+            BTTS_BASE + BTTS_SHRINK * (btts - BTTS_BASE))
+
+
 def _shrunk(records, idx, league_avg):
     """Mean of records[*][idx], pulled toward league_avg by SHRINK_GAMES pseudo-matches."""
     total = sum(r[idx] for r in records)
@@ -80,7 +95,7 @@ def _shrunk(records, idx, league_avg):
 
 def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, league_id=None,
                   home_missing=0.0, away_missing=0.0):
-    """(exp_diff, home_xg, away_xg, p_home, p_draw, p_away, likely_score) for one fixture.
+    """(exp_diff, home_xg, away_xg, p_home, p_draw, p_away, likely_score, p_over25, p_btts).
 
     home_records: the home side's home games as (scored, conceded); away_records: the away
     side's away games as (scored, conceded); lg_*: competition average goals.
@@ -92,7 +107,8 @@ def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, 
     base_home = (_shrunk(home_records, 0, lg_home) + _shrunk(away_records, 1, lg_home)) / 2
     base_away = (_shrunk(away_records, 0, lg_away) + _shrunk(home_records, 1, lg_away)) / 2
     home_xg, away_xg = project(base_home, base_away, exp_diff)
-    return (exp_diff, home_xg, away_xg, *outcome_probabilities(home_xg, away_xg))
+    return (exp_diff, home_xg, away_xg, *outcome_probabilities(home_xg, away_xg),
+            *goal_markets(home_xg, away_xg))
 
 
 def _load_xg(conn, since=None):
@@ -162,8 +178,9 @@ def update_predictions(conn):
         cur.executemany(
             """insert into fixture_predictions (fixture_id, kickoff, league_id, home_team_id,
                away_team_id, home_rank, away_rank, exp_diff, home_xg, away_xg, p_home, p_draw,
-               p_away, likely_score, home_reliability, away_reliability, home_missing, away_missing)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               p_away, likely_score, p_over25, p_btts, home_reliability, away_reliability,
+               home_missing, away_missing)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                on conflict (fixture_id) do update set
                  kickoff = excluded.kickoff, league_id = excluded.league_id,
                  home_team_id = excluded.home_team_id, away_team_id = excluded.away_team_id,
@@ -171,6 +188,7 @@ def update_predictions(conn):
                  exp_diff = excluded.exp_diff, home_xg = excluded.home_xg,
                  away_xg = excluded.away_xg, p_home = excluded.p_home, p_draw = excluded.p_draw,
                  p_away = excluded.p_away, likely_score = excluded.likely_score,
+                 p_over25 = excluded.p_over25, p_btts = excluded.p_btts,
                  home_reliability = excluded.home_reliability,
                  away_reliability = excluded.away_reliability,
                  home_missing = excluded.home_missing, away_missing = excluded.away_missing,
@@ -234,8 +252,8 @@ def backfill_predictions(conn):
         cur.executemany(
             """insert into fixture_predictions (fixture_id, kickoff, league_id, home_team_id,
                away_team_id, home_rank, away_rank, exp_diff, home_xg, away_xg, p_home, p_draw,
-               p_away, likely_score, home_missing, away_missing, source)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'backfill')
+               p_away, likely_score, p_over25, p_btts, home_missing, away_missing, source)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'backfill')
                on conflict (fixture_id) do nothing""", rows)
     conn.commit()
     log.info("Backfilled predictions for %d finished fixtures", len(rows))

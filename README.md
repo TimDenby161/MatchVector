@@ -121,6 +121,25 @@ These were tested and not adopted:
 python -m matchvector predict   # the nightly job runs this after the rankings
 ```
 
+## Paper betting
+
+`matchvector/betting.py` records the bets the model *would* place. It never uses real money. There are two strategies, tracked separately:
+- **early:** placed by the nightly run for matches in the next 36 hours.
+- **late:** placed by the match-day run within 75 minutes of kickoff, after late injury news.
+
+A bet is placed when model chance × the best price across bookmakers is at least 3% better than even, at odds up to 10. Each bet is 1 unit, with at most one bet per selection per strategy. Markets:
+- match result
+- over/under 2.5 goals (`p_over25`)
+- both teams to score (`p_btts`)
+
+The goal-market probabilities come from the same Poisson grid, calibrated towards the base rate. Bets settle on the 90-minute score and are stored in `paper_bets`.
+
+**Closing line value.** `odds.first_odd` keeps the opening price. `odds.odd` is never updated after kickoff, so it holds the closing price. Each bet records `clv` = odds taken × the fair closing probability − 1. Consistently positive CLV is the early sign of a real edge. Profit needs thousands of bets before it means much.
+
+**Match-day job.** `.github/workflows/matchday.yml` runs `python -m matchvector matchday` every 30 minutes. For matches starting within 3 hours, it refreshes odds, which captures the closing price, and injury lists. It then re-projects, places the late bets, refreshes recent results and settles bets. It commits `docs/data/bets.json` only when bets change. The site's **Bets** tab shows the results.
+
+A line-up adjustment (the strength of the starting XI against normal) was backtested and didn't help (test log loss 1.0058 against 1.0057), so line-ups aren't used in the projections.
+
 ## Website
 
 `docs/index.html` is a single-page site in the same style as MatchLab. It has two tabs:
@@ -146,4 +165,4 @@ The weighted total is rounded, and a 0 counts as 1. The overall rating and the f
 
 ## Tables
 
-`leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`, `team_rank_history`, `team_rankings`, `fixture_predictions` (and the view `upcoming_predictions`). See `db/schema.sql`.
+`leagues`, `league_seasons`, `venues`, `teams`, `team_seasons`, `fixtures`, `fixture_team_stats`, `standings`, `bookmakers`, `bet_types`, `odds`, `team_rank_history`, `team_rankings`, `fixture_predictions` (and the view `upcoming_predictions`), `players`, `player_seasons`, `injuries`, `fixture_players`, `paper_bets`. See `db/schema.sql`.

@@ -55,20 +55,20 @@ def export_site_data(conn, out_dir=OUT_DIR):
                       p.p_home, p.p_draw, p.p_away, p.home_xg, p.away_xg, p.likely_score,
                       p.home_rank, p.away_rank, p.source, p.rating, p.rating_winner,
                       p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals,
-                      p.home_missing, p.away_missing
+                      p.home_missing, p.away_missing, p.p_over25, p.p_btts
                from fixtures f left join fixture_predictions p using (fixture_id)
                where f.kickoff between %s and %s
                order by f.kickoff, f.fixture_id""",
             [now - timedelta(days=PAST_DAYS), now + timedelta(days=FUTURE_DAYS)]):
         (fid, kickoff, lid, rnd, home, away, status, hg, ag, ph, pa_, p_h, p_d, p_a,
-         hxg, axg, likely, hr, ar, source, *ratings, h_miss, a_miss) = row
+         hxg, axg, likely, hr, ar, source, *ratings, h_miss, a_miss, p_over, p_btts) = row
         team_ids.update((home, away))
         matches.append([
             fid, kickoff.isoformat(), lid, rnd, home, away, status, hg, ag, ph, pa_,
             _r(p_h, 3), _r(p_d, 3), _r(p_a, 3), _r(hxg), _r(axg), likely, _r(hr, 0), _r(ar, 0),
             source, *ratings,
             *[_r(x, 3) for x in market.get(fid, (None, None, None))],
-            _r(h_miss), _r(a_miss),
+            _r(h_miss), _r(a_miss), _r(p_over, 3), _r(p_btts, 3),
         ])
 
     # Form: total rank change over each team's last FORM_GAMES games
@@ -97,7 +97,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
                    "pen_h", "pen_a", "p_home", "p_draw", "p_away", "home_xg", "away_xg",
                    "likely", "home_rank", "away_rank", "source", "rating", "r_winner",
                    "r_margin", "r_clean_sheets", "r_shape", "r_goals", "m_home", "m_draw", "m_away",
-                   "home_missing", "away_missing"],
+                   "home_missing", "away_missing", "p_over25", "p_btts"],
         "matches": matches,
         "competitions": competitions,
         "teams": teams,
@@ -110,6 +110,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d matches and %d rankings to %s", len(matches), len(rankings), out_dir)
     export_stats(conn, out_dir)
+    export_bets(conn, out_dir)
 
 
 STAT_RANGES = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
@@ -199,3 +200,60 @@ def export_stats(conn, out_dir=OUT_DIR):
     (out_dir / "stats.json").write_text(json.dumps(
         {"generated_at": now.isoformat(), "ranges": stats}, separators=(",", ":")), encoding="utf-8")
     log.info("Exported prediction stats for %d finished fixtures", len(rows))
+
+
+BET_HISTORY_DAYS = 120
+
+
+def _summary(bets):
+    settled = [b for b in bets if b["result"] in ("win", "loss")]
+    clvs = [b["clv"] for b in settled if b["clv"] is not None]
+    staked = len(settled)
+    profit = sum(b["profit"] for b in settled)
+    return {
+        "bets": len(bets), "settled": staked, "pending": sum(1 for b in bets if b["result"] is None),
+        "wins": sum(1 for b in settled if b["result"] == "win"),
+        "profit": round(profit, 2), "roi": round(profit / staked, 4) if staked else None,
+        "avg_odds": round(sum(b["odds"] for b in settled) / staked, 3) if staked else None,
+        "avg_clv": round(sum(clvs) / len(clvs), 4) if clvs else None,
+        "beat_close": round(sum(1 for c in clvs if c > 0) / len(clvs), 4) if clvs else None,
+    }
+
+
+def export_bets(conn, out_dir=OUT_DIR):
+    """Paper bets and their running results for the site's Bets tab (docs/data/bets.json)."""
+    now = datetime.now(timezone.utc)
+    rows = conn.execute(
+        """select b.bet_id, b.strategy, b.fixture_id, b.kickoff, b.league_id, b.market, b.selection,
+                  b.model_prob, b.fair_prob, b.odds_taken, bk.name, b.edge, b.closing_odds, b.clv,
+                  b.result, b.profit, b.placed_at, b.settled_at, h.name, a.name,
+                  coalesce(f.ft_home, f.home_goals), coalesce(f.ft_away, f.away_goals)
+           from paper_bets b join fixtures f using (fixture_id)
+           join teams h on h.team_id = f.home_team_id join teams a on a.team_id = f.away_team_id
+           left join bookmakers bk on bk.bookmaker_id = b.bookmaker_id
+           where b.kickoff >= %s or b.settled_at is null
+           order by b.kickoff desc, b.bet_id""", [now - timedelta(days=BET_HISTORY_DAYS)]).fetchall()
+    bets = [{
+        "id": r[0], "strategy": r[1], "fixture": r[2], "kickoff": r[3].isoformat(), "league": r[4],
+        "market": r[5], "selection": r[6], "model_prob": _r(r[7], 3), "fair_prob": _r(r[8], 3),
+        "odds": float(r[9]), "bookmaker": r[10], "edge": _r(r[11], 3),
+        "closing_odds": float(r[12]) if r[12] is not None else None, "clv": _r(r[13], 4),
+        "result": r[14], "profit": float(r[15]) if r[15] is not None else None,
+        "home": r[18], "away": r[19], "score": f"{r[20]}-{r[21]}" if r[20] is not None else None,
+    } for r in rows]
+    by = lambda key: {k: _summary([b for b in bets if key(b) == k]) for k in sorted({key(b) for b in bets})}
+    summary = {
+        "all": _summary(bets),
+        "strategy": by(lambda b: b["strategy"]),
+        "market": by(lambda b: b["market"]),
+        "strategy_market": by(lambda b: f"{b['strategy']}|{b['market']}"),
+        "league": by(lambda b: str(b["league"])),
+    }
+    last = max([r[16] for r in rows] + [r[17] for r in rows if r[17]], default=None)
+    # No generation timestamp, so the file only changes (and gets committed) when bets do
+    (out_dir / "bets.json").write_text(json.dumps({
+        "last_change": last.isoformat() if last else None,
+        "rules": {"min_edge": 0.03, "max_odds": 10.0, "stake": 1},
+        "summary": summary, "bets": bets,
+    }, separators=(",", ":")), encoding="utf-8")
+    log.info("Exported %d paper bets", len(bets))

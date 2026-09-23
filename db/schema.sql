@@ -173,6 +173,10 @@ create table if not exists odds (
     primary key (fixture_id, bookmaker_id, bet_id, selection)
 );
 create index if not exists odds_fixture_idx on odds (fixture_id);
+-- Opening price (first time seen). `odd` stops updating at kickoff, so it's the closing price.
+alter table odds add column if not exists first_odd numeric(10,3);
+alter table odds add column if not exists first_seen_at timestamptz;
+update odds set first_odd = odd, first_seen_at = updated_at where first_odd is null;
 
 -- Players (config.PLAYER_LEAGUES) and their per-season stats from API-Football /players
 create table if not exists players (
@@ -335,6 +339,8 @@ alter table fixture_predictions add column if not exists source text not null de
 -- matchvector/injuries.py; null where there's no injury list
 alter table fixture_predictions add column if not exists home_missing double precision;
 alter table fixture_predictions add column if not exists away_missing double precision;
+alter table fixture_predictions add column if not exists p_over25 double precision;
+alter table fixture_predictions add column if not exists p_btts double precision;
 alter table fixture_predictions add column if not exists rating smallint;
 alter table fixture_predictions add column if not exists rating_winner smallint;
 alter table fixture_predictions add column if not exists rating_margin smallint;
@@ -361,6 +367,32 @@ join teams h on h.team_id = p.home_team_id
 join teams a on a.team_id = p.away_team_id
 order by p.kickoff;
 
+-- Paper bets placed by the model (see matchvector/betting.py): never real money.
+create table if not exists paper_bets (
+    bet_id          bigserial primary key,
+    strategy        text not null,       -- 'early' (night before) or 'late' (just before kickoff)
+    fixture_id      int not null,
+    league_id       int,
+    kickoff         timestamptz,
+    market          text not null,       -- '1X2', 'OU25', 'BTTS'
+    selection       text not null,       -- e.g. 'Home', 'Over 2.5', 'Yes'
+    model_prob      double precision,
+    fair_prob       double precision,    -- bookmakers' average, margin removed, when placed
+    odds_taken      numeric(10,3),       -- best price across bookmakers when placed
+    bookmaker_id    int,
+    edge            double precision,    -- model_prob * odds_taken - 1
+    stake           numeric(10,2) not null default 1,
+    placed_at       timestamptz not null default now(),
+    closing_odds    numeric(10,3),       -- best price at kickoff
+    closing_fair    double precision,    -- fair probability at kickoff
+    clv             double precision,    -- odds_taken * closing_fair - 1 (beat the close if > 0)
+    result          text,                -- 'win', 'loss', 'void'
+    profit          numeric(10,3),
+    settled_at      timestamptz,
+    unique (strategy, fixture_id, market, selection)
+);
+create index if not exists paper_bets_fixture_idx on paper_bets (fixture_id);
+
 -- Supabase exposes the public schema through its REST API; enable RLS with no
 -- policies so these tables are only reachable via the postgres/service role.
 alter table leagues            enable row level security;
@@ -381,3 +413,4 @@ alter table players            enable row level security;
 alter table player_seasons     enable row level security;
 alter table injuries           enable row level security;
 alter table fixture_players    enable row level security;
+alter table paper_bets         enable row level security;

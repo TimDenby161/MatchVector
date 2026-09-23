@@ -317,6 +317,18 @@
   .gap-ok { color: var(--status-good); }
   .gap-off { color: var(--status-critical); }
 
+  .bet-row { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; }
+  .bet-row.win { border-left: 4px solid var(--status-good); }
+  .bet-row.loss { border-left: 4px solid var(--status-critical); }
+  .bet-row.void { opacity: 0.6; }
+  .bet-top { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 600; }
+  .bet-match { font-size: 13px; font-weight: 600; margin-top: 3px; }
+  .bet-pick { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 3px; font-size: 13px; }
+  .bet-pick b { font-variant-numeric: tabular-nums; }
+  .bet-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--status-good); font-weight: 700; } .neg { color: var(--status-critical); font-weight: 700; }
+  .bets-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+
   footer { color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 16px 24px; line-height: 1.5; }
 
   @media (max-width: 480px) {
@@ -344,6 +356,7 @@
     <button role="tab" data-tab="matches" aria-selected="true">Matches</button>
     <button role="tab" data-tab="table" aria-selected="false">Rankings</button>
     <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
+    <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
   </nav>
 </header>
 
@@ -383,6 +396,21 @@
       <div class="filter-row filter-row-more" hidden></div>
     </div>
     <div id="stats-body"></div>
+  </section>
+
+  <section class="panel" data-tab="bets">
+    <div class="filter-row range-row" id="bet-strategy">
+      <button type="button" class="filter-chip" data-strategy="all" aria-pressed="true">All</button>
+      <button type="button" class="filter-chip" data-strategy="early" aria-pressed="false">Night before</button>
+      <button type="button" class="filter-chip" data-strategy="late" aria-pressed="false">Pre-kickoff</button>
+    </div>
+    <div class="filter-row" id="bet-market" style="margin-bottom:10px">
+      <button type="button" class="filter-chip" data-market="all" aria-pressed="true">All markets</button>
+      <button type="button" class="filter-chip" data-market="1X2" aria-pressed="false">Result</button>
+      <button type="button" class="filter-chip" data-market="OU25" aria-pressed="false">Over/Under 2.5</button>
+      <button type="button" class="filter-chip" data-market="BTTS" aria-pressed="false">Both score</button>
+    </div>
+    <div id="bets-body"></div>
   </section>
 </main>
 
@@ -437,6 +465,7 @@ const state = {
   matchFilter: "all", tableFilter: "39", date: null,
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
+  bets: null, betStrategy: "all", betMarket: "all",
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -466,6 +495,7 @@ async function loadData() {
       fetch("data/stats.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null),
     ]);
     state.stats = st;
+    state.bets = await fetch("data/bets.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
@@ -479,6 +509,7 @@ async function loadData() {
     renderMatches();
     renderTable();
     renderStats();
+    renderBets();
   } catch (err) {
     console.error(err);
     $("#status-line").textContent = "Couldn't load data";
@@ -656,6 +687,7 @@ function matchCard(m) {
         </div>
       </div>
       ${probBar(m)}
+      ${m.p_over25 != null && !(FINISHED.has(m.status) && m.hg != null) ? `<div class="market-line">Over 2.5 goals <b>${Math.round(m.p_over25 * 100)}%</b> · Both teams score <b>${Math.round(m.p_btts * 100)}%</b></div>` : ""}
       ${m.home_missing != null || m.away_missing != null ? `<div class="market-line" title="Players listed injured, suspended or doubtful, weighted by their share of their team's recent minutes (1.0 = one ever-present player)">Missing players <b>${(m.home_missing ?? 0).toFixed(1)}</b> · <b>${(m.away_missing ?? 0).toFixed(1)}</b></div>` : ""}
       ${m.m_home != null ? `<div class="market-line" title="Average bookmaker odds, margin removed">Bookmakers <b>${Math.round(m.m_home * 100)}%</b> · <b>${Math.round(m.m_draw * 100)}%</b> · <b>${Math.round(m.m_away * 100)}%</b></div>` : ""}
       ${detail}
@@ -823,6 +855,78 @@ function renderStats() {
     </div>`;
 }
 
+// ------------------------------------------------------------------ bets
+const MARKET_LABELS = { "1X2": "Result", OU25: "Over/Under 2.5", BTTS: "Both teams score" };
+const SEL_LABELS = { Home: "Home win", Draw: "Draw", Away: "Away win", "Over 2.5": "Over 2.5", "Under 2.5": "Under 2.5", Yes: "Both score", No: "Not both score" };
+
+function summarise(bets) {
+  const settled = bets.filter((b) => b.result === "win" || b.result === "loss");
+  const clvs = settled.map((b) => b.clv).filter((c) => c != null);
+  const profit = settled.reduce((a, b) => a + b.profit, 0);
+  return {
+    placed: bets.length, settled: settled.length, pending: bets.filter((b) => !b.result).length,
+    wins: settled.filter((b) => b.result === "win").length, profit,
+    roi: settled.length ? profit / settled.length : null,
+    avgOdds: settled.length ? settled.reduce((a, b) => a + b.odds, 0) / settled.length : null,
+    clv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null,
+    beat: clvs.length ? clvs.filter((c) => c > 0).length / clvs.length : null,
+  };
+}
+
+function signed(x, d = 1, suffix = "") {
+  if (x == null) return "–";
+  const cls = x > 0 ? "pos" : x < 0 ? "neg" : "";
+  return `<span class="${cls}">${x > 0 ? "+" : ""}${x.toFixed(d)}${suffix}</span>`;
+}
+
+function renderBets() {
+  const body = $("#bets-body");
+  if (!state.bets) { body.innerHTML = `<div class="empty-state">No paper bets yet.</div>`; return; }
+  const all = state.bets.bets.filter((b) =>
+    (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
+    (state.betMarket === "all" || b.market === state.betMarket));
+  const s = summarise(all);
+  const card = (label, value, note = "") =>
+    `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
+  const rules = state.bets.rules;
+  const markets = ["1X2", "OU25", "BTTS"].map((mk) => {
+    const x = summarise(all.filter((b) => b.market === mk));
+    if (!x.placed) return "";
+    return `<tr><td>${MARKET_LABELS[mk]}</td><td>${x.settled}</td><td>${signed(x.profit, 1)}</td>
+      <td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td><td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td></tr>`;
+  }).join("");
+  const row = (b) => {
+    const when = new Date(b.kickoff);
+    const res = b.result === "win" ? `<span class="pos">Won ${signed(b.profit, 2)}</span>`
+      : b.result === "loss" ? `<span class="neg">Lost −1.00</span>`
+      : b.result === "void" ? "Void" : "Pending";
+    const clv = b.clv != null ? ` · CLV ${signed(100 * b.clv, 1, "%")} (closed ${b.closing_odds?.toFixed(2) ?? "–"})` : "";
+    return `<div class="bet-row ${b.result || ""}">
+      <div class="bet-top"><span>${escapeHtml(fmtDay(b.kickoff))} ${escapeHtml(fmtTime(b.kickoff))} · ${escapeHtml(compLabel(b.league))}</span><span>${b.strategy === "early" ? "Night before" : "Pre-kickoff"}</span></div>
+      <div class="bet-match">${escapeHtml(b.home)} v ${escapeHtml(b.away)}${b.score ? ` <span style="color:var(--text-muted)">(${escapeHtml(b.score)})</span>` : ""}</div>
+      <div class="bet-pick"><span>${escapeHtml(SEL_LABELS[b.selection] || b.selection)} @ <b>${b.odds.toFixed(2)}</b> <span style="color:var(--text-muted);font-size:11px">${escapeHtml(b.bookmaker || "")}</span></span><span>${res}</span></div>
+      <div class="bet-sub">Model ${Math.round(100 * b.model_prob)}% · bookmakers ${b.fair_prob != null ? Math.round(100 * b.fair_prob) + "%" : "–"} · edge ${signed(100 * b.edge, 1, "%")}${clv}</div>
+    </div>`;
+  };
+  const pending = all.filter((b) => !b.result).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+  const settled = all.filter((b) => b.result);
+  body.innerHTML = `
+    <div class="stats-grid">
+      ${card("Settled bets", s.settled.toLocaleString(), `${s.pending} pending · ${s.wins} won`)}
+      ${card("Profit", s.settled ? signed(s.profit, 1) + '<span style="font-size:13px;color:var(--text-muted)"> units</span>' : "–", "1 unit flat stake per bet")}
+      ${card("Return (ROI)", s.roi == null ? "–" : signed(100 * s.roi, 1, "%"), s.avgOdds ? `Average odds ${s.avgOdds.toFixed(2)}` : "")}
+      ${card("Beat the closing price", s.beat == null ? "–" : pct(s.beat), s.clv == null ? "Needs settled bets" : `Average CLV ${(s.clv > 0 ? "+" : "") + (100 * s.clv).toFixed(1)}%`)}
+    </div>
+    <div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">By market</div>
+      ${markets ? `<table class="calib-table"><thead><tr><th>Market</th><th>Settled</th><th>Profit</th><th>ROI</th><th>CLV</th></tr></thead><tbody>${markets}</tbody></table>` : `<div class="stats-note">No bets yet.</div>`}
+      <div class="stats-note">Paper bets only, no money. The model bets when its chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. "Beat the closing price" (CLV) is the early sign of a real edge. Profit needs roughly 1,000+ settled bets before it means much.</div>
+    </div>
+    ${pending.length ? `<div class="modal-section">Upcoming (${pending.length})</div><div class="bets-list">${pending.map(row).join("")}</div>` : ""}
+    ${settled.length ? `<div class="modal-section">Settled</div><div class="bets-list">${settled.slice(0, 150).map(row).join("")}</div>` : ""}
+    ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}`;
+}
+
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
   const r = state.rankByTeam.get(teamId);
@@ -866,6 +970,15 @@ document.querySelectorAll("nav.tabs button").forEach((btn) => btn.addEventListen
 $("#match-filters").addEventListener("click", (e) => onChipClick("match", e));
 $("#table-filters").addEventListener("click", (e) => onChipClick("table", e));
 $("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
+for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"]]) {
+  $(id).addEventListener("click", (e) => {
+    const btn = e.target.closest(`[data-${attr}]`);
+    if (!btn) return;
+    state[key] = btn.dataset[attr];
+    document.querySelectorAll(`${id} [data-${attr}]`).forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    renderBets();
+  });
+}
 $("#stats-ranges").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-range]");
   if (!btn) return;
