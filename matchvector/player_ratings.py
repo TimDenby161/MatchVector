@@ -17,8 +17,8 @@ Player rank
                across all matches (50 = an average regular in that position)
     club     = club rank at the time, averaged over the window's matches by minutes (the clubs he
                actually played those matches for, as good as they were then)
-    rank     = stat pct x min(club / CLUB_RANK_MAX, 1): even a perfect player is capped by his
-               club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1200 = 80
+    rank     = stat pct x sqrt(min(club / CLUB_RANK_MAX, 1)): even a perfect player is capped by his
+               club's level, e.g. at a 966 club he can reach at most 100 x sqrt(966 / 1200) = 90
 
 Season rank (player_season_ranks), from that season's own matches
     score    = the same stat score from his season totals, blended with
@@ -31,7 +31,7 @@ Season rank (player_season_ranks), from that season's own matches
                the top decile, which is spread by how far the score is above the 90th percentile
                (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
                apart instead of all sitting at ~99
-    rank     = pct x min(club / CLUB_RANK_MAX, 1), club = his clubs' average rank over his matches
+    rank     = pct x club_factor(club), club = his clubs' average rank over his matches
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
@@ -66,24 +66,27 @@ STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on",
          "dribbles_won", "fouls_committed", "yellow_cards", "red_cards", "saves", "goals_conceded")
 
 # weight per metric by role group; negative weight = lower is better
+# Weights per role group. Tested against results (2021-26, club rank as the baseline): match
+# rating added nothing, while shots on target, key passes, passing volume and duels won did, and
+# goals / assists / save % beyond those mostly reflected luck that evened out. So rating is a
+# small part everywhere, the lasting stats carry the weight, and goals still count for attackers.
 WEIGHTS = {
-    "GK": {"rating": .50, "save_pct": .30, "conceded": -.20},
-    # centre-backs lean on match rating: tackles, blocks and duels pile up for defenders under
-    # pressure, so volume stats undersell centre-backs at dominant clubs
-    "CB": {"rating": .60, "duels_pct": .12, "tackles_int": .05, "blocks": .03, "pass_acc": .08,
-           "passes": .05, "goals": .03, "discipline": -.04},
-    "FB": {"rating": .35, "tackles_int": .12, "key_passes": .10, "assists": .08, "duels_pct": .08,
-           "dribbles_won": .07, "passes": .07, "pass_acc": .05, "discipline": -.05},
-    "DM": {"rating": .35, "tackles_int": .20, "passes": .12, "pass_acc": .10, "duels_pct": .10,
-           "key_passes": .05, "blocks": .03, "discipline": -.05},
-    "CM": {"rating": .35, "key_passes": .12, "passes": .10, "tackles_int": .10, "pass_acc": .08,
-           "assists": .08, "goals": .07, "dribbles_won": .05, "duels_pct": .05},
-    "AM": {"rating": .35, "key_passes": .15, "assists": .12, "goals": .12, "dribbles_won": .10,
-           "shots_on": .08, "duels_pct": .05, "pass_acc": .03},
-    "W": {"rating": .35, "goals": .12, "assists": .12, "key_passes": .12, "dribbles_won": .12,
-          "shots_on": .08, "duels_pct": .04, "discipline": -.03},
-    "ST": {"rating": .35, "goals": .25, "shots_on": .12, "assists": .08, "duels_pct": .07,
-           "key_passes": .06, "dribbles_won": .04, "discipline": -.03},
+    # no lasting keeper signal showed up, so keepers stay mostly on rating and shot-stopping
+    "GK": {"rating": .40, "save_pct": .30, "conceded": -.30},
+    "CB": {"rating": .15, "duels_pct": .20, "passes": .18, "pass_acc": .10, "tackles_int": .12,
+           "blocks": .05, "goals": .05, "shots_on": .05, "discipline": -.10},
+    "FB": {"rating": .12, "key_passes": .18, "passes": .15, "duels_pct": .12, "tackles_int": .10,
+           "dribbles_won": .08, "assists": .08, "shots_on": .05, "pass_acc": .05, "discipline": -.07},
+    "DM": {"rating": .12, "passes": .20, "duels_pct": .15, "tackles_int": .15, "key_passes": .12,
+           "pass_acc": .10, "shots_on": .05, "blocks": .03, "discipline": -.08},
+    "CM": {"rating": .12, "key_passes": .20, "passes": .15, "shots_on": .12, "duels_pct": .10,
+           "goals": .08, "tackles_int": .07, "assists": .06, "dribbles_won": .05, "pass_acc": .05},
+    "AM": {"rating": .12, "key_passes": .22, "shots_on": .18, "goals": .12, "dribbles_won": .10,
+           "assists": .08, "passes": .08, "duels_pct": .07, "pass_acc": .03},
+    "W": {"rating": .12, "shots_on": .20, "key_passes": .20, "goals": .15, "dribbles_won": .10,
+          "assists": .08, "passes": .06, "duels_pct": .06, "discipline": -.03},
+    "ST": {"rating": .10, "shots_on": .28, "goals": .25, "key_passes": .10, "duels_pct": .10,
+           "assists": .07, "passes": .05, "dribbles_won": .05},
 }
 
 
@@ -197,6 +200,13 @@ def _norms(conn):
     return norms
 
 
+def club_factor(club):
+    """Multiplier for club level: sqrt(club / CLUB_RANK_MAX), capped at 1. The square root keeps
+    the club's level in the rank but halves the gaps (Real Madrid 1063 vs Bayern 1121: 0.94 vs
+    0.97 rather than 0.89 vs 0.93)."""
+    return math.sqrt(min(club / CLUB_RANK_MAX, 1))
+
+
 def _stat_score(sums, pos, norms):
     m = metrics(sums)
     if not m or pos not in norms:
@@ -274,7 +284,7 @@ def _season_ranks(conn, norms):
     rows = []
     for player, season, s, pos, club, mins in scored:
         if ref.get(pos) and club:
-            rows.append((player, season, round(pct(s, ref[pos]) * min(club / CLUB_RANK_MAX, 1), 1), mins))
+            rows.append((player, season, round(pct(s, ref[pos]) * club_factor(club), 1), mins))
     return rows
 
 
@@ -372,7 +382,7 @@ def compute_player_ratings(conn):
         """(stat score, club rank) -> stat percentile scaled by the club's level."""
         score, club = s
         ref = cdf.get(pos) or pooled
-        return round(100 * bisect.bisect_left(ref, score) / len(ref) * min(club / CLUB_RANK_MAX, 1), 1)
+        return round(100 * bisect.bisect_left(ref, score) / len(ref) * club_factor(club), 1)
     log.info("Player ratings: %d appearances, %d team-fixtures, regulars per position %s",
              len(appearance_scores), len(team_rows), {p: len(v) for p, v in cdf.items()})
 

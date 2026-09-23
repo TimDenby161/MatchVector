@@ -76,18 +76,22 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 **Player rank**
 1. Take the player's last 20 appearances within 18 months.
 2. Work out his **role** from the line-ups. `matchvector/positions.py` turns each starter's grid position and the team's formation into a role: GK, LB, CB, RB, LWB, RWB, DM, CM, AM, LM, RM, LW, RW or ST. For example, 4-2-3-1 row 4 gives LW, AM and RW. His role is the one he's started in most over the window; players only seen as substitutes use their broad position. Roles are compared in groups, with left and right together: GK, CB, full-back, DM, CM, AM, winger and ST.
-3. Work out his per-90 stats and ratios, with weights set for each role group:
-   - Centre-backs: mostly the match rating (60%), plus duels, passing, tackles + interceptions and blocks. Tackles, blocks and duels pile up for defenders under pressure, so they would undersell centre-backs at dominant clubs.
-   - Full-backs: defending plus key passes, assists and dribbles.
-   - DM: tackles + interceptions and passing.
-   - AM and wingers: key passes, assists, goals and dribbles.
-   - Strikers: goals and shots on target.
-   - Goalkeepers: save rate and goals conceded.
-   - Every role group also includes the average match rating.
+3. Work out his per-90 stats and ratios, with weights set for each role group. The weights lean on the stats that reflect lasting ability:
+   - Centre-backs: duels won, passing volume and accuracy, tackles + interceptions, a little goal threat, minus fouls and cards.
+   - Full-backs: key passes, passing, duels, tackles + interceptions, dribbles and assists.
+   - DM: passing, duels, tackles + interceptions and key passes.
+   - CM and AM: key passes, shots on target, passing, goals and dribbles.
+   - Wingers: shots on target, key passes, goals, dribbles and assists.
+   - Strikers: shots on target (28%), goals (25%), key passes and duels.
+   - Goalkeepers: match rating, save rate and goals conceded.
+   - Match rating is only 10–12% for outfield players.
+   - **How the weights were checked:**
+     - *Against results (2021–26):* with club rank as the baseline, match rating added nothing. Shots on target, key passes, passing volume and duels won did. Goals, assists and save % beyond those were mostly luck that evened out.
+     - *For repeatability:* these weights repeat better from season to season than the old rating-heavy ones. The Spearman correlation is 0.54 against 0.50, and 0.44 against 0.40 for players who changed clubs.
 4. Compare each stat with other players in the same role group.
 5. **Mark down players with few minutes:** pull them towards a below-average level (−0.5, weighted as 900 minutes), not towards the average.
 6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
-7. **Scale by club level:** multiply the percentile by the club's rank ÷ 1200 (capped at 1). The club rank is the average rank, at the time, of the clubs he played those 20 matches for, weighted by his minutes. Even a perfect player is capped by his club: at a 966 club he can reach at most 100 × 966 / 1200 = 80. Bayern (1121) caps its players at 93.
+7. **Scale by club level:** multiply the percentile by the square root of the club's rank ÷ 1200 (capped at 1). The club rank is the average rank, at the time, of the clubs he played those matches for, weighted by his minutes. Even a perfect player is capped by his club: at a 966 club he can reach at most 100 × √(966 / 1200) = 90. The square root keeps club level in the rank but halves the gaps: Real Madrid (1063) against Bayern (1121) is 0.94 against 0.97, rather than 0.89 against 0.93.
 
 **Where it's stored**
 - `fixture_player_ranks` holds each player's rank going into every match. It's a separate table, cleared and refilled on each run, so the 700,000-row `fixture_players` table isn't rewritten every night.
