@@ -18,7 +18,7 @@ Player rank
     club     = club rank at the time, averaged over the window's matches by minutes (the clubs he
                actually played those matches for, as good as they were then)
     rank     = stat pct x min(club / CLUB_RANK_MAX, 1): even a perfect player is capped by his
-               club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1300 = 74
+               club's level, e.g. at a 966 club he can reach at most 100 x 966 / 1200 = 80
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 WINDOW_APPS = 20
 WINDOW_DAYS = 540
 SHRINK_MINUTES = 900
-CLUB_RANK_MAX = 1300       # club rank treated as the top of the scale (rank is scaled by club / this)
+CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
 

@@ -87,7 +87,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 4. Compare each stat with other players in the same role group.
 5. **Mark down players with few minutes:** pull them towards a below-average level (−0.5, weighted as 900 minutes), not towards the average.
 6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
-7. **Scale by club level:** multiply the percentile by the club's rank ÷ 1300 (capped at 1). The club rank is the average rank, at the time, of the clubs he played those 20 matches for, weighted by his minutes. Even a perfect player is capped by his club: at a 966 club he can reach at most 100 × 966 / 1300 = 74. Bayern (1121) caps its players at 86.
+7. **Scale by club level:** multiply the percentile by the club's rank ÷ 1200 (capped at 1). The club rank is the average rank, at the time, of the clubs he played those 20 matches for, weighted by his minutes. Even a perfect player is capped by his club: at a 966 club he can reach at most 100 × 966 / 1200 = 80. Bayern (1121) caps its players at 93.
 
 **Where it's stored**
 - `fixture_players.player_rank` holds each player's rank going into every match.
