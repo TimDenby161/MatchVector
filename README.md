@@ -90,7 +90,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 7. **Scale by club level:** multiply the percentile by the club's rank ÷ 1200 (capped at 1). The club rank is the average rank, at the time, of the clubs he played those 20 matches for, weighted by his minutes. Even a perfect player is capped by his club: at a 966 club he can reach at most 100 × 966 / 1200 = 80. Bayern (1121) caps its players at 93.
 
 **Where it's stored**
-- `fixture_players.player_rank` holds each player's rank going into every match.
+- `fixture_player_ranks` holds each player's rank going into every match. It's a separate table, cleared and refilled on each run, so the 700,000-row `fixture_players` table isn't rewritten every night.
 - `players.current_rank` holds his rank now.
 
 **Team ratings** (`fixture_team_ratings`, for every match and team)

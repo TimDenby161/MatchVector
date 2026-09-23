@@ -383,15 +383,14 @@ def compute_player_ratings(conn):
 
 def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows):
     with conn.cursor() as cur:
-        cur.execute("create temp table tmp_rank (fixture_id int, player_id int, player_rank numeric(4,1)) on commit drop")
+        # Rebuilt with truncate + copy rather than updating fixture_players, so the big table
+        # isn't rewritten (and bloated with dead rows) on every run
+        cur.execute("truncate fixture_player_ranks")
         buf = io.StringIO()
         for fid, player, s, pos in appearance_scores:
             buf.write(f"{fid}\t{player}\t{to_rank(s, pos)}\n")
-        with cur.copy("copy tmp_rank from stdin") as cp:
+        with cur.copy("copy fixture_player_ranks (fixture_id, player_id, player_rank) from stdin") as cp:
             cp.write(buf.getvalue())
-        cur.execute("""update fixture_players fp set player_rank = t.player_rank from tmp_rank t
-                       where fp.fixture_id = t.fixture_id and fp.player_id = t.player_id
-                         and fp.player_rank is distinct from t.player_rank""")
         cur.execute("truncate fixture_team_ratings")
         buf = io.StringIO()
         for row in team_out:
