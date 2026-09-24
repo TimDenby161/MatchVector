@@ -383,6 +383,11 @@
   .season-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .season-table .spell + .spell { margin-top: 3px; }
   .season-now { font-size: 13px; }
+  .pos-shares { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .pos-share { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, var(--series-blue) 12%, transparent); color: var(--text-primary); }
+  .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
+  .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
   .season-now .spell + .spell { margin-top: 3px; }
   .season-now .dim { color: var(--text-muted); }
   .season-table .dim, .page-note { color: var(--text-muted); }
@@ -1855,10 +1860,24 @@ function seasonChart(p, seasons) {
     </svg></div>
     <div class="chart-summary">Hollow points are estimated seasons (no minutes in the leagues with player data): his level on the age curve for his position.</div></div>`;
 }
+const POS_WORD = { G: "GK", D: "DEF", M: "MID", F: "FWD", SUB: "Sub" };
+// [[role, minutes], ...] -> "LB 78% · LWB 15% · Sub 7%" (positions under 3% left out, as "other")
+function positionShares(list) {
+  const total = list.reduce((a, [, m]) => a + m, 0);
+  if (!total) return "";
+  const shown = list.filter(([, m]) => m / total >= 0.03);
+  const other = total - shown.reduce((a, [, m]) => a + m, 0);
+  return shown.map(([r, m]) => `<span class="pos-share${r === "SUB" ? " sub" : ""}">${escapeHtml(POS_WORD[r] || r)} ${Math.round(100 * m / total)}%</span>`).join("")
+    + (other > 0 ? `<span class="pos-share sub">other ${Math.round(100 * other / total)}%</span>` : "");
+}
 function renderPlayerPage(p) {
   const body = $("#club-body");
   const seasons = state.players.seasons || [];
   const detail = state.playerSeasons?.players?.[String(p.id)] || {};
+  const posBySeason = state.playerSeasons?.positions?.[String(p.id)] || {};
+  const posAll = new Map();                // all seasons shown, together
+  for (const list of Object.values(posBySeason)) for (const [r, m] of list) posAll.set(r, (posAll.get(r) || 0) + m);
+  const posAllList = [...posAll].sort((a, b) => b[1] - a[1]);
   const born = state.playerSeasons?.born?.[String(p.id)];
   const group = GROUP_OF[p.position] || p.position;
   const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
@@ -1875,7 +1894,7 @@ function renderPlayerPage(p) {
     const age = p.age != null ? p.age - (seasons[0] - y) : null;
     const sp = detail[String(y)] || [];
     return `<tr><td class="num" style="text-align:left">${seasonShort(y)}</td><td class="num">${age ?? "–"}</td>
-      <td>${sp.length ? spellHtml(sp) : `<span class="dim">${est ? "Estimated from his other seasons and age" : ""}</span>`}</td>
+      <td>${sp.length ? spellHtml(sp) : `<span class="dim">${est ? "Estimated from his other seasons and age" : ""}</span>`}${posBySeason[String(y)] ? `<div class="pos-shares">${positionShares(posBySeason[String(y)])}</div>` : ""}</td>
       <td class="num">${est ? `<span class="est">${rankChipSmall(v)}</span>` : rankChipSmall(v)}</td></tr>`;
   }).join("");
   const now = detail.now || [];
@@ -1894,9 +1913,11 @@ function renderPlayerPage(p) {
       ${sameNat.length ? tile(`Among ${escapeHtml(p.nationality)}`, rankAmong(p, sameNat)) : ""}
       ${tile("All players", rankAmong(p, list))}
     </div>
+    ${posAllList.length ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played, ${seasonShort(seasons[seasons.length - 1])} to now (share of his minutes)</div>
+      <div class="pos-shares big">${positionShares(posAllList)}</div></div>` : ""}
     ${seasonChart(p, seasons)}
     <div class="club-section"><div class="modal-section">Season by season</div>
-      <table class="season-table"><thead><tr><th>Season</th><th class="num">Age</th><th>Club · club rank · minutes · rating · goals, assists</th><th class="num">Rank</th></tr></thead>
+      <table class="season-table"><thead><tr><th>Season</th><th class="num">Age</th><th>Club · club rank · minutes · rating · goals, assists · positions</th><th class="num">Rank</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div class="page-note">A season's rank starts from his clubs' level (LT ALGO over his matches) and his stats against players in his position, then follows the typical age curve for his position from a level of his own: a season only moves off that curve as far as its minutes justify.</div>
     </div>

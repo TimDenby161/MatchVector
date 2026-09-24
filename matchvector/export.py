@@ -406,6 +406,17 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
            where r.team_id is not null and r.player_id = any(%s)
            group by 1, 2, 3, 4""", [ids]).fetchall()
     spells = _club_spells(seasons + recent + gaps)
+    # Minutes by position per season: the role he started in (from the line-up grid and
+    # formation), "SUB" for minutes off the bench, his broad position (G/D/M/F) if a start has no
+    # grid. Seasons in leagues without per-match data have none
+    positions = defaultdict(dict)
+    for player, season, role, mins in conn.execute(
+            """select fp.player_id, f.season,
+                      coalesce(fp.role, case when fp.started then fp.position else 'SUB' end), sum(fp.minutes)
+               from fixture_players fp join fixtures f using (fixture_id)
+               where fp.player_id = any(%s) and f.season = any(%s) and f.status_short = any(%s) and fp.minutes > 0
+               group by 1, 2, 3 order by 4 desc""", [ids, PLAYER_SEASONS, list(config.FINISHED_STATUSES)]):
+        positions[player].setdefault(str(season), []).append([role, int(mins)])
     team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}
     names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))
     (out_dir / "player_seasons.json").write_text(json.dumps({
@@ -414,6 +425,7 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
         "born": {str(p): b.isoformat() for p, b in conn.execute(
             "select player_id, birth_date from players where player_id = any(%s) and birth_date is not null", [ids])},
         "players": {str(p): {str(k): v for k, v in d.items()} for p, d in spells.items()},
+        "positions": {str(p): d for p, d in positions.items()},   # {player: {season: [[role, minutes], ...]}}
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported season detail for %d players", len(spells))
 
