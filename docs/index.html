@@ -2040,10 +2040,46 @@ function clubXiTab() {
 // Overview pitch: in each position, the squad's players who can play there (their main position,
 // or 2+ full matches' worth of starting minutes there over the last 12 months; until the
 // position minutes have loaded, the 25% rule of the position filter), best first by their rank in
-// that position, all of them. Keeper at the top, strikers at the bottom (attacking down the
+// that position, all of them. Only the positions in the formations used since the manager took
+// over (the Formations tab). Keeper at the top, strikers at the bottom (attacking down the
 // page, so the left-sided positions are on the right). Laid out as a grid of lines so long lists push the pitch taller
 // instead of overlapping.
 const DEPTH_MINUTES = 180;
+// The roles in a formation ("4-2-3-1" -> GK LB CB RB DM LW AM RW ST), as positions.py role()
+function formationRoles(f) {
+  const lines = String(f).split("-").map(Number);
+  if (!lines.length || lines.some((n) => !(n > 0))) return [];
+  const wide = (n, col, l, m, r) => col === 1 ? l : col === n ? r : m;
+  const last = lines.length - 1, backThree = lines[0] === 3, middles = last - 1;
+  const out = new Set(["GK"]);
+  lines.forEach((n, idx) => {
+    for (let col = 1; col <= n; col++) {
+      let r;
+      if (idx === 0) r = n === 4 ? wide(n, col, "LB", "CB", "RB") : n === 5 ? wide(n, col, "LWB", "CB", "RWB") : "CB";
+      else if (idx === last) r = n >= 3 ? wide(n, col, "LW", "ST", "RW") : "ST";
+      else if (middles === 1 || idx === 1) {
+        if (middles !== 1 && n <= 2) r = "DM";
+        else if (n === 4) r = backThree ? wide(n, col, "LWB", "CM", "RWB") : wide(n, col, "LM", "CM", "RM");
+        else if (n === 5) r = wide(n, col, "LWB", "CM", "RWB");
+        else r = "CM";
+      } else if (n <= 2) r = idx === last - 1 ? "AM" : "CM";
+      else if (n === 4) r = wide(n, col, "LM", "CM", "RM");
+      else r = wide(n, col, "LW", "AM", "RW");
+      out.add(r);
+    }
+  });
+  return [...out];
+}
+// The matches the Formations tab leads with: since the manager took over, else this season
+function clubFormationRows() {
+  const rows = state.club?.data?.rows || [];
+  if (!rows.length) return [];
+  const since = state.club.data.coach?.since;
+  if (since) return rows.filter((m) => m.date >= since);
+  const { seasonOf } = clubSeasons(rows);
+  const season = seasonOf(rows[rows.length - 1]);
+  return rows.filter((m) => seasonOf(m) === season);
+}
 function canPlay(p) {
   const rows = state.playerSeasons?.positions?.[String(p.id)]?.["12m"];
   if (!rows) return playsAt(p);
@@ -2053,7 +2089,9 @@ function depthPitch(teamId) {
   const squad = (state.players?.list || []).filter((p) => p.team === teamId);
   if (!squad.length) return "";
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
-  const spots = PITCH_SPOTS.map(([r, x, y]) => {
+  // only the positions in the formations the club has used (all of them if none are known)
+  const used = new Set(clubFormationRows().filter((m) => m.formation).flatMap((m) => formationRoles(m.formation)));
+  const spots = PITCH_SPOTS.filter(([r]) => !used.size || used.has(r)).map(([r, x, y]) => {
     const ps = squad.filter((p) => canPlay(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
       .sort((a, b) => b.rank - a.rank);
     const cell = `grid-row:${y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1};grid-column:${x < 35 ? 3 : x < 65 ? 2 : 1}`;
