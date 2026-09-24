@@ -328,7 +328,8 @@
   table.leaderboard.players th.col-now { color: var(--text-primary); font-weight: 800; }
   table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { border-left: 1px solid var(--gridline); padding-left: 8px; padding-right: 8px; width: 56px; }
   table.leaderboard.players td.col-now .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
-  table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 44px; }
+  /* ages centred, so they sit between Pos and the Ability divider rather than against it */
+  table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 52px; text-align: center; padding-left: 4px; padding-right: 4px; }
   table.leaderboard.players .dim { color: var(--gridline); }
   /* a season estimated from the age curve (no minutes in covered leagues): outlined, not filled */
   table.season-table .est .rel-chip, table.leaderboard.players .est .rel-chip { background: transparent; box-shadow: inset 0 0 0 1px currentColor; font-style: italic; opacity: .8; }
@@ -906,7 +907,7 @@
     /* Players: badge, photo, then the name (cut short if it has to be) and flag on one line */
     table.leaderboard.players td:nth-child(2) { overflow: hidden; }
     table.leaderboard.players th:nth-child(3), table.leaderboard.players td:nth-child(3) { width: 34px; padding-left: 2px; padding-right: 2px; }
-    table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 32px; }
+    table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 38px; padding-left: 2px; padding-right: 2px; }
     table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { width: 50px; padding-left: 6px; padding-right: 6px; }
     table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { width: 54px; padding-left: 6px; padding-right: 6px; }
   }
