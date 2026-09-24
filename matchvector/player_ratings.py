@@ -87,7 +87,8 @@ SHRINK_MINUTES = 900
 CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
-GOAL_RATING_BONUS = 0.78   # a centre-back's match rating with a goal vs without (6.93 -> 7.70)
+# match rating with a goal vs without, by role group (CB 6.93 -> 7.70); taken off per goal
+GOAL_RATING_BONUS = {"CB": 0.78, "FB": 0.82, "DM": 0.79}
 DEFAULT_RATING = 6.5       # match rating for season totals the API has no rating for
 # season-total metrics and the stats they need: left out (not counted as 0) when the API lacks them
 METRIC_INPUTS = {"goals": {"goals"}, "assists": {"assists"}, "shots_on": {"shots_on"},
@@ -135,10 +136,17 @@ WEIGHTS = {
     # the team, a little him). Penalties conceded (0.02) is noise and left out
     "CB": {"rating": .12, "duels_pct": .19, "passes": .15, "pass_acc": .09, "tackles_int": .13,
            "blocks": .06, "dribbled_past": -.12, "team_xga": -.07, "discipline": -.07},
-    "FB": {"rating": .12, "key_passes": .18, "passes": .15, "duels_pct": .12, "tackles_int": .10,
-           "dribbles_won": .08, "assists": .08, "shots_on": .05, "pass_acc": .05, "discipline": -.07},
-    "DM": {"rating": .12, "passes": .20, "duels_pct": .15, "tackles_int": .15, "key_passes": .12,
-           "pass_acc": .10, "shots_on": .05, "blocks": .03, "discipline": -.08},
+    # Full-backs (repeat for FBs who changed club in brackets): defending - tackles +
+    # interceptions (0.64), duels won (0.47), times dribbled past (0.55) - and going forward -
+    # dribbles won (0.70), key passes (0.54), passing volume (0.55). Out: goals, shots on target,
+    # assists (0.10: luck beyond key passes) and team xG conceded (0.05: all team)
+    "FB": {"rating": .10, "key_passes": .16, "passes": .13, "dribbles_won": .10, "tackles_int": .14,
+           "duels_pct": .12, "pass_acc": .06, "dribbled_past": -.12, "discipline": -.07},
+    # Defensive mids (repeat for all DMs, few changed club): passing volume (0.81), tackles +
+    # interceptions (0.76), times dribbled past (0.69), duels won (0.65), key passes (0.82). Out:
+    # goals, team xG conceded (negative across a move); shots on target only a sliver
+    "DM": {"rating": .10, "passes": .18, "tackles_int": .17, "duels_pct": .15, "key_passes": .10,
+           "pass_acc": .09, "blocks": .02, "shots_on": .02, "dribbled_past": -.10, "discipline": -.07},
     "CM": {"rating": .12, "key_passes": .20, "passes": .15, "shots_on": .12, "duels_pct": .10,
            "goals": .08, "tackles_int": .07, "assists": .06, "dribbles_won": .05, "pass_acc": .05},
     "AM": {"rating": .12, "key_passes": .22, "shots_on": .18, "goals": .12, "dribbles_won": .10,
@@ -279,13 +287,13 @@ def _offsets(conn):
 
 def _adjusted(row, offsets):
     """League-adjusted match rating of an appearance row, or None if unrated. A centre-back's
-    rating has GOAL_RATING_BONUS taken off per goal: API-Football adds ~0.78 to a centre-back's
-    rating when he scores, and scoring isn't his job."""
+    rating has GOAL_RATING_BONUS taken off per goal for defensive roles: API-Football adds ~0.8
+    to their rating when they score, and scoring isn't their job."""
     if row[7] is None:
         return None
     r = row[7] - offsets.get((row[9], row[5]), 0.0)
-    if row[6] == "CB" and row[11]:
-        r -= GOAL_RATING_BONUS * row[11]
+    if row[11] and row[6]:
+        r -= GOAL_RATING_BONUS.get(role_group(row[6]), 0.0) * row[11]
     return r
 
 
@@ -581,8 +589,8 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                 m[k] = None
         if "saves" not in e["known"]:
             m["gk_rating"] = m["rating"]
-        if pos == "CB" and e["apps"] and m["rating"] is not None:   # goal bonus off, as per match
-            m["rating"] -= GOAL_RATING_BONUS * e["sums"]["goals"] / e["apps"]
+        if pos in GOAL_RATING_BONUS and e["apps"] and m["rating"] is not None:   # goal bonus off
+            m["rating"] -= GOAL_RATING_BONUS[pos] * e["sums"]["goals"] / e["apps"]
         sc = sum(w * (m[k] - norms[pos][k][0]) / norms[pos][k][1] for k, w in WEIGHTS[pos].items() if m[k] is not None)
         mins = e["sums"]["minutes"]
         sh = min(mins / (90 * e["games"]), 1.0) if e["games"] else None
