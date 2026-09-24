@@ -1158,17 +1158,34 @@ function renderPlayers() {
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
         ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season sets the base, and how his stats compare with other players in his position move it up or down (about ±15; keepers ±10). Squad players who play little are marked down. Early in a season it leans on his previous season. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
       </tr></thead>
-      <tbody>${rows.map((p, i) => `
+      <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, seasons)).join("")}</tbody>
+    </table></div>`;
+  fitTopRows(wrap, all || !!q);
+  // The rest of the rows go in afterwards in batches, so the first screen (and the age slider)
+  // responds at once instead of waiting for thousands of rows; a newer render cancels this one
+  const token = state.playerRenderToken = (state.playerRenderToken || 0) + 1;
+  const tbody = wrap.querySelector("tbody");
+  let at = FIRST_ROWS;
+  const more = () => {
+    if (token !== state.playerRenderToken || at >= rows.length) return;
+    tbody.insertAdjacentHTML("beforeend", rows.slice(at, at + BATCH_ROWS).map((p, j) => playerRow(p, at + j, seasons)).join(""));
+    at += BATCH_ROWS;
+    setTimeout(more, 0);
+  };
+  setTimeout(more, 0);
+}
+
+const FIRST_ROWS = 100, BATCH_ROWS = 300;
+function playerRow(p, i, seasons) {
+  return `
         <tr data-team="${p.team}" data-player="${p.id}">
           <td>${i + 1}</td>
           <td><div class="pl-cell"><img class="club-logo pl-badge" src="${teamLogo(p.team)}" alt="" title="${escapeHtml(teamName(p.team))}" loading="lazy" onerror="this.style.visibility='hidden'"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
             <div>${escapeHtml(p.name)}<span class="club-sub">${clubLink(p.team)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${escapeHtml(p.nationality)}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
-          ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => `<td class="num col-season col-s${i}${i === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[i] == null ? `<span class="dim">–</span>` : p.estimated?.includes(i) ? `<span class="est">${rankChipSmall(p.seasons[i])}</span>` : rankChipSmall(p.seasons[i])}</td>`).join("")}
-        </tr>`).join("")}</tbody>
-    </table></div>`;
-  fitTopRows(wrap, all || !!q);
+          ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
+        </tr>`;
 }
 
 function renderTable() {
@@ -1654,9 +1671,12 @@ $("#date-today").addEventListener("click", () => { state.date = localDateStr(new
 $("#date-input").addEventListener("change", (e) => { if (e.target.value) { state.date = e.target.value; renderMatches(); } });
 $("#table-search").addEventListener("input", (e) => { state.tableSearch = e.target.value; renderTable(); });
 // ---- Age range (Players view)
-function ageBounds() {
-  const ages = state.players?.list.map((p) => p.age).filter((a) => a != null) || [];
-  return ages.length ? [Math.min(...ages), Math.max(...ages)] : [15, 45];
+function ageBounds() {           // youngest and oldest age in the data, worked out once
+  if (!state.ageBoundsCache && state.players) {
+    const ages = state.players.list.map((p) => p.age).filter((a) => a != null);
+    state.ageBoundsCache = ages.length ? [Math.min(...ages), Math.max(...ages)] : [15, 45];
+  }
+  return state.ageBoundsCache || [15, 45];
 }
 function inAgeRange(p) {
   const [lo, hi] = ageBounds();
@@ -1685,8 +1705,9 @@ function onAgeInput(e, done) {
   if (min > max) { if (e.target.id === "age-min") min = max; else max = min; }   // handles can't cross
   state.ageMin = min <= lo ? null : min;
   state.ageMax = max >= hi ? null : max;
-  renderAgeFilter();
-  renderTable();
+  renderAgeFilter();                   // handle and label move straight away
+  if (!state.ageFrame)                 // the table redraws at most once per frame while dragging
+    state.ageFrame = requestAnimationFrame(() => { state.ageFrame = 0; renderTable(); });
   if (done) renderTableFilters();      // counts in the menu follow the range (on release)
 }
 for (const id of ["#age-min", "#age-max"]) {
