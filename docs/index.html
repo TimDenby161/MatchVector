@@ -274,6 +274,8 @@
   table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 32px; padding-left: 2px; padding-right: 2px; }
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
+  table.leaderboard.clubs td { padding-top: 10px; padding-bottom: 10px; }
+  table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 3px 6px; font-size: 12px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
   .pl-cell .pl-badge { flex: none; margin-right: -2px; }
@@ -705,7 +707,7 @@
   .pp-spot .pp-rank { font-size: 19px; font-weight: 900; font-variant-numeric: tabular-nums; }
   .pp-spot .pp-pct { font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
   .pp-spot.main { background: rgba(255,255,255,0.24); border-width: 2.5px; }
-  .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
+  .pp-spot.hollow { min-width: 0; width: 38px; height: 22px; padding: 0; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .pp-spot.hollow .pp-pos { color: inherit; }
   .pp-section { margin-bottom: 16px; }
   /* Overview: a narrow next-match card to the left of the pitch */
@@ -809,7 +811,7 @@
     }
     body[data-tab="table"] header .app-bar { display: none; }
     body[data-tab="table"] nav.tabs { margin-bottom: 0; }
-    table.leaderboard.clubs td { padding-top: 4.5px; padding-bottom: 4.5px; }
+    table.leaderboard.clubs td { padding-top: 10px; padding-bottom: 10px; }
     table.leaderboard.clubs th { padding-top: 4px; padding-bottom: 4px; }
     body[data-tab="table"] header { padding-top: 6px; padding-bottom: 6px; }
     body[data-tab="table"] nav.tabs button { padding-top: 6px; padding-bottom: 6px; }
@@ -833,7 +835,7 @@
     table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 24px; padding-left: 0; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 28px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
-    table.leaderboard.clubs .rel-chip { min-width: 28px; padding: 2px 3px; }
+    table.leaderboard.clubs .rel-chip { min-width: 32px; padding: 3px 3px; font-size: 11.5px; }
     table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 46px; }
     table.leaderboard.clubs th:last-child, table.leaderboard.clubs td:last-child { width: 44px; padding-right: 8px; }
     .club-logo { width: 20px; height: 20px; }
@@ -1488,6 +1490,16 @@ function stepDate(delta) {
 }
 
 // ------------------------------------------------------------------ rankings table
+// the current Elo's place among every ranked club, as the badge colours (top 5% green ...)
+function formTier(v) {
+  if (!state.formSorted) state.formSorted = state.rankings.map((x) => x.current).sort((a, b) => b - a);
+  const s = state.formSorted;
+  let lo = 0, hi = s.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (s[m] > v) lo = m + 1; else hi = m; }
+  const share = (lo + 1) / s.length;
+  return share <= 0.05 ? 4 : share <= 0.2 ? 3 : share <= 0.5 ? 2 : 1;
+}
+const formChip = (v) => `<span class="rel-chip rel-${formTier(v)}">${Math.round(v)}</span>`;
 function relTier(r) { return r >= 90 ? 4 : r >= 70 ? 3 : r >= 40 ? 2 : 1; }
 function formHtml(f) {
   if (f == null) return "";
@@ -1643,7 +1655,7 @@ function renderTable() {
         ${th("played", "Pl", "Played: matches counted in the Elo rating since 2020, including cups and European games.")}
         ${th("lt", "Rating", "Rating: the long-term Elo rating (LT ALGO), a smoothed rating weighted mostly to the average over the last 100 matches. Slow to move, and the better guide for matches months away.")}
         ${th("form", "Trend", "Trend: Elo change over the last 6 matches. Green is rising, red is falling.")}
-        ${th("current", "Form", "Form: the current Elo rating, after the latest match. 100 points is worth a goal a game. It rises when a club does better than expected against that opponent, and falls when it does worse.")}
+        ${th("current", "Form", "Form: the current Elo rating, after the latest match. 100 points is worth a goal a game. It rises when a club does better than expected against that opponent, and falls when it does worse. Colour: green is the top 5% of all clubs, amber the top 20%, orange the top half, red the rest.")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
@@ -1653,7 +1665,7 @@ function renderTable() {
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num">${Math.round(r.lt)}</td>
           <td class="num">${formHtml(r.form)}</td>
-          <td class="num"><b>${Math.round(r.current)}</b></td>
+          <td class="num">${formChip(r.current)}</td>
         </tr>`).join("")}
       </tbody>
     </table></div>
@@ -2725,11 +2737,9 @@ function positionPitch(p) {
   const spots = PITCH_SPOTS.map(([r, x0, y0]) => {
     const x = 100 - x0, y = 100 - y0;
     const g = GROUP_OF[r], rank = rankIn(g), pct = share(r);
-    if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})">
-      <span class="pp-pos">${r}</span></div>`;
+    if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})"></div>`;
     // a position he could play but hasn't started in: blank like the rest (his rank in the tooltip)
-    if (!pct) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · no starts here">
-      <span class="pp-pos">${r}</span></div>`;
+    if (!pct) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · no starts here"></div>`;
     return `<div class="pp-spot rel-${rankTier(rank)}${r === p.position ? " main" : ""}" style="left:${x}%;top:${y}%"
         title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · ${pct}% of his starting minutes">
       <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct}%</span></div>`;
@@ -3200,7 +3210,7 @@ function clubRatingTable(rows, pos, names = {}, meta = null) {
       <td class="num" style="color:var(--text-muted)">${pos ? pos(r) : r.played}</td>
       <td class="num"><b>${Math.round(r.lt)}</b></td>
       <td class="num">${formHtml(r.form)}</td>
-      <td class="num">${Math.round(r.current)}</td></tr>`).join("")}</tbody></table></div>`;
+      <td class="num">${formChip(r.current)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 $("#club-body").addEventListener("click", (e) => {
