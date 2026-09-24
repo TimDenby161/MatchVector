@@ -394,6 +394,93 @@
   table.leaderboard.players th.col-posrank { color: var(--series-blue); font-weight: 800; letter-spacing: 0; }
   table.leaderboard.players td.col-posrank .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
   .dim-text { color: var(--text-muted); font-style: italic; }
+  /* Player page: header with his rank, sub-tabs, next match, stats, match log */
+  .pl-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .pl-hero h2 { margin: 0; font-size: 22px; line-height: 1.15; }
+  .pl-hero-club { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 14px; font-weight: 600; min-width: 0; }
+  .pl-hero-club .club-logo { width: 18px; height: 18px; flex: none; }
+  .pl-hero-club .pl-league, .pl-hero-club .dim-sep { color: var(--text-muted); font-weight: 500; }
+  .pl-hero .head-meta { font-size: 12px; }
+  .pl-hero-rank { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px;
+    padding: 6px 8px 7px; border-radius: 12px; }
+  .pl-hero-rank .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; opacity: .85; }
+  .pl-hero-rank .val { font-size: 28px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .page-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
+  .page-tabs::-webkit-scrollbar { display: none; }
+  .page-tabs button { appearance: none; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--text-secondary); padding: 9px 12px 8px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .page-tabs button:hover { color: var(--text-primary); }
+  .page-tabs button[aria-selected="true"] { color: var(--series-blue); border-bottom-color: var(--series-blue); }
+  .page-tabs button:focus-visible { outline: 2px solid var(--series-blue); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+  .team-stat-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; font-variant-numeric: tabular-nums; }
+  .team-stats.compact .team-stat-value { font-size: 16px; }
+  .next-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .next-top { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 600; }
+  .next-label { text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  .next-opp { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 15px; font-weight: 700; min-width: 0; }
+  .next-opp .club-logo { width: 22px; height: 22px; flex: none; }
+  .next-opp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .next-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .next-status { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+  .next-status.good { background: color-mix(in srgb, var(--status-good) 15%, transparent); color: var(--status-good); }
+  .next-status.warn { background: color-mix(in srgb, var(--status-warning) 20%, transparent); color: var(--status-warning); }
+  .next-status.bad { background: color-mix(in srgb, var(--status-critical) 15%, transparent); color: var(--status-critical); }
+  .next-status.muted { background: var(--chip-bg); color: var(--text-secondary); }
+  .form-strip { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; }
+  .form-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .form-cell .rel-chip { min-width: 0; width: 100%; padding: 4px 0; font-size: 12px; }
+  .form-res { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rel-chip.rating-none { background: var(--chip-bg); color: var(--text-muted); }
+  .stats-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .chip-scroll { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .chip-scroll::-webkit-scrollbar { display: none; }
+  .chip-scroll .filter-chip { flex: none; }
+  .seg { display: flex; flex: none; background: var(--chip-bg); border-radius: 8px; padding: 2px; }
+  .seg button { appearance: none; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    padding: 5px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+  .seg button[aria-pressed="true"] { background: var(--surface-1); color: var(--text-primary); box-shadow: 0 1px 2px var(--border); }
+  .season-clubs { margin-bottom: 10px; font-size: 13px; }
+  .season-club { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .season-club + .season-club { margin-top: 4px; }
+  .season-club .club-logo { width: 16px; height: 16px; flex: none; }
+  .season-club .dim { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .stat-group { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 6px; }
+  .stat-group-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 2px; }
+  .stat-line { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: 13px; }
+  .stat-line + .stat-line { border-top: 1px solid var(--gridline); }
+  .stat-line span { color: var(--text-secondary); }
+  .stat-line b { font-variant-numeric: tabular-nums; }
+  .match-list { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 0 12px; }
+  .match-row { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto 44px; align-items: center; column-gap: 8px; padding: 8px 0; font-size: 13px; }
+  .match-row + .match-row { border-top: 1px solid var(--border); }
+  .mr-date { color: var(--text-muted); font-size: 11px; }
+  .mr-opp { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; }
+  .mr-opp > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mr-opp .club-logo { width: 18px; height: 18px; flex: none; }
+  .mr-res { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mr-rating { text-align: right; }
+  .mr-sub { grid-column: 2 / -1; font-size: 11px; color: var(--text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .mr-rank { float: right; }
+  .card { display: inline-block; width: 8px; height: 11px; border-radius: 1.5px; background: var(--status-warning); vertical-align: -1px; }
+  .card.red { background: var(--status-critical); }
+  @media (max-width: 480px) {
+    .pl-hero { gap: 10px; }
+    .pl-hero .player-photo-lg { width: 52px; height: 52px; }
+    .pl-hero h2 { font-size: 19px; }
+    .pl-hero-rank { min-width: 52px; padding: 5px 6px 6px; }
+    .pl-hero-rank .val { font-size: 23px; }
+    .page-tabs button { padding: 8px 10px 7px; }
+    #pl-tab .team-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #pl-tab .team-stats.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stat-groups { grid-template-columns: minmax(0, 1fr); }
+    .form-strip { gap: 3px; }
+    .form-cell .rel-chip { font-size: 10.5px; padding: 3px 0; }
+    .match-list { padding: 0 10px; }
+    .match-row { grid-template-columns: 42px minmax(0, 1fr) auto 40px; column-gap: 6px; }
+    .season-table td:nth-child(2) { font-size: 12px; }
+    .pos-period-label { width: auto; flex-basis: 100%; }
+  }
   .rated-as { font-size: 11px; color: var(--text-muted); align-self: center; margin-left: 2px; }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
   .pos-period { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -580,7 +667,48 @@
     table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 46px; }
     table.leaderboard.clubs th:last-child, table.leaderboard.clubs td:last-child { width: 44px; padding-right: 8px; }
     .club-logo { width: 20px; height: 20px; }
-    .club-meta { white-space: normal; margin-left: 0; display: block; }
+    /* country · league on one line under the name, cut short rather than wrapping */
+    table.leaderboard.clubs td:nth-child(3) { overflow: hidden; }
+    .club-meta { margin-left: 0; display: block; overflow: hidden; text-overflow: ellipsis; }
+    /* Players: the club is named under the player, so the badge goes; name, club and
+       nationality each keep to one line */
+    .pl-cell .pl-badge { display: none; }
+    .pl-cell > div { min-width: 0; }
+    table.leaderboard.players td:nth-child(2) { overflow: hidden; }
+    .pl-cell > div > a, .pl-cell .club-sub, .pl-cell .pl-nat { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    table.leaderboard.players th:nth-child(3), table.leaderboard.players td:nth-child(3) { width: 34px; padding-left: 2px; padding-right: 2px; }
+    table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 32px; }
+    table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { width: 50px; padding-left: 6px; padding-right: 6px; }
+    table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { width: 54px; padding-left: 6px; padding-right: 6px; }
+    table.leaderboard.players:has(.col-posrank) .col-s2 { display: none; }
+  }
+  /* Phones and small tablets, Rankings tab: the view toggle and search first, the league
+     chips in one row that swipes sideways, and the player filters behind a Filters button */
+  #more-filters { display: none; }
+  @media (max-width: 759px) {
+    body[data-tab="table"] header .app-bar { display: none; }
+    body[data-tab="table"] nav.tabs { margin-bottom: 0; }
+    .side-stick { flex-direction: row; flex-wrap: wrap; align-items: flex-start; column-gap: 8px; }
+    .side-stick > * { flex: 0 0 100%; min-width: 0; }
+    #table-view { order: 0; margin-bottom: 8px; }
+    #table-search { order: 1; flex: 1 1 0; margin-bottom: 8px; }
+    #more-filters { order: 2; flex: none; display: inline-flex; align-items: center; gap: 5px;
+      height: 40px; padding: 0 12px; border-radius: 8px; font-size: 13px; margin-bottom: 8px; }
+    #more-filters[hidden] { display: none; }
+    #more-filters .n { background: var(--series-blue); color: #fff; border-radius: 999px; min-width: 18px;
+      padding: 1px 5px; font-size: 11px; text-align: center; }
+    #more-filters .caret { font-size: 10px; color: var(--text-muted); transition: transform .2s ease; }
+    #more-filters[aria-expanded="true"] .caret { transform: rotate(180deg); }
+    #age-filter, #pos-filter, #who-filter { order: 3; }
+    #table-side:not(.filters-open) :is(#age-filter, #pos-filter, #who-filter) { display: none; }
+    #table-filters { order: 4; margin-bottom: 8px; }
+    #table-filters .cgroups, #table-filters .league-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+      -webkit-overflow-scrolling: touch; margin-left: -12px; margin-right: -12px; padding: 0 12px; }
+    #table-filters .cgroups::-webkit-scrollbar, #table-filters .league-row::-webkit-scrollbar { display: none; }
+    #table-filters .filter-chip { flex: none; }
+    .pitch { max-width: 200px; }
+    /* iOS zooms the page into any input under 16px */
+    .table-search { font-size: 16px; padding-top: 8px; padding-bottom: 8px; }
   }
 </style>
 </head>
@@ -643,6 +771,7 @@
           <button type="button" class="filter-chip" data-view="players" aria-pressed="false">Players</button>
         </div>
         <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
+        <button type="button" class="filter-chip" id="more-filters" aria-expanded="false" aria-controls="table-side" hidden>Filters</button>
       </div>
     </div>
     <div id="table-wrap"></div>
@@ -917,6 +1046,7 @@ function renderTableFilters() {
       c.leagues.length > 1 && c.leagues.includes(Number(f)) ? "has-active" : "")).join("")}</div>` : "";
   const leagueRow = activeCountry && activeCountry.leagues.length > 1
     ? `<div class="league-row">${activeCountry.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), "")).join("")}</div>` : "";
+  const scrolled = wrap.querySelector(".cgroups")?.scrollLeft || 0;
   wrap.innerHTML = `<div class="cgroups">
       ${chip("all", "All", "All leagues")}
       <div class="sep"></div>
@@ -925,7 +1055,33 @@ function renderTableFilters() {
       ${regionGroups.join("")}
     </div>${regionRow}${leagueRow}`;
   bindFilterHover(wrap);
+  // Phones: each chip row swipes sideways; keep the row where it was and the selection in view
+  wrap.querySelector(".cgroups").scrollLeft = scrolled;
+  for (const row of wrap.querySelectorAll(".cgroups, .league-row")) {
+    const on = row.querySelector('[aria-pressed="true"], .has-active');
+    if (!on || row.scrollWidth <= row.clientWidth) continue;
+    const r = row.getBoundingClientRect(), c = on.getBoundingClientRect();
+    if (c.left < r.left + 12) row.scrollLeft += c.left - r.left - 12;
+    else if (c.right > r.right - 12) row.scrollLeft += c.right - r.right + 12;
+  }
+  renderMoreFilters();
 }
+// Phones: the age, position, club and nationality filters sit behind one button, which
+// shows how many are on
+function renderMoreFilters() {
+  const btn = $("#more-filters");
+  btn.hidden = state.tableView !== "players" || !state.players;
+  if (btn.hidden) return;
+  const n = (state.ageMin != null || state.ageMax != null ? 1 : 0) + (state.positions?.size || 0)
+    + (state.clubs?.size || 0) + (state.nats?.size || 0);
+  btn.innerHTML = `Filters${n ? `<span class="n">${n}</span>` : ""}<span class="caret" aria-hidden="true">▾</span>`;
+  btn.setAttribute("aria-expanded", String($("#table-side").classList.contains("filters-open")));
+}
+$("#more-filters").addEventListener("click", () => {
+  $("#table-side").classList.toggle("filters-open");
+  renderMoreFilters();
+  fitTopRows($("#table-wrap"), tableFilterIsWide() || !!state.tableSearch.trim());
+});
 
 // Side menu (wide screens): a group opens after a short hover, so sweeping the pointer past
 // doesn't make the list jump, and closes shortly after the pointer leaves
@@ -1160,10 +1316,10 @@ function formHtml(f) {
 }
 
 const POS_LABEL = { G: "GK", D: "DEF", M: "MID", F: "FWD" };
+const rankTier = (r) => r >= 80 ? 4 : r >= 60 ? 3 : r >= 35 ? 2 : 1;
 function rankChipSmall(r) {
   if (r == null) return "–";
-  const t = r >= 80 ? 4 : r >= 60 ? 3 : r >= 35 ? 2 : 1;
-  return `<span class="rel-chip rel-${t}">${Math.round(r)}</span>`;
+  return `<span class="rel-chip rel-${rankTier(r)}">${Math.round(r)}</span>`;
 }
 
 const TOP_ROWS = 10;
@@ -1847,6 +2003,7 @@ const GROUP_OF = { GK: "GK", CB: "CB", LB: "FB", RB: "FB", LWB: "FB", RWB: "FB",
 const GROUP_NAME = { GK: "goalkeepers", CB: "centre-backs", FB: "full-backs", DM: "defensive mids", CM: "central mids",
                      AM: "attacking mids", W: "wingers", ST: "strikers" };
 const seasonShort = (y) => `${String(y).slice(2)}/${String(y + 1).slice(2)}`;
+const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
 function playerById(id) {
   return (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(String(id));
 }
@@ -1854,6 +2011,7 @@ function rankAmong(p, list) {   // "#3 of 412", by current rank
   const sorted = list.slice().sort((a, b) => b.rank - a.rank);
   return `#${sorted.findIndex((x) => x.id === p.id) + 1} of ${sorted.length.toLocaleString()}`;
 }
+const playerPages = new Map();     // player id -> his page file (data/players/<id>.json)
 async function openPlayerPage(id) {
   showPage();
   state.club = null;
@@ -1862,31 +2020,14 @@ async function openPlayerPage(id) {
   if (!p) { body.innerHTML = `${backButton()}<div class="empty-state">This player isn't in the current ranks.</div>`; return; }
   body.innerHTML = `${backButton()}<div class="empty-state">Loading ${escapeHtml(p.name)}…</div>`;
   loadPlayerSeasons();
+  if (!playerPages.has(id)) {
+    const d = await fetch(`data/players/${id}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    if (d) playerPages.set(id, { ...d, seasonRows: rowsToObjects(d.season_fields, d.seasons), matchRows: rowsToObjects(d.match_fields, d.matches) });
+  }
   await state.playerSeasonsLoading;
   if (location.hash !== `#/player/${id}`) return;      // moved on while loading
-  renderPlayerPage(p);
-}
-function seasonChart(p, seasons) {
-  const pts = seasons.map((y, k) => ({ y, v: p.seasons?.[k], est: p.estimated?.includes(k) }))
-    .filter((d) => d.v != null).reverse();                  // oldest first
-  if (pts.length < 2) return "";
-  const W = 560, H = 170, L = 32, R = 16, T = 18, B = 22;
-  let lo = Math.min(...pts.map((d) => d.v)), hi = Math.max(...pts.map((d) => d.v));
-  const pad = Math.max(4, (hi - lo) * 0.15); lo = Math.max(0, lo - pad); hi = Math.min(100, hi + pad);
-  const x = (i) => L + (i / (pts.length - 1)) * (W - L - R);
-  const yy = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
-  const ticks = niceTicks(lo, hi, 4);
-  const path = pts.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${yy(d.v).toFixed(1)}`).join("");
-  return `<div class="chart-card"><div class="chart-head"><span class="chart-title">Season ranks</span></div>
-    <div class="chart-wrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(p.name)} season ranks">
-      <g class="chart-grid">${ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${yy(v).toFixed(1)}" y2="${yy(v).toFixed(1)}"/>`).join("")}</g>
-      <g class="chart-axis">${ticks.map((v) => `<text x="${L - 6}" y="${(yy(v) + 3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`).join("")}
-        ${pts.map((d, i) => `<text x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${seasonShort(d.y)}</text>`).join("")}</g>
-      <path class="chart-line" d="${path}"/>
-      ${pts.map((d, i) => `<circle class="season-dot${d.est ? " est" : ""}" cx="${x(i).toFixed(1)}" cy="${yy(d.v).toFixed(1)}" r="4.5"><title>${seasonShort(d.y)}: ${d.v.toFixed(1)}${d.est ? " (estimated)" : ""}</title></circle>
-        <text class="season-label" x="${x(i).toFixed(1)}" y="${(yy(d.v) - 9).toFixed(1)}" text-anchor="middle">${Math.round(d.v)}</text>`).join("")}
-    </svg></div>
-    <div class="chart-summary">Hollow points are estimated seasons (no minutes in the leagues with player data): his level on the age curve for his position.</div></div>`;
+  state.player = { p, page: playerPages.get(id) || null, season: null };
+  renderPlayerPage();
 }
 const POS_WORD = { G: "GK", D: "DEF", M: "MID", F: "FWD", SUB: "Sub" };
 const GROUP_SINGLE = { GK: "goalkeeper", CB: "centre-back", FB: "full-back", DM: "defensive mid", CM: "central mid",
@@ -1910,19 +2051,289 @@ function positionShares(list) {
   return shown.map(([r, m]) => `<span class="pos-share${r === "SUB" ? " sub" : ""}">${escapeHtml(POS_WORD[r] || r)} ${Math.round(100 * m / total)}%</span>`).join("")
     + (other > 0 ? `<span class="pos-share sub">other ${Math.round(100 * other / total)}%</span>` : "");
 }
-function renderPlayerPage(p) {
-  const body = $("#club-body");
+
+// Match ratings (API-Football, 0-10): coloured like the rank chips
+const ratingTier = (r) => r >= 7.5 ? 4 : r >= 7 ? 3 : r >= 6.5 ? 2 : 1;
+const ratingChip = (r) => r == null ? `<span class="rel-chip rating-none">–</span>` : `<span class="rel-chip rel-${ratingTier(r)}">${r.toFixed(1)}</span>`;
+const pageTeamName = (id) => state.player?.page?.teams?.[id] || state.playerSeasons?.teams?.[id] || teamName(id);
+const PLAYER_TABS = [["overview", "Overview"], ["stats", "Stats"], ["matches", "Matches"], ["career", "Career"]];
+
+function renderPlayerPage() {
+  const { p } = state.player;
+  const born = state.playerSeasons?.born?.[String(p.id)];
+  const group = GROUP_OF[p.position] || p.position;
+  const league = p.team && p.league ? SHORT_NAMES[p.league] || state.data.competitions[p.league]?.name : "";
+  const tab = state.playerTab || "overview";
+  $("#club-body").innerHTML = `
+    ${backButton()}
+    <div class="pl-hero">
+      <img class="player-photo-lg" src="${playerPhoto(p.id)}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="pl-hero-main">
+        <h2>${escapeHtml(p.name)}</h2>
+        <div class="pl-hero-club">${p.team ? `<img class="club-logo" src="${teamLogo(p.team)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
+          <span>${playerClub(p)}${league ? `<span class="dim-sep"> · </span><span class="pl-league">${escapeHtml(league)}</span>` : ""}</span></div>
+        <div class="head-meta"><span>${escapeHtml(p.position || "")}${GROUP_SINGLE[group] ? ` · ${GROUP_SINGLE[group]}` : ""}</span>
+          ${p.age != null ? `<span>Age ${p.age}${born ? ` · born ${escapeHtml(parseDateInput(born).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }))}` : ""}</span>` : ""}
+          ${p.nationality ? `<span>${natLink(p.nationality)}</span>` : ""}</div>
+      </div>
+      <div class="pl-hero-rank rel-${rankTier(p.rank)}" title="His rank now (0-100), from his last 20 appearances">
+        <span class="lbl">Rank</span><span class="val">${Math.round(p.rank)}</span></div>
+    </div>
+    <div class="page-tabs" role="tablist">${PLAYER_TABS.map(([k, label]) =>
+      `<button type="button" role="tab" data-ptab="${k}" aria-selected="${k === tab}">${label}</button>`).join("")}</div>
+    <div id="pl-tab"></div>`;
+  renderPlayerTab();
+}
+
+function renderPlayerTab() {
+  const tab = state.playerTab || "overview";
+  document.querySelectorAll("#club-body [data-ptab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ptab === tab)));
+  const el = $("#pl-tab");
+  el.innerHTML = tab === "stats" ? playerStatsTab() : tab === "matches" ? playerMatchesTab()
+    : tab === "career" ? playerCareerTab() : playerOverviewTab();
+  if (tab === "overview") drawPlayerChart();
+}
+
+// ---- Overview: next match, where he ranks, rank chart, recent form, this season, positions
+function playerOverviewTab() {
+  const { p, page } = state.player;
+  const seasons = state.players.seasons || [];
+  const list = state.players.list;
+  const group = GROUP_OF[p.position] || p.position;
+  const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
+  const sameGroup = list.filter((x) => (GROUP_OF[x.position] || x.position) === group);
+  const sameNat = p.nationality ? list.filter((x) => x.nationality === p.nationality) : [];
+  const among = (pool) => { const [n, of] = rankAmong(p, pool).slice(1).split(" of "); return [`#${n}`, `of ${of}`]; };
+  const posBySeason = state.playerSeasons?.positions?.[String(p.id)] || {};
+  const posRow = (label, rows) => rows?.length
+    ? `<div class="pos-period"><span class="pos-period-label">${label}</span><div class="pos-shares big">${positionShares(rows)}</div></div>` : "";
+  const hasMatchRanks = page?.matchRows?.some((m) => m.rank != null);
+  const hasSeasons = seasons.filter((y, k) => p.seasons?.[k] != null).length >= 2;
+  const chartMode = state.player.chart = !hasMatchRanks ? "seasons" : !hasSeasons ? "matches" : state.playerChart || "matches";
+  const now = page ? sumSeason(page.seasonRows.filter((r) => r.season === seasons[0])) : null;
+  const form = (page?.matchRows || []).slice(0, 10).reverse();
+  return `
+    ${nextMatchCard()}
+    <div class="team-stats">
+      ${tile(`Among ${GROUP_NAME[group] || "his position"}`, ...among(sameGroup))}
+      ${sameNat.length ? tile(`Among ${escapeHtml(p.nationality)}`, ...among(sameNat)) : ""}
+      ${tile("All players", ...among(list))}
+      ${tile("Minutes", p.minutes.toLocaleString(), "last 20 apps")}
+    </div>
+    ${hasMatchRanks || hasSeasons ? `<div class="chart-card">
+      <div class="chart-head"><span class="chart-title">${chartMode === "matches" ? "Rank going into each match" : "Season ranks"}</span>
+        ${hasMatchRanks && hasSeasons ? `<div class="chart-ranges">${[["matches", "Matches"], ["seasons", "Seasons"]].map(([k, l]) =>
+          `<button type="button" class="filter-chip" data-pchart="${k}" aria-pressed="${chartMode === k}">${l}</button>`).join("")}</div>` : ""}</div>
+      <div class="chart-wrap" id="pl-chart"></div>
+      <div class="chart-summary">${chartMode === "matches" ? `His last ${page.matchRows.filter((m) => m.rank != null).length} league matches, and his rank now.`
+        : "Hollow points are estimated seasons (no minutes in the leagues with player data): his level on the age curve for his position."}</div>
+    </div>` : ""}
+    ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · match rating</div>
+      <div class="form-strip">${form.map((m) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${pageTeamName(m.opponent)} ${m.gf}–${m.ga} · ${m.minutes}′`)}">
+        ${ratingChip(m.rating)}<span class="form-res ${resClass(m)}">${m.gf}–${m.ga}</span></div>`).join("")}</div></div>` : ""}
+    ${now?.minutes ? `<div class="club-section"><div class="modal-section">${seasonName(seasons[0])} so far</div>
+      <div class="team-stats compact">
+        ${tile("Apps", now.apps, now.starts != null ? `${now.starts} started` : "")}
+        ${tile("Goals", now.goals ?? "–")}${tile("Assists", now.assists ?? "–")}
+        ${tile("Rating", now.rating != null ? now.rating.toFixed(2) : "–")}
+        ${tile("Minutes", now.minutes.toLocaleString())}
+      </div></div>` : ""}
+    ${posBySeason["all"] ? `<div class="club-section"><div class="modal-section">Positions played · share of starting minutes</div>
+      ${posRow("Last 12 months", posBySeason["12m"])}${posRow("Since 2020/21", posBySeason["all"])}</div>` : ""}
+    ${p.position_ranks && Object.keys(p.position_ranks).length ? `<div class="club-section"><div class="modal-section">Rank in each position (now)</div>
+      <div class="pos-shares big">${Object.entries(p.position_ranks).sort((a, b) => b[1] - a[1]).map(([g, r]) =>
+        `<span class="pos-share${g === group ? "" : " sub"}" title="${escapeHtml(GROUP_SINGLE[g])}">${escapeHtml(g)} ${Math.round(r)}</span>`).join("")}</div>
+      <div class="page-note">His recent stats scored as each position against its players, with up to 6 points off for a position he hasn't played much.</div></div>` : ""}`;
+}
+const resClass = (m) => m.gf > m.ga ? "res-w" : m.gf === m.ga ? "res-d" : "res-l";
+
+// His club's next match: when, who, the model's view, and whether he's expected to play
+function nextMatchCard() {
+  const { p, page } = state.player;
+  if (!p.team) return "";
+  const m = state.data.matches.find((x) => (x.home === p.team || x.away === p.team)
+    && !FINISHED.has(x.status) && !["CANC", "PST", "ABD"].includes(x.status));
+  if (!m) return "";
+  const home = m.home === p.team, opp = home ? m.away : m.home;
+  const xi = state.players.nextXi?.[String(p.team)];
+  const xiHere = xi && xi.fixture === m.id;
+  const inXi = xiHere && xi.players.find(([pid]) => pid === p.id);
+  const inj = page?.injury;                      // [fixture, type, reason]
+  const status = inj && inj[0] === m.id
+    ? (inj[1] === "Questionable" ? ["warn", `Doubtful${inj[2] ? ` · ${inj[2]}` : ""}`] : ["bad", `Out${inj[2] ? ` · ${inj[2]}` : ""}`])
+    : inXi ? ["good", `In the predicted XI${inXi[2] ? ` as ${inXi[2]}` : ""}`]
+    : xiHere ? ["muted", "Not in the predicted XI"] : null;
+  const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
+  const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
+  return `<div class="next-card">
+    <div class="next-top"><span class="next-label">${LIVE.has(m.status) ? "Live now" : "Next match"}</span>
+      <span>${escapeHtml(fmtDay(m.kickoff))} · ${escapeHtml(fmtTime(m.kickoff))}</span></div>
+    <div class="next-opp"><img class="club-logo" src="${teamLogo(opp)}" alt="" onerror="this.style.visibility='hidden'">
+      <span class="next-opp-name">${home ? "v" : "@"} ${clubLink(opp)}</span></div>
+    <div class="next-meta"><span>${escapeHtml(compLabel(m.league))}</span>${win != null ? `<span>${win}% win</span>` : ""}${proj ? `<span>projected ${proj}</span>` : ""}</div>
+    ${status ? `<div class="next-status ${status[0]}">${escapeHtml(status[1])}</div>` : ""}
+  </div>`;
+}
+
+// Rank line chart, drawn to the width of its box (so text stays readable on phones)
+function drawPlayerChart() {
+  const wrap = $("#pl-chart");
+  if (!wrap) return;
+  const { p, page } = state.player;
+  const seasons = state.players.seasons || [];
+  let pts;
+  if (state.player.chart === "matches") {
+    pts = page.matchRows.filter((m) => m.rank != null).reverse().map((m) => ({
+      label: fmtShortDate(m.date), v: m.rank,
+      tip: `${escapeHtml(fmtShortDate(m.date))} · ${m.home ? "v" : "@"} ${escapeHtml(pageTeamName(m.opponent))}<br>
+        Rank going in <b>${m.rank.toFixed(1)}</b><br><span class="${resClass(m)}">${m.gf}–${m.ga}</span> · ${m.minutes}′ · rating ${m.rating != null ? m.rating.toFixed(1) : "–"}` }));
+    pts.push({ label: "Now", v: p.rank, now: true, tip: `Now<br>Rank <b>${p.rank.toFixed(1)}</b>` });
+  } else {
+    pts = seasons.map((y, k) => ({ y, v: p.seasons?.[k], est: p.estimated?.includes(k) })).filter((d) => d.v != null).reverse()
+      .map((d) => ({ label: seasonShort(d.y), v: d.v, est: d.est, tip: `${seasonName(d.y)}<br>Rank <b>${d.v.toFixed(1)}</b>${d.est ? "<br>estimated" : ""}` }));
+  }
+  const W = Math.max(260, wrap.clientWidth), H = 180, L = 30, R = 14, T = 20, B = 22;
+  let lo = Math.min(...pts.map((d) => d.v)), hi = Math.max(...pts.map((d) => d.v));
+  const pad = Math.max(3, (hi - lo) * 0.15); lo = Math.max(0, lo - pad); hi = Math.min(100, hi + pad);
+  const x = (i) => L + (pts.length === 1 ? 0.5 : i / (pts.length - 1)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
+  const every = Math.max(1, Math.ceil(pts.length * 46 / (W - L - R)));     // x labels that fit
+  const showLabel = (i) => i === pts.length - 1 || (i % every === 0 && pts.length - 1 - i >= every / 2);
+  const few = pts.length <= 8;
+  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${escapeHtml(p.name)} rank, ${Math.round(pts[0].v)} to ${Math.round(pts[pts.length - 1].v)}">
+      <g class="chart-grid">${niceTicks(lo, hi, 4).map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`).join("")}</g>
+      <g class="chart-axis">${niceTicks(lo, hi, 4).map((v) => `<text x="${L - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`).join("")}
+        ${pts.map((d, i) => showLabel(i) ? `<text x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${escapeHtml(d.label)}</text>` : "").join("")}</g>
+      <path class="chart-line" d="${pts.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d.v).toFixed(1)}`).join("")}"/>
+      ${pts.map((d, i) => few || d.now ? `<circle class="season-dot${d.est ? " est" : ""}" cx="${x(i).toFixed(1)}" cy="${y(d.v).toFixed(1)}" r="4.5"/>
+        ${few ? `<text class="season-label" x="${x(i).toFixed(1)}" y="${(y(d.v) - 9).toFixed(1)}" text-anchor="middle">${Math.round(d.v)}</text>` : ""}` : "").join("")}
+      <line class="chart-cross" id="pl-cross" y1="${T}" y2="${H - B}" visibility="hidden"/>
+      <circle class="chart-dot" id="pl-dot" r="4.5" visibility="hidden"/>
+      <rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent" id="pl-hit"/>
+    </svg><div class="chart-tip" id="pl-tip" hidden></div>`;
+  const hit = $("#pl-hit"), cross = $("#pl-cross"), dot = $("#pl-dot"), tip = $("#pl-tip");
+  const show = (evt) => {
+    const rect = hit.getBoundingClientRect();
+    const px = (evt.clientX - rect.left) / rect.width * (W - L - R) + L;
+    let i = 0;
+    pts.forEach((d, j) => { if (Math.abs(x(j) - px) < Math.abs(x(i) - px)) i = j; });
+    const cx = x(i), cy = y(pts[i].v);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", cx); dot.setAttribute("cy", cy); dot.setAttribute("visibility", "visible");
+    tip.innerHTML = pts[i].tip;
+    tip.hidden = false;
+    const tw = tip.offsetWidth;
+    tip.style.left = `${Math.min(Math.max(cx - tw / 2, 0), wrap.clientWidth - tw)}px`;
+    tip.style.top = `${Math.max(0, cy - tip.offsetHeight - 12)}px`;
+  };
+  const hide = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); };
+  hit.addEventListener("pointermove", show);
+  hit.addEventListener("pointerdown", show);
+  hit.addEventListener("pointerleave", hide);
+}
+window.addEventListener("resize", () => { if (state.player && $("#pl-chart")) drawPlayerChart(); });
+
+// ---- Stats: one season (all his clubs added up), as totals or per 90 minutes
+const SUM_KEYS = ["apps", "starts", "minutes", "goals", "assists", "shots_on", "key_passes", "passes", "tackles",
+                  "interceptions", "blocks", "duels_won", "duels", "dribbles_won", "fouls", "yellow", "red", "saves", "conceded"];
+// a season's lines added up (null where no line has the stat); rating weighted by minutes,
+// pass accuracy by passes
+function sumSeason(rows) {
+  if (!rows.length) return null;
+  const out = {};
+  for (const k of SUM_KEYS) {
+    const vs = rows.map((r) => r[k]).filter((v) => v != null);
+    out[k] = vs.length ? vs.reduce((a, b) => a + b, 0) : null;
+  }
+  const wavg = (key, weight) => {
+    const rs = rows.filter((r) => r[key] != null && r[weight]);
+    return rs.length ? rs.reduce((a, r) => a + r[key] * r[weight], 0) / rs.reduce((a, r) => a + r[weight], 0) : null;
+  };
+  out.rating = wavg("rating", "minutes");
+  out.pass_acc = wavg("pass_acc", "passes");
+  return out;
+}
+const STAT_GROUPS = [
+  ["Goalkeeping", [["saves", "Saves"], ["conceded", "Goals conceded"], ["save_pct", "Save %", "pct"]]],
+  ["Attacking", [["goals", "Goals"], ["assists", "Assists"], ["shots_on", "Shots on target"], ["key_passes", "Key passes"],
+                 ["dribbles_won", "Dribbles won"]]],
+  ["Passing", [["passes", "Passes"], ["pass_acc", "Pass accuracy", "pct"]]],
+  ["Defending", [["tackles", "Tackles"], ["interceptions", "Interceptions"], ["blocks", "Blocks"], ["duels_won", "Duels won"],
+                 ["duel_pct", "Duels won %", "pct"]]],
+  ["Discipline", [["fouls", "Fouls"], ["yellow", "Yellow cards"], ["red", "Red cards"]]],
+];
+function playerStatsTab() {
+  const { p, page } = state.player;
+  if (!page?.seasonRows.length) return `<div class="empty-state">No season stats for him yet.</div>`;
+  const years = [...new Set(page.seasonRows.map((r) => r.season))].sort((a, b) => b - a);
+  const year = years.includes(state.player.season) ? state.player.season : years[0];
+  const rows = page.seasonRows.filter((r) => r.season === year);
+  const s = sumSeason(rows);
+  s.save_pct = s.saves != null && s.saves + (s.conceded || 0) ? 100 * s.saves / (s.saves + (s.conceded || 0)) : null;
+  s.duel_pct = s.duels ? 100 * s.duels_won / s.duels : null;
+  const per90 = !!state.playerPer90 && s.minutes > 0;
+  const fmt = (k, kind) => {
+    const v = s[k];
+    if (v == null) return "–";
+    if (kind === "pct") return `${Math.round(v)}%`;
+    return per90 ? (v * 90 / s.minutes).toFixed(2) : v.toLocaleString();
+  };
+  const gk = GROUP_OF[p.position] === "GK";
+  const groups = STAT_GROUPS.filter(([name]) => gk ? name !== "Attacking" : name !== "Goalkeeping");
+  const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
+  const partial = rows.some((r) => r.starts == null);
+  return `
+    <div class="stats-controls">
+      <div class="chip-scroll">${years.map((y) => `<button type="button" class="filter-chip" data-pseason="${y}" aria-pressed="${y === year}">${seasonShort(y)}</button>`).join("")}</div>
+      <div class="seg">${[["0", "Totals"], ["1", "Per 90"]].map(([k, l]) =>
+        `<button type="button" data-per90="${k}" aria-pressed="${String(per90) === (k === "1" ? "true" : "false")}">${l}</button>`).join("")}</div>
+    </div>
+    <div class="season-clubs">${rows.map((r) => `<div class="season-club"><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      ${clubLink(r.team, pageTeamName(r.team))}<span class="dim"> · ${escapeHtml(compLabel(r.league))} · ${r.apps} apps · ${r.minutes.toLocaleString()}′</span></div>`).join("")}</div>
+    <div class="team-stats compact">
+      ${tile("Apps", s.apps, s.starts != null && !partial ? `${s.starts} started` : "")}
+      ${tile("Minutes", s.minutes.toLocaleString())}
+      ${tile("Rating", s.rating != null ? s.rating.toFixed(2) : "–")}
+      ${gk ? tile("Saves", fmt("saves")) : tile("Goals", fmt("goals"))}
+      ${gk ? tile("Save %", fmt("save_pct", "pct")) : tile("Assists", fmt("assists"))}
+    </div>
+    <div class="stat-groups">${groups.map(([name, items]) => `<div class="stat-group"><div class="stat-group-title">${name}</div>
+      ${items.map(([k, label, kind]) => `<div class="stat-line"><span>${label}</span><b>${fmt(k, kind)}</b></div>`).join("")}</div>`).join("")}</div>
+    <div class="page-note">League matches only${per90 ? `, per 90 minutes (${s.minutes.toLocaleString()} minutes)` : ""}.${partial ? " Leagues without match-by-match data give season totals only, so starts and pass accuracy are missing there." : ""}</div>`;
+}
+
+// ---- Matches: his last league appearances, newest first
+function playerMatchesTab() {
+  const { page } = state.player;
+  if (!page?.matchRows.length) return `<div class="empty-state">No match-by-match data for him (only the leagues with per-match player stats have it).</div>`;
+  const gk = GROUP_OF[state.player.p.position] === "GK";
+  const row = (m) => {
+    const bits = [
+      `${m.minutes}′${m.started ? "" : " off the bench"}`, m.started && m.role ? POS_WORD[m.role] || m.role : "",
+      m.goals ? `${m.goals} goal${m.goals > 1 ? "s" : ""}` : "", m.assists ? `${m.assists} assist${m.assists > 1 ? "s" : ""}` : "",
+      gk ? `${m.saves} save${m.saves === 1 ? "" : "s"}` : m.key_passes ? `${m.key_passes} key pass${m.key_passes > 1 ? "es" : ""}` : "",
+      !gk && m.shots_on ? `${m.shots_on} on target` : "", m.duels ? `duels ${m.duels_won}/${m.duels}` : "",
+      m.red ? `<span class="card red"></span>` : m.yellow ? `<span class="card"></span>` : "",
+    ].filter(Boolean);
+    return `<div class="match-row">
+      <div class="mr-date">${escapeHtml(fmtShortDate(m.date))}</div>
+      <div class="mr-opp"><img class="club-logo" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+        <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, pageTeamName(m.opponent))}</span></div>
+      <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
+      <div class="mr-rating">${ratingChip(m.rating)}</div>
+      <div class="mr-sub">${bits.join(" · ")}${m.rank != null ? `<span class="mr-rank">rank ${Math.round(m.rank)}</span>` : ""}</div>
+    </div>`;
+  };
+  return `<div class="match-list">${page.matchRows.map(row).join("")}</div>
+    <div class="page-note">His last ${page.matchRows.length} league appearances. Rating: API-Football's match rating. Rank: his rank going into the match.</div>`;
+}
+
+// ---- Career: rank by season with his clubs, and the clubs his current rank is built on
+function playerCareerTab() {
+  const { p } = state.player;
   const seasons = state.players.seasons || [];
   const detail = state.playerSeasons?.players?.[String(p.id)] || {};
   const posBySeason = state.playerSeasons?.positions?.[String(p.id)] || {};
-  const posRow = (label, list) => list?.length
-    ? `<div class="pos-period"><span class="pos-period-label">${label}</span><div class="pos-shares big">${positionShares(list)}</div></div>` : "";
-  const born = state.playerSeasons?.born?.[String(p.id)];
-  const group = GROUP_OF[p.position] || p.position;
-  const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
-  const list = state.players.list;
-  const sameGroup = list.filter((x) => (GROUP_OF[x.position] || x.position) === group);
-  const sameNat = p.nationality ? list.filter((x) => x.nationality === p.nationality) : [];
   const spellHtml = (sp) => sp.map(([team, mins, clubRank, rating, goals, assists]) =>
     `<div class="spell">${clubLink(team, state.playerSeasons?.teams?.[team] || teamName(team))}
       <span class="dim"> · club ${clubRank ?? "–"} · ${mins ? `${mins.toLocaleString()}′` : "no minutes here"}${rating != null ? ` · rating ${rating.toFixed(2)}` : ""}${mins ? ` · ${goals} G, ${assists} A` : ""}</span></div>`).join("");
@@ -1932,40 +2343,29 @@ function renderPlayerPage(p) {
     const est = p.estimated?.includes(k);
     const age = p.age != null ? p.age - (seasons[0] - y) : null;
     const sp = detail[String(y)] || [];
-    return `<tr><td class="num" style="text-align:left">${seasonShort(y)}</td><td class="num">${age ?? "–"}</td>
-      <td>${sp.length ? spellHtml(sp) : `<span class="dim">${est ? "Estimated from his other seasons and age" : ""}</span>`}${posBySeason[String(y)] ? `<div class="pos-shares">${positionShares(posBySeason[String(y)])}${seasonGroup(posBySeason[String(y)]) ? `<span class="rated-as">rated as ${GROUP_SINGLE[seasonGroup(posBySeason[String(y)])]}</span>` : ""}</div>` : ""}</td>
+    const pos = posBySeason[String(y)];
+    return `<tr><td class="num" style="text-align:left">${seasonShort(y)}<div class="dim">${age != null ? `age ${age}` : ""}</div></td>
+      <td>${sp.length ? spellHtml(sp) : `<span class="dim">${est ? "Estimated from his other seasons and age" : ""}</span>`}${pos ? `<div class="pos-shares">${positionShares(pos)}${seasonGroup(pos) ? `<span class="rated-as">rated as ${GROUP_SINGLE[seasonGroup(pos)]}</span>` : ""}</div>` : ""}</td>
       <td class="num">${est ? `<span class="est">${rankChipSmall(v)}</span>` : rankChipSmall(v)}</td></tr>`;
   }).join("");
   const now = detail.now || [];
-  body.innerHTML = `
-    ${backButton()}
-    <div class="club-head">
-      <img class="player-photo-lg" src="${playerPhoto(p.id)}" alt="" onerror="this.style.visibility='hidden'">
-      <div><h2>${escapeHtml(p.name)}</h2>
-        <div class="head-meta"><span>${playerClub(p)}</span>${p.nationality ? `<span>${natLink(p.nationality)}</span>` : ""}
-          <span>${escapeHtml(p.position || "")}${GROUP_NAME[group] ? ` · ${GROUP_NAME[group].replace(/s$/, "")}` : ""}</span>
-          ${p.age != null ? `<span>Age ${p.age}${born ? ` (born ${escapeHtml(born)})` : ""}</span>` : ""}</div></div>
-    </div>
-    <div class="team-stats">
-      ${tile("Rank now", rankChipSmall(p.rank))}
-      ${tile(`Among ${GROUP_NAME[group] || "his position"}`, rankAmong(p, sameGroup))}
-      ${sameNat.length ? tile(`Among ${escapeHtml(p.nationality)}`, rankAmong(p, sameNat)) : ""}
-      ${tile("All players", rankAmong(p, list))}
-    </div>
-    ${posBySeason["all"] ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played (share of his starting minutes)</div>
-      ${posRow("Last 12 months", posBySeason["12m"])}${posRow("All time (since 2020/21)", posBySeason["all"])}</div>` : ""}
-    ${p.position_ranks && Object.keys(p.position_ranks).length ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">How good he'd be in each position (now)</div>
-      <div class="pos-shares big">${Object.entries(p.position_ranks).sort((a, b) => b[1] - a[1]).map(([g, r]) =>
-        `<span class="pos-share${g === group ? "" : " sub"}" title="${escapeHtml(GROUP_SINGLE[g])}">${escapeHtml(g)} ${Math.round(r)}</span>`).join("")}</div>
-      <div class="page-note">His recent stats scored as each position against its players, with up to 6 points off for a position he hasn't played much.</div></div>` : ""}
-    ${seasonChart(p, seasons)}
-    <div class="club-section"><div class="modal-section">Season by season</div>
-      <table class="season-table"><thead><tr><th>Season</th><th class="num">Age</th><th>Club · club rank · minutes · rating · goals, assists · positions</th><th class="num">Rank</th></tr></thead>
+  return `
+    <div class="club-section" style="margin-top:0"><div class="modal-section">Season by season</div>
+      <table class="season-table"><thead><tr><th>Season</th><th>Clubs · club rank · minutes · rating · goals, assists</th><th class="num">Rank</th></tr></thead>
       <tbody>${rows}</tbody></table>
-      <div class="page-note">A season's rank starts from his clubs' level (LT ALGO over his matches) and his stats against players in his position, then follows the typical age curve for his position from a level of his own: a season only moves off that curve as far as its minutes justify.</div>
+      <div class="page-note">A season's rank starts from his clubs' level (LT ALGO over his matches) and his stats against players in his position, then follows the typical age curve for his position from a level of his own: a season only moves off that curve as far as its minutes justify. Outlined ranks are estimated.</div>
     </div>
-    ${now.length ? `<div class="club-section"><div class="modal-section">Last 20 appearances</div><div class="season-now">${spellHtml(now)}</div></div>` : ""}`;
+    ${now.length ? `<div class="club-section"><div class="modal-section">His current rank is built on · last 20 appearances</div><div class="season-now">${spellHtml(now)}</div></div>` : ""}`;
 }
+$("#club-body").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pchart]");
+  if (!b || !state.player) return;
+  if (b.dataset.ptab) state.playerTab = b.dataset.ptab;
+  if (b.dataset.pseason) state.player.season = Number(b.dataset.pseason);
+  if (b.dataset.per90) state.playerPer90 = b.dataset.per90 === "1";
+  if (b.dataset.pchart) state.playerChart = b.dataset.pchart;
+  renderPlayerTab();
+});
 
 // ------------------------------------------------------------------ nationality page
 function openNationPage(nat) {
@@ -2153,7 +2553,10 @@ $("#matches-list").addEventListener("click", (e) => {
 const colTip = Object.assign(document.createElement("div"), { className: "col-tip", hidden: true });
 colTip.setAttribute("role", "tooltip");
 document.body.appendChild(colTip);
+// (not on touch screens: a tap sends mouseover too, and the tip would stay up)
+const CAN_HOVER = matchMedia("(hover: hover)");
 $("#table-wrap").addEventListener("mouseover", (e) => {
+  if (!CAN_HOVER.matches) return;
   const h = e.target.closest("th[data-tip], td.tip-cell");
   if (!h) return;
   colTip.textContent = h.dataset.tip || playerCellTip(h.closest("tr").dataset.player, h.dataset.key);
