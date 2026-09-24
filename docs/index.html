@@ -2091,7 +2091,7 @@ function renderClubTab() {
   if (tab === "history") drawRankChart();
 }
 
-// ---- Overview: next match beside the squad by position, recent form, key numbers
+// ---- Overview: injured and suspended players beside the squad by position, recent form, key numbers
 function clubOverviewTab() {
   const { id, data } = state.club;
   const r = state.rankByTeam.get(id);
@@ -2099,7 +2099,7 @@ function clubOverviewTab() {
   const rows = data?.rows || [];
   const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) }));
   const ga = data?.goal_averages;
-  const next = clubNextCard() + injuredCard(id), pitch = depthPitch(id);
+  const next = injuredCard(id), pitch = depthPitch(id);          // the next match is on the Predicted XI tab
   return `
     ${next && pitch ? `<div class="ov-top"><div class="ov-side">${next}</div>${pitch}</div>` : next + pitch}
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · Elo change</div>
