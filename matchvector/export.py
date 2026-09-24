@@ -744,7 +744,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
     neutral = {f for (f,) in conn.execute(NEUTRAL_SQL, [list(config.FINISHED_STATUSES)])}
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
-    for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn in club_rows:
+    for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn, *_ in club_rows:
         rows = history.setdefault(team, {"start": round(rank_before), "matches": []})["matches"]
         gf, ga = (hg, ag) if is_home else (ag, hg)
         rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 2 if fid in neutral else 1 if is_home else 0,

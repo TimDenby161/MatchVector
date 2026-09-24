@@ -22,6 +22,20 @@ Based on the Club Ranking sheet's RG tabs, improved by backtesting 51,000 matche
     draw       = P(draw) boosted by up to DRAW_INFLATION in close games (none past a 1.5 goal
                  margin), win/loss rescaled to fill the rest
 
+Attack/defence, home edge and line-ups (ranking.side_ratings, player_ratings), on top of the above:
+    exp_diff  += HOME_EDGE_WEIGHT x (home side's home edge + away side's edge) / 100
+    exp_diff  += XI_LINE_WEIGHTS . (home predicted XI - away predicted XI), average rank by line
+                 (GK, DEF, MID, FWD; only when both sides have all four lines)
+    base goals: the total is a blend, AD_GOALS_WEIGHT of the attack/defence model's (the
+                competition goal base + (split_home + split_away) / 100 for each side) and the rest
+                the 12-month averages'; the home/away shape stays the 12-month one
+    Tuned on 2023/24, tested on 2024/25 onwards (44,339 matches, injuries left out of both):
+                   W/D/L log loss  over 2.5   BTTS     goals RMSE
+    before         0.99847         0.67923    0.68747  1.1739
+    with these     0.99734         0.67715    0.68678  1.1712
+    Each part helped on its own (W/D/L: attack/defence 0.99822, home edge 0.99812, line-ups
+    0.99795). The goalkeeper line made it worse, so its weight is 0.
+
 The sheet averaged this with a "36% x strength ratio" rule; that made predictions worse, so
 it's dropped. Log loss: sheet method 1.016, first version 1.0053, this 1.0035
 (base-rate guessing ~1.07).
@@ -45,6 +59,9 @@ EUROPE_HOME_BONUS = 0.2   # extra expected home margin in the Champions/Europa/C
 EUROPE_COMPS = {2, 3, 848}
 MATCH_RANK_NOW_TODAY = 0.6  # weight of the current rank for a match today; the rest is LT ALGO
 MATCH_RANK_NOW_YEAR = 0.2   # ... for a match a year or more away (straight line in between)
+AD_GOALS_WEIGHT = 0.75      # share of the base goal total from the attack/defence model
+HOME_EDGE_WEIGHT = 1.0      # clubs' own home edges, in full
+XI_LINE_WEIGHTS = (0.0, 0.005, 0.005, 0.005)   # goals of margin per point, GK / DEF / MID / FWD
 
 
 def match_rank(now, lt, days_ahead=0.0):
@@ -110,21 +127,49 @@ def _shrunk(records, idx, league_avg):
 
 
 def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, league_id=None,
-                  home_missing=0.0, away_missing=0.0):
+                  home_missing=0.0, away_missing=0.0, sides=None, lines=None):
     """(exp_diff, home_xg, away_xg, p_home, p_draw, p_away, likely_score, p_over25, p_btts).
 
     home_records: the home side's home games as (scored, conceded); away_records: the away
     side's away games as (scored, conceded); lg_*: competition average goals.
+    sides: (split home, split away, home edge home, home edge away, goal base home, goal base
+    away) going into the match, or None; lines: (home, away) predicted XI average rank by line
+    [GK, DEF, MID, FWD], or None.
     """
     exp_diff = (h_rank - a_rank + HOME_ADVANTAGE_POINTS) / 100
     if league_id in EUROPE_COMPS:
         exp_diff += EUROPE_HOME_BONUS
     exp_diff += INJURY_BETA * (away_missing - home_missing)
+    if sides:
+        exp_diff += HOME_EDGE_WEIGHT * (sides[2] + sides[3]) / 100
+    if lines and all(v is not None for side in lines for v in side):
+        exp_diff += sum(w * (h - a) for w, h, a in zip(XI_LINE_WEIGHTS, *lines))
     base_home = (_shrunk(home_records, 0, lg_home) + _shrunk(away_records, 1, lg_home)) / 2
     base_away = (_shrunk(away_records, 0, lg_away) + _shrunk(home_records, 1, lg_away)) / 2
+    if sides:
+        # how open a game between these two is, from the attack/defence model: both sides'
+        # expected goals at level ranks (the margin comes from exp_diff)
+        level = (sides[0] + sides[1]) / 100
+        ad_total = max(0.2, sides[4] + level) + max(0.2, sides[5] + level)
+        total = base_home + base_away
+        scale = ((1 - AD_GOALS_WEIGHT) * total + AD_GOALS_WEIGHT * ad_total) / total
+        base_home, base_away = base_home * scale, base_away * scale
     home_xg, away_xg = project(base_home, base_away, exp_diff)
     return (exp_diff, home_xg, away_xg, *outcome_probabilities(home_xg, away_xg),
             *goal_markets(home_xg, away_xg))
+
+
+def _predicted_lines(conn, fixture_ids):
+    """{(fixture, team): [GK, DEF, MID, FWD] predicted XI average rank} for these fixtures."""
+    return {(f, t): list(v) for f, t, *v in conn.execute(
+        """select fixture_id, team_id, predicted_gk::float8, predicted_def::float8,
+                  predicted_mid::float8, predicted_fwd::float8
+           from fixture_team_ratings where fixture_id = any(%s)""", [list(fixture_ids)])}
+
+
+def _pair(lines, fid, home, away):
+    h, a = lines.get((fid, home)), lines.get((fid, away))
+    return (h, a) if h and a else None
 
 
 def _form(home_goals, away_goals, home_xg, away_xg):
@@ -150,8 +195,15 @@ def update_predictions(conn, fixture_ids=None):
         teams = list({t for f in upcoming for t in f[3:5]})
         leagues = list({f[2] for f in upcoming})
 
-    ranks = {t: (cur, lt, rel) for t, cur, lt, rel in conn.execute(
-        "select team_id, current_rank, lt_algo, reliability from team_rankings")}
+    rank_rows = conn.execute(
+        "select team_id, current_rank, lt_algo, reliability, attack, home_rating from team_rankings").fetchall()
+    ranks = {t: (cur, lt, rel) for t, cur, lt, rel, _, _ in rank_rows}
+    # attack/defence split and home edge now (team_rankings stores them as attack and home)
+    split = {t: ((att - cur) / 2, home_r - cur) for t, cur, _, _, att, home_r in rank_rows
+             if att is not None and home_r is not None}
+    bases = {lg: (bh, ba) for lg, bh, ba in conn.execute(
+        "select league_id, goal_base_home, goal_base_away from leagues where goal_base_home is not null")}
+    lines = _predicted_lines(conn, [f[0] for f in upcoming])
     starting = {k: float(v) for k, v in conn.execute(
         "select league_id, starting_rank from leagues where starting_rank is not null")}
 
@@ -189,9 +241,12 @@ def update_predictions(conn, fixture_ids=None):
         a_rank = match_rank(a_cur, a_lt, days_ahead)
 
         h_miss, a_miss = missing.get((fid, home)), missing.get((fid, away))
+        (sh, eh), (sa, ea) = split.get(home, (0.0, 0.0)), split.get(away, (0.0, 0.0))
+        bh, ba = bases.get(league_id, (lg_home, lg_away))
         rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
                      *predict_match(h_rank, a_rank, home_rec[home], away_rec[away], lg_home, lg_away,
-                                    league_id, h_miss or 0.0, a_miss or 0.0),
+                                    league_id, h_miss or 0.0, a_miss or 0.0, (sh, sa, eh, ea, bh, ba),
+                                    _pair(lines, fid, home, away)),
                      h_rel, a_rel, h_miss, a_miss))
 
     # Upsert only upcoming fixtures: once a match kicks off its row is left alone, so it
@@ -238,8 +293,11 @@ def backfill_predictions(conn):
         log.info("Backfilled predictions for 0 finished fixtures (none missing)")
         return
     # Match rank going into each fixture: Now and LT ALGO (lt_before) as they stood before it
-    ranks_before = {(fid, is_home): match_rank(before, lt)
-                    for fid, _, _, _, is_home, _, before, _, lt, *_ in rank_history(conn)}
+    ranks_before, sides_before = {}, {}
+    for fid, _, _, _, is_home, _, before, _, lt, *_, s0, e0, gb in rank_history(conn):
+        ranks_before[(fid, is_home)] = match_rank(before, lt)
+        sides_before[(fid, is_home)] = (s0, e0, gb)
+    lines = _predicted_lines(conn, list(targets))
     fixtures = finished_fixtures(conn)
 
     window = timedelta(days=365)
@@ -260,10 +318,13 @@ def backfill_predictions(conn):
             lg_away = sum(g[2] for g in games) / len(games) if games else DEFAULT_AWAY_GOALS
             h_rank, a_rank = ranks_before[(fid, True)], ranks_before[(fid, False)]
             h_miss, a_miss = missing.get((fid, home)), missing.get((fid, away))
+            (sh, eh, bh), (sa, ea, ba) = sides_before[(fid, True)], sides_before[(fid, False)]
+            sides = (sh, sa, eh, ea, bh, ba) if None not in (sh, sa, eh, ea, bh, ba) else None
             rows.append((fid, kickoff, league_id, home, away, h_rank, a_rank,
                          *predict_match(h_rank, a_rank, [r[1:] for r in home_rec[home]],
                                         [r[1:] for r in away_rec[away]], lg_home, lg_away,
-                                        league_id, h_miss or 0.0, a_miss or 0.0),
+                                        league_id, h_miss or 0.0, a_miss or 0.0, sides,
+                                        _pair(lines, fid, home, away)),
                          h_miss, a_miss))
         hf, af = _form(hg, ag, hx, ax)
         home_rec[home].append((kickoff, hf, af))

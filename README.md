@@ -247,10 +247,10 @@ This differs from the sheet, which uses (home × 1.09 − away) / 100, × 10 and
 `team_rank_history.act_diff` still holds the actual goal difference.
 
 **Attack, defence, home and away.** These are worked out alongside the rank from the same replay (`side_ratings` in `matchvector/ranking.py`). They don't change the rank.
-- **Attack and defence** average to the rank (Form), on the same scale. Expected home goals = the competition's average home goals + ((home attack − away defence) / 2 + 15) / 100, and the same the other way round for away goals. So 200 points of attack over the other side's defence is about one more goal. After each match, both sides move by 0.75 × (actual total goals − expected total) / 2: a club in high-scoring games drifts towards attack, one in low-scoring games towards defence. Goals are capped at 5 a side and blended with xG like the rank. Replaying 2024/25 onwards, this cut the error on total goals from 1.4205 to 1.4083. Learning rates from 0.5 to 1 scored about the same. For example, Arsenal lean on defence and Barcelona and Bayern on attack.
+- **Attack and defence** average to the rank (Form), on the same scale. Expected home goals = the competition's average home goals + ((home attack − away defence) / 2 + 15) / 100, and the same the other way round for away goals. So 200 points of attack over the other side's defence is about one more goal. After each match, both sides move by 1.0 × (actual total goals − expected total) / 2: a club in high-scoring games drifts towards attack, one in low-scoring games towards defence. Goals are capped at 5 a side and blended with xG like the rank. Replaying 2024/25 onwards, this cut the error on total goals from 1.4205 to 1.4083. On its own, learning rates from 0.5 to 1 scored about the same; 1.0 was best for the projections. For example, Arsenal lean on defence and Barcelona and Bayern on attack.
 - **Home and away** are the rank plus or minus the club's own home edge, on top of the standard 30 points. Both sides' edge moves by 0.2 × (result − expected), so a club doing better at home than away builds a positive edge. The gain was small (goal-difference error 1.3220 → 1.3205). Most clubs' edges are within a few points, because home advantage is mostly the same for everyone.
-- Stored after every match in `team_rank_history` (`attack_after`, `defence_after`, `home_after`, `away_after`) and for now in `team_rankings` (`attack`, `defence`, `home_rating`, `away_rating`). The club page and team popup show them.
-- The projections don't use them yet.
+- Stored after every match in `team_rank_history` (`attack_after`, `defence_after`, `home_after`, `away_after`, plus `split_before`, `edge_before` and `goal_base` going into it, for the projections) and for now in `team_rankings` (`attack`, `defence`, `home_rating`, `away_rating`). The club page and team popup show them.
+- The projections use them (see Match predictions). The attack learning rate (1.0) was tuned with the projections on 2023/24.
 
 **Line-ups in the rank update: tested, not used.** The idea: when a club starts a weaker XI than usual and loses, its rank should fall less. The expected goal difference in the update was shifted by the starting XI rating against the club's usual one (actual − recent XI rating), for the 13 leagues with line-up ratings. Replaying every fixture and scoring 2024/25 onwards with line-up-free forecasts, it didn't help: log loss 1.00490 with no shift, 1.00496, 1.00513 and 1.00579 with shifts of 0.06, 0.12 and 0.24 goals per XI point. Goal-difference error was 1.6676 at best, with no shift. Rotation does matter at the extremes: a side starting an XI 4–8 points weaker than its opponent's shortfall does about 0.2 goals worse. But only about 4% of line-up-rated matches have gaps that big. A squad player's rank is built from his club's level too, so reserves rate close to starters. The XI gap's spread is only 1.9 points (about 0.08 goals). The pre-match predicted XI gap also cut goal-difference error by only 0.1% out of sample (1.6299 → 1.6284), in line with the prediction backtests further down.
 
@@ -284,7 +284,22 @@ Every run replays all fixtures from scratch, which takes seconds. Late results, 
    - Minutes come from `fixture_players` (per-match minutes, fetched for these leagues). See `matchvector/injuries.py`.
    - In a train/test backtest (trained on 2021/22–2023/24, tested on 2024/25 onwards), it improved test log loss from 1.0066 to 1.0059. That's small but consistent.
    - Match cards show each side's missing strength.
-5. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is boosted by up to ×1.1 in close games; the boost fades to nothing at a 1.5-goal margin.
+5. **Attack, defence, home edge and line-ups** (added September 2026; see Club ranking for how each is worked out):
+   - **Home edge:** the expected margin moves by (the home side's own home edge + the away side's) / 100.
+   - **Line-ups:** the expected margin moves by 0.005 goals per point of difference between the two predicted XIs' average rank in defence, midfield and attack, separately. It's only used when both sides have all four lines (the 13 leagues with line-up ratings). The goalkeeper line made predictions worse, so it isn't used.
+   - **How open the game is:** the base goal total is 75% the attack/defence model's (the competition's goal base + both sides' attack/defence split) and 25% the 12-month averages'. The home/away shape stays the 12-month one.
+   - These were tuned on 2023/24 and tested on 2024/25 onwards (44,339 matches, injuries left out of both). Each part helped on its own, and together they helped every market:
+
+     | | W/D/L log loss | Over 2.5 | Both teams score | Goals RMSE |
+     |---|---|---|---|---|
+     | Before | 0.99847 | 0.67923 | 0.68747 | 1.1739 |
+     | + attack/defence goals | 0.99822 | 0.67718 | 0.68674 | 1.1717 |
+     | + home edge | 0.99812 | 0.67922 | 0.68748 | 1.1735 |
+     | + line-ups by line | 0.99795 | 0.67917 | 0.68751 | 1.1738 |
+     | All three (current) | **0.99734** | **0.67715** | **0.68678** | **1.1712** |
+
+     In the line-up leagues alone, W/D/L went from 1.00392 to 1.00153. Predictions already made before the change, backfilled or live, are left as they were.
+6. **Probabilities:** Poisson distributions for 0–10 goals each side give home win, draw and away win. The draw chance is boosted by up to ×1.1 in close games; the boost fades to nothing at a 1.5-goal margin.
 
 The sheet's "36% × strength ratio" blend is dropped. Backtested log loss on 51,000 matches from 2024 to 2026: the sheet's method 1.016, the first version 1.0053, the current one 1.0035. Guessing base rates scores about 1.07.
 

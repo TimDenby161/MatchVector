@@ -457,6 +457,14 @@ alter table team_rank_history add column if not exists attack_after double preci
 alter table team_rank_history add column if not exists defence_after double precision;
 alter table team_rank_history add column if not exists home_after double precision;
 alter table team_rank_history add column if not exists away_after double precision;
+-- What the projections need going into the match: the club's attack/defence split s and home
+-- edge e before it, and its expected goals base in that competition (ranking.side_ratings)
+alter table team_rank_history add column if not exists split_before double precision;
+alter table team_rank_history add column if not exists edge_before double precision;
+alter table team_rank_history add column if not exists goal_base double precision;
+-- Each competition's goal base now (home, away), for projecting upcoming fixtures
+alter table leagues add column if not exists goal_base_home double precision;
+alter table leagues add column if not exists goal_base_away double precision;
 
 create table if not exists team_rankings (
     team_id        int primary key,

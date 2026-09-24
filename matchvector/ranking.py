@@ -45,7 +45,8 @@ Attack / defence and home / away (side_ratings, alongside the rank; they don't c
     (base: the competition's running average, shrunk to 1.45 / 1.15 over LEAGUE_GOALS_PRIOR games),
     so two attack-minded sides mean more goals. After the match both sides'
     s += ATTACK_K * (actual total goals - expected total) / 2, with goals capped at GOAL_CAP a side
-    and blended with xG like the rank. Backtest, 2024/25 onwards: total-goals error 1.4205 -> 1.4083.
+    and blended with xG like the rank. Backtest, 2024/25 onwards: total-goals error 1.4205 -> 1.4083
+    (rank alone vs the split). The projections use all of these (predictions.py).
     home = rank + e,  away = rank - e: e is a club's own home edge on top of HOME_ADVANTAGE_POINTS.
     Both sides' e += HOME_EDGE_K * (result - exp_diff), so a club doing better at home than away
     builds a positive edge. Backtest: goal-difference error 1.3220 -> 1.3205 (small).
@@ -68,7 +69,7 @@ MAX_GOAL_DIFF = 3            # a 7-0 counts as 3-0
 GOALS_WEIGHT = 0.3           # in matches with xG: 30% capped goal difference, 70% xG difference
 K_FACTOR_XG = 10             # K for matches with xG (less noisy, so ranks can move further)
 DEFAULT_STARTING_RANK = 650
-ATTACK_K = 0.75              # attack/defence split learning rate (0.5-1 scored about the same)
+ATTACK_K = 1.0               # attack/defence split learning rate (tuned with the projections, 2023/24)
 GOAL_CAP = 5                 # goals a side counted for the split
 LEAGUE_GOALS_PRIOR = 50      # games of the 1.45 / 1.15 prior in a competition's goal averages
 HOME_EDGE_K = 0.2            # club home edge learning rate (0.1-0.3 scored about the same)
@@ -134,27 +135,40 @@ def run(matches, starting_rank):
     return rows, history
 
 
+def _capped(goals, xg):
+    """A side's goals for the split: capped at GOAL_CAP, blended with xG like the rank."""
+    g = min(goals, GOAL_CAP)
+    return g if xg is None else GOALS_WEIGHT * g + (1 - GOALS_WEIGHT) * xg
+
+
+def goal_bases(goals):
+    """Competition goal base (home, away) from running (home sum, away sum, games)."""
+    gh, ga, n = goals
+    return ((gh + 1.45 * LEAGUE_GOALS_PRIOR) / (n + LEAGUE_GOALS_PRIOR),
+            (ga + 1.15 * LEAGUE_GOALS_PRIOR) / (n + LEAGUE_GOALS_PRIOR))
+
+
 def side_ratings(rows):
-    """Attack/defence split (s) and home edge (e) after each match of run()'s rows (see the
-    module docstring). Returns [(s_home, s_away, e_home, e_away) after each match]."""
+    """Attack/defence split (s) and home edge (e) through run()'s rows (see the module docstring).
+
+    Returns (per match [(s_home, s_away, e_home, e_away) before it, the same after it,
+    (competition goal base home, away) before it], {league: goal base (home, away) now})."""
     s, e, goals = {}, {}, {}
     out = []
-    capped = lambda g, x: min(g, GOAL_CAP) if x is None else         GOALS_WEIGHT * min(g, GOAL_CAP) + (1 - GOALS_WEIGHT) * x
     for m, h, a, exp_diff, _, _ in rows:
-        sh, sa = s.get(m.home, 0.0), s.get(m.away, 0.0)
+        sh, sa, eh, ea = s.get(m.home, 0.0), s.get(m.away, 0.0), e.get(m.home, 0.0), e.get(m.away, 0.0)
         gh, ga, n = goals.get(m.league, (0.0, 0.0, 0))
-        base_h = (gh + 1.45 * LEAGUE_GOALS_PRIOR) / (n + LEAGUE_GOALS_PRIOR)
-        base_a = (ga + 1.15 * LEAGUE_GOALS_PRIOR) / (n + LEAGUE_GOALS_PRIOR)
+        base_h, base_a = goal_bases((gh, ga, n))
         mu_h = max(0.1, base_h + ((h - a) / 2 + sh + sa + HOME_ADVANTAGE_POINTS / 2) / 100)
         mu_a = max(0.1, base_a + ((a - h) / 2 + sh + sa - HOME_ADVANTAGE_POINTS / 2) / 100)
-        yh, ya = capped(m.home_goals, m.home_xg), capped(m.away_goals, m.away_xg)
+        yh, ya = _capped(m.home_goals, m.home_xg), _capped(m.away_goals, m.away_xg)
         step = ATTACK_K * ((yh + ya) - (mu_h + mu_a)) / 2 * m.weight
         s[m.home], s[m.away] = sh + step, sa + step
-        edge = HOME_EDGE_K * (actual_diff(m)[0] - exp_diff - (e.get(m.home, 0.0) + e.get(m.away, 0.0)) / 100) * m.weight
-        e[m.home], e[m.away] = e.get(m.home, 0.0) + edge, e.get(m.away, 0.0) + edge
+        edge = HOME_EDGE_K * (actual_diff(m)[0] - exp_diff - (eh + ea) / 100) * m.weight
+        e[m.home], e[m.away] = eh + edge, ea + edge
         goals[m.league] = (gh + yh, ga + ya, n + 1)
-        out.append((s[m.home], s[m.away], e[m.home], e[m.away]))
-    return out
+        out.append(((sh, sa, eh, ea), (s[m.home], s[m.away], e[m.home], e[m.away]), (base_h, base_a)))
+    return out, {lg: goal_bases(g) for lg, g in goals.items()}
 
 
 def sides_of(rank, s, e):
@@ -237,7 +251,7 @@ def _replay(conn, fixtures, xg, starting_rank):
                for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, history = run(matches, starting_rank)
-    sides = side_ratings(rows)
+    sides, bases = side_ratings(rows)
     last_match, split = {}, {}
 
     match_no = {}
@@ -245,11 +259,11 @@ def _replay(conn, fixtures, xg, starting_rank):
     vol_changes = {}
 
     buf = io.StringIO()
-    for (m, h, a, exp_diff, act_diff, change), (sh, sa, eh, ea) in zip(rows, sides):
+    for (m, h, a, exp_diff, act_diff, change), (pre, (sh, sa, eh, ea), base) in zip(rows, sides):
         scale = K_FACTOR / (actual_diff(m)[1] * m.weight)
-        for team, opp, is_home, before, delta, s_t, e_t in (
-            (m.home, m.away, True, h, change, sh, eh),
-            (m.away, m.home, False, a, -change, sa, ea),
+        for team, opp, is_home, before, delta, s_t, e_t, s0, e0, gb in (
+            (m.home, m.away, True, h, change, sh, eh, pre[0], pre[2], base[0]),
+            (m.away, m.home, False, a, -change, sa, ea, pre[1], pre[3], base[1]),
         ):
             match_no[team] = match_no.get(team, 0) + 1
             hist = recent.setdefault(team, [before])
@@ -263,13 +277,18 @@ def _replay(conn, fixtures, xg, starting_rank):
             buf.write("\t".join(map(str, (
                 m.key, team, match_no[team], kickoffs[m.key].isoformat(),
                 "t" if is_home else "f", opp, before, before + delta, exp_diff, act_diff, delta,
-                lt_before, *sides_of(before + delta, s_t, e_t),
+                lt_before, *sides_of(before + delta, s_t, e_t), s0, e0, gb,
             ))) + "\n")
     with conn.cursor() as cur:
         with cur.copy("copy team_rank_history (fixture_id, team_id, match_no, kickoff, is_home, "
                       "opponent_id, rank_before, rank_after, exp_diff, act_diff, rank_change, "
-                      "lt_before, attack_after, defence_after, home_after, away_after) from stdin") as cp:
+                      "lt_before, attack_after, defence_after, home_after, away_after, split_before, "
+                      "edge_before, goal_base) from stdin") as cp:
             cp.write(buf.getvalue())
+        # each competition's goal base now, for the projections (predictions.py)
+        cur.execute("update leagues set goal_base_home = null, goal_base_away = null")
+        cur.executemany("update leagues set goal_base_home = %s, goal_base_away = %s where league_id = %s",
+                        [(bh, ba, lg) for lg, (bh, ba) in bases.items()])
     log.info("Rankings: replayed %d fixtures", len(rows))
     return history, last_match, vol_changes, split
 

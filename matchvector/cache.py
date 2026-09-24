@@ -80,10 +80,12 @@ def finished_fixtures(conn):
 def rank_history(conn):
     """team_rank_history joined to the result, in partition (week) order - sort before use:
     (fixture_id, team_id, match_no, kickoff, is_home, opponent_id, rank_before, rank_after,
-    lt_before, home goals, away goals, league_id, attack_after, defence_after)."""
+    lt_before, home goals, away goals, league_id, attack_after, defence_after, split_before,
+    edge_before, goal_base)."""
     return cached_rows(conn, "rank_history", f"""
         select {WEEK.format('h.kickoff')} as part, h.fixture_id, h.team_id, h.match_no, h.kickoff,
                h.is_home, h.opponent_id, h.rank_before, h.rank_after, h.lt_before,
-               f.home_goals, f.away_goals, f.league_id, h.attack_after, h.defence_after
+               f.home_goals, f.away_goals, f.league_id, h.attack_after, h.defence_after,
+               h.split_before, h.edge_before, h.goal_base
         from team_rank_history h join fixtures f using (fixture_id)""",
         order_by="team_id, match_no")
