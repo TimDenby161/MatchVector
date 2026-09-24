@@ -312,6 +312,13 @@
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
   .pl-cell .pl-badge { flex: none; margin-right: -2px; }
+  .pl-cell .pl-badge-link { display: inline-flex; flex: none; }
+  .pl-cell .pl-badge-link:hover .pl-badge { transform: scale(1.12); }
+  /* name, then his flag (a link to the national team) */
+  .pl-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .pl-name .player-link { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-flag { display: inline-flex; flex: none; }
+  .pl-flag:hover .flag { box-shadow: 0 0 0 1px var(--series-blue); }
   table.leaderboard.players th.col-season, table.leaderboard.players td.col-season { width: 38px; padding-left: 2px; padding-right: 3px; }
   table.leaderboard.players th.col-season, table.leaderboard.players th[data-sort="rank"] { letter-spacing: 0; line-height: 1.15; }
   table.leaderboard.players td.col-season .rel-chip { min-width: 30px; padding: 2px 2px; font-weight: 700; }
@@ -344,8 +351,6 @@
     .pl-cell { gap: 5px; }
     .pl-cell .pl-badge { width: 16px; height: 16px; margin-right: 0; }
     .pl-cell .player-photo { width: 28px; height: 28px; }
-    .pl-cell .pl-nat { display: block; }
-    .pl-cell .pl-sep { display: none; }
   }
   .player-photo { width: 32px; height: 32px; flex: none; border-radius: 50%; object-fit: cover; background: var(--chip-bg); }
   table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 74px; }
@@ -894,12 +899,8 @@
     /* country · league on one line under the name, cut short rather than wrapping */
     table.leaderboard.clubs td:nth-child(3) { overflow: hidden; }
     .club-meta { margin-left: 0; display: block; overflow: hidden; text-overflow: ellipsis; }
-    /* Players: the club is named under the player, so the badge goes; name, club and
-       nationality each keep to one line */
-    .pl-cell .pl-badge { display: none; }
-    .pl-cell > div { min-width: 0; }
+    /* Players: badge, photo, then the name (cut short if it has to be) and flag on one line */
     table.leaderboard.players td:nth-child(2) { overflow: hidden; }
-    .pl-cell > div > a, .pl-cell .club-sub, .pl-cell .pl-nat { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     table.leaderboard.players th:nth-child(3), table.leaderboard.players td:nth-child(3) { width: 34px; padding-left: 2px; padding-right: 2px; }
     table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 32px; }
     table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { width: 50px; padding-left: 6px; padding-right: 6px; }
@@ -1171,6 +1172,10 @@ const leagueHref = (lid) => `#/league/${lid}`;
 const leagueLogo = (lid) => `https://media.api-sports.io/football/leagues/${lid}.png`;
 const countryLink = (c) => `<a class="nat-link" href="${countryHref(c)}">${escapeHtml(countryDisplay(c))}</a>`;
 const leagueLink = (lid) => `<a class="nat-link" href="${leagueHref(lid)}">${escapeHtml(SHORT_NAMES[lid] || state.data.competitions[lid]?.name || compLabel(lid))}</a>`;
+// His flag, linking to the national team's page (the country's name where there's no flag)
+const playerFlag = (nat) => !nat ? "" : FLAG_CODES[nat]
+  ? `<a class="pl-flag" href="#/nation/${encodeURIComponent(nat)}" title="${escapeHtml(nat)}" aria-label="${escapeHtml(nat)} national team">${flagImg(nat)}</a>`
+  : natLink(nat);
 const natLink = (nat) => nat ? `<a class="nat-link" href="#/nation/${encodeURIComponent(nat)}">${escapeHtml(nat)}</a>` : "";
 
 function idsForFilter(filter) {
@@ -1647,7 +1652,7 @@ function renderPlayers() {
     <div class="table-scroll"><table class="leaderboard players${open ? " years" : ""}">
       <thead><tr>
         <th data-tip="Position in this list, in the current sort order.">#</th>
-        <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
+        <th data-tip="Player, with his club's badge (click it for the club's page) and his country's flag (click it for the national team).">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
         ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => i === 0 && groups.length ? posTh : th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
@@ -1682,8 +1687,8 @@ function playerRow(p, i, seasons, groups = selectedGroups(), future = []) {
   return `
         <tr${p.team ? ` data-team="${p.team}"` : ""} data-player="${p.id}">
           <td>${i + 1}</td>
-          <td><div class="pl-cell">${p.team ? `<img class="club-logo pl-badge" src="${teamLogo(p.team)}" alt="" title="${escapeHtml(teamName(p.team))}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="club-logo pl-badge"></span>`}<img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-            <div>${playerLink(p.id, p.name)}<span class="club-sub">${playerClub(p)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${natLink(p.nationality)}</span>` : ""}</span></div></div></td>
+          <td><div class="pl-cell">${p.team ? `<a class="pl-badge-link" href="${clubHref(p.team)}" title="${escapeHtml(teamName(p.team))}" aria-label="${escapeHtml(teamName(p.team))}"><img class="club-logo pl-badge" src="${teamLogo(p.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></a>` : `<span class="club-logo pl-badge" title="Club not known"></span>`}<img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+            <div class="pl-name">${playerLink(p.id, p.name)}${playerFlag(p.nationality)}</div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
           ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => k === 0 && groups.length ? `<td class="num col-posrank">${posRank(p, groups) == null ? `<span class="dim">–</span>` : rankChipSmall(posRank(p, groups))}</td>` : `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
