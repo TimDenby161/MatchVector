@@ -1,1 +1,1 @@
-{"id":11915,"start":730,"fields":["date","rank","opponent","home","gf","ga","league"],"matches":[["2026-09-22",731.1,1360,0,3,3,46]],"goal_averages":[0.0,0.0,3.0,3.0],"teams":{"1360":"Accrington ST"}}
+{"id":11915,"start":730,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-09-22",731.1,1360,0,3,3,46,null]],"goal_averages":[0.0,0.0,3.0,3.0],"coach":null,"teams":{"1360":"Accrington ST"}}

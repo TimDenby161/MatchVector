@@ -325,15 +325,17 @@ A line-up adjustment (the strength of the starting XI against normal) was backte
 - **Matches:** projected scores, win/draw/loss chances and results. Filter by competition and day.
 - **Rankings:** club rankings with form and reliability. Tap a club to see its fixtures.
 
-**Club pages.** Club names link to `#/club/<team_id>`. The page shows:
-- the stat tiles
-- a rank-over-time chart with a hover readout
-- 12-month goal averages
-- next matches with projections
-- recent results with each match's rank change
-- the predicted XI and the squad's player ranks
+**Club pages.** Club names link to `#/club/<team_id>`. The page has tabs:
+- **Overview:** the next match, the squad on a pitch by the positions each player can play, recent form, the rank tiles and 12-month goal averages
+- **Predicted XI:** the predicted line-up for the next match
+- **Formations:** the manager, and the formations used since he took over and this season
+- **Matches:** fixtures with projections, and every result with its rank change
+- **Squad:** the club's ranked players by line
+- **History:** the rank-over-time chart and season-by-season ranks
 
-Each club's history comes from `docs/data/clubs/<team_id>.json`, which is written by `export_clubs` for clubs active in the last 400 days and loaded only when the page opens.
+Each club's history comes from `docs/data/clubs/<team_id>.json`, which is written by `export_clubs` for clubs active in the last 400 days and loaded only when the page opens. Each match carries the formation from its line-up (`fixture_formations`; only the leagues with match-by-match player data have line-ups).
+
+**Managers.** Every night, each club in those leagues gets its manager from `/coachs?team=`, at most once a week each, or the next night after a line-up names a different coach (`team_coaches`, `python -m matchvector sync coaches`). The API keeps former managers listed with no end date, so the one on the club's latest line-up wins, otherwise the one who started last. Line-ups store their coach in `fixture_formations.coach_id`. API-Football seems to fill a season's line-ups with one coach, so they can't pin down a mid-season change, and the start date comes from `/coachs`.
 
 The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `docs/data/rankings.json`. These are written by `python -m matchvector export`, and the nightly workflow commits them, so the site never needs database credentials. To view it on this PC, run `python -m http.server` in `docs/` and open http://localhost:8000.
 

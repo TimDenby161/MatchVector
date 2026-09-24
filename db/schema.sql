@@ -301,6 +301,16 @@ create table if not exists fixture_formations (
     formation   text,
     primary key (fixture_id, team_id)
 );
+alter table fixture_formations add column if not exists coach_id int;   -- the manager on the line-up
+-- Each club's current manager (/coachs?team=, ingest.sync_coaches) and when he started there
+create table if not exists team_coaches (
+    team_id     int primary key,
+    coach_id    int,
+    name        text,
+    photo       text,
+    since       date,
+    fetched_at  timestamptz not null default now()
+);
 -- Player rank (0-100) going into each match, from matches before it (player_ratings.py).
 -- Its own table, rebuilt with truncate + copy, so fixture_players isn't rewritten nightly.
 -- No key or index: it's only ever rebuilt in full, and an index would double its size.
@@ -543,3 +553,4 @@ alter table paper_bets         enable row level security;
 alter table fixture_team_ratings enable row level security;
 alter table predicted_lineups  enable row level security;
 alter table fixture_formations enable row level security;
+alter table team_coaches       enable row level security;

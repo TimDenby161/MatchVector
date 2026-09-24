@@ -1,1 +1,1 @@
-{"id":26605,"start":450,"fields":["date","rank","opponent","home","gf","ga","league"],"matches":[["2025-09-27",467.6,6751,1,4,0,181],["2025-10-25",465.0,6733,0,0,1,181]],"goal_averages":[4.0,0.0,0.0,1.0],"teams":{"6733":"Camelon Juniors","6751":"Threave Rovers"}}
+{"id":26605,"start":450,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2025-09-27",467.6,6751,1,4,0,181,null],["2025-10-25",465.0,6733,0,0,1,181,null]],"goal_averages":[4.0,0.0,0.0,1.0],"coach":null,"teams":{"6733":"Camelon Juniors","6751":"Threave Rovers"}}

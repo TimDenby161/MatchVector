@@ -428,6 +428,8 @@ def sync_nightly(api, conn, league_ids):
     step("rankings", lambda api, conn: update_rankings(conn))
     step("retirement checks", check_retired)
     step("squads", sync_squads)
+    step("line-up coaches", sync_lineup_coaches)
+    step("coaches", sync_coaches)
     step("player ratings", lambda api, conn: compute_player_ratings(conn))
     step("player careers", sync_player_careers)
     step("predictions", lambda api, conn: update_predictions(conn))
@@ -454,16 +456,21 @@ def sync_player_careers(api, conn, player_ids=None):
     _fetch_careers(api, conn, player_ids)
 
 
-def sync_squads(api, conn):
-    """Current squad of every club in this season's per-match player leagues (/players/squads,
-    one call per club) into team_squads, replacing each club's list: the club a player is shown
-    at, and the players listed even with few minutes (a new signing)."""
-    teams = [t for (t,) in conn.execute(
+def _current_player_league_teams(conn):
+    """Every club in this season's per-match player leagues."""
+    return [t for (t,) in conn.execute(
         """select distinct t from (
                select f.home_team_id t from fixtures f join league_seasons ls using (league_id, season)
                where f.league_id = any(%(l)s) and ls.is_current
                union select f.away_team_id from fixtures f join league_seasons ls using (league_id, season)
                where f.league_id = any(%(l)s) and ls.is_current) x""", {"l": config.MATCH_PLAYER_LEAGUES})]
+
+
+def sync_squads(api, conn):
+    """Current squad of every club in this season's per-match player leagues (/players/squads,
+    one call per club) into team_squads, replacing each club's list: the club a player is shown
+    at, and the players listed even with few minutes (a new signing)."""
+    teams = _current_player_league_teams(conn)
     log.info("Squads to fetch: %d clubs", len(teams))
     known = {p for (p,) in conn.execute("select player_id from players")}
     for n, team in enumerate(teams, 1):
@@ -490,6 +497,77 @@ def sync_squads(api, conn):
         if n % 50 == 0:
             conn.commit()
             log.info("Squads: %d/%d", n, len(teams))
+    conn.commit()
+
+
+COACH_RECHECK_DAYS = 7
+LINEUP_COACH_DAYS = 550      # how far back line-ups are checked for who picked the team
+
+
+def sync_lineup_coaches(api, conn, batch_size=20):
+    """The manager on each line-up (fixture_formations.coach_id) for matches in the last
+    LINEUP_COACH_DAYS that were fetched before it was stored (/fixtures?ids=, 20 per call).
+    New matches get it from sync_fixture_players."""
+    pending = [r[0] for r in conn.execute(
+        """select distinct ff.fixture_id from fixture_formations ff join fixtures f using (fixture_id)
+           where ff.coach_id is null and ff.formation is not null and f.kickoff > now() - %s * interval '1 day'
+           order by 1""", [LINEUP_COACH_DAYS])]
+    log.info("Line-ups needing their coach: %d (~%d API calls)", len(pending), -(-len(pending) // batch_size))
+    for i in range(0, len(pending), batch_size):
+        rows = []
+        for f in api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size]))):
+            for lu in f.get("lineups") or []:
+                coach, team = (lu.get("coach") or {}).get("id"), (lu.get("team") or {}).get("id")
+                if coach and team:
+                    rows.append((coach, f["fixture"]["id"], team))
+        if rows:
+            with conn.cursor() as cur:
+                cur.executemany("update fixture_formations set coach_id = %s where fixture_id = %s and team_id = %s", rows)
+        conn.commit()
+
+
+def sync_coaches(api, conn):
+    """Current manager of every club in this season's per-match player leagues (/coachs?team=,
+    one call per club) into team_coaches, with the date he started there (for the club page's
+    formations since he took over).
+
+    The API keeps old managers listed with no end date (Guardiola still "at" City after Maresca
+    took over), so: the coach on the club's latest line-up if the API lists him at the club,
+    else the one who started there last. Its start dates can be wrong too (Carrick "since
+    August 2025" at United, who played under Amorim until January), so when the line-ups show a
+    different coach before him, he starts the day after that coach's last match (or the API's
+    date, if later). Re-checked weekly, or the next night when a line-up names a different coach.
+    """
+    teams = _current_player_league_teams(conn)
+    known = {t: (c, f) for t, c, f in conn.execute("select team_id, coach_id, fetched_at from team_coaches")}
+    lineups = {}                         # team -> [(kickoff, coach)], newest first
+    for team, kickoff, coach in conn.execute(
+            """select ff.team_id, f.kickoff, ff.coach_id from fixture_formations ff join fixtures f using (fixture_id)
+               where ff.coach_id is not null and ff.team_id = any(%s) order by ff.team_id, f.kickoff desc""", [teams]):
+        lineups.setdefault(team, []).append((kickoff, coach))
+    lineup_coach = {t: rows[0][1] for t, rows in lineups.items()}
+    now = datetime.now(timezone.utc)
+    due = [t for t in teams if t not in known or now - known[t][1] > timedelta(days=COACH_RECHECK_DAYS)
+           or (lineup_coach.get(t) and lineup_coach[t] != known[t][0])]
+    log.info("Coaches to fetch: %d of %d clubs", len(due), len(teams))
+    rows = []
+    for team in due:
+        spells = []                      # (start, coach) for each coach listed at the club, still there
+        for c in api.get("coachs", team=team) or []:
+            for job in c.get("career") or []:
+                if (job.get("team") or {}).get("id") == team and not job.get("end"):
+                    spells.append((job.get("start") or "", c))
+        if not spells:
+            continue
+        mine = [s for s in spells if s[1].get("id") == lineup_coach.get(team)]
+        start, c = max(mine or spells, key=lambda s: s[0])
+        before = next((k for k, coach in lineups.get(team, []) if coach != c.get("id")), None)
+        if mine and before is not None:
+            took_over = (before + timedelta(days=1)).date().isoformat()
+            start = max(start, took_over) if start else took_over
+        rows.append({"team_id": team, "coach_id": c.get("id"), "name": c.get("name"), "photo": c.get("photo"),
+                     "since": start or None, "fetched_at": now})
+    upsert(conn, "team_coaches", rows, ["team_id"], touch_updated_at=False)
     conn.commit()
 
 
@@ -686,7 +764,8 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
             for lu in f.get("lineups") or []:
                 formation = lu.get("formation")
                 if lu.get("team", {}).get("id"):
-                    formations.append({"fixture_id": fid, "team_id": lu["team"]["id"], "formation": formation})
+                    formations.append({"fixture_id": fid, "team_id": lu["team"]["id"], "formation": formation,
+                                       "coach_id": (lu.get("coach") or {}).get("id")})
                 for st in lu.get("startXI") or []:
                     pl = st.get("player") or {}
                     if pl.get("id"):

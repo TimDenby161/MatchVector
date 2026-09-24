@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config, positions
-from .cache import rank_history
+from .cache import WEEK, cached_rows, rank_history
 
 log = logging.getLogger(__name__)
 
@@ -608,7 +608,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
     """One small file per active club for its club page: docs/data/clubs/<team_id>.json.
 
     history: every match since 2020 as [date, rank after, opponent, home?, goals for, against,
-    competition]; plus 12-month home/away goal averages. Loaded only when the page opens.
+    competition, formation (null where the line-up isn't known)]; plus 12-month home/away goal
+    averages and the current manager. Loaded only when the page opens.
     """
     now = datetime.now(timezone.utc)
     active = {r[0] for r in conn.execute(
@@ -616,12 +617,19 @@ def export_clubs(conn, out_dir=OUT_DIR):
            union select home_team_id from fixtures where status_short in ('NS','TBD') and kickoff > now()
            union select away_team_id from fixtures where status_short in ('NS','TBD') and kickoff > now()""",
         [now - timedelta(days=CLUB_ACTIVE_DAYS)])}
+    formations = {(f, t): fm for f, t, fm in cached_rows(conn, "formations", f"""
+            select {WEEK.format('f.kickoff')} as part, ff.fixture_id, ff.team_id, ff.formation
+            from fixture_formations ff join fixtures f using (fixture_id) where ff.formation is not null""",
+            order_by="fixture_id, team_id")}
+    coaches = {t: {"id": c, "name": n, "photo": p, "since": s.isoformat() if s else None}
+               for t, c, n, p, s in conn.execute("select team_id, coach_id, name, photo, since from team_coaches")}
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
-    for _, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league in club_rows:
+    for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league in club_rows:
         rows = history.setdefault(team, {"start": round(rank_before), "matches": []})["matches"]
         gf, ga = (hg, ag) if is_home else (ag, hg)
-        rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 1 if is_home else 0, gf, ga, league])
+        rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 1 if is_home else 0, gf, ga, league,
+                     formations.get((fid, team))])
     stats = {t: [_r(x) for x in rest] for t, *rest in conn.execute(
         "select team_id, hg, ha, ag, aa from team_rankings where team_id = any(%s)", [list(active)])}
     club_dir = out_dir / "clubs"
@@ -634,8 +642,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
         h = history.get(team, {"start": None, "matches": []})
         opponents = {m[2] for m in h["matches"]}
         payload = {"id": team, "start": h["start"],
-                   "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league"],
-                   "matches": h["matches"], "goal_averages": stats.get(team),
+                   "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation"],
+                   "matches": h["matches"], "goal_averages": stats.get(team), "coach": coaches.get(team),
                    "teams": {o: names.get(o) for o in opponents}}
         (club_dir / f"{team}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d club pages", len(active))
