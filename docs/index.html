@@ -509,7 +509,7 @@
   .xi-card .xi-sub { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* league and country pages */
   table.league-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-  table.league-table th, table.league-table td { padding: 6px 4px; border-bottom: 1px solid var(--gridline); text-align: right; white-space: nowrap; }
+  table.league-table th, table.league-table td { padding: 11px 5px; border-bottom: 1px solid var(--gridline); text-align: right; white-space: nowrap; }
   table.league-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); font-weight: 600; cursor: help; }
   table.league-table .lt-pos { text-align: left; color: var(--text-muted); border-left: 3px solid transparent; padding-left: 6px; width: 30px; }
   table.league-table .lt-badge { width: 26px; padding-left: 0; padding-right: 0; }
@@ -518,11 +518,12 @@
   .table-scroll:has(table.league-table) { overflow-x: auto; }
   .table-scroll table.league-table tbody tr:last-child td { border-bottom: none; }
   .table-scroll + .modal-section { margin-top: 14px; }
-  .lt-form { display: inline-flex; gap: 2px; }
-  .lt-form i { font-style: normal; font-size: 10px; font-weight: 800; width: 16px; height: 16px; line-height: 16px; text-align: center; border-radius: 4px; }
-  .lt-form i.res-w { background: color-mix(in srgb, var(--status-good) 20%, transparent); }
-  .lt-form i.res-d { background: var(--chip-bg); }
-  .lt-form i.res-l { background: color-mix(in srgb, var(--status-critical) 18%, transparent); }
+  .lt-form { display: inline-flex; gap: 3px; vertical-align: middle; }
+  .lt-form i { font-style: normal; font-size: 11px; font-weight: 800; width: 21px; height: 21px; line-height: 21px; text-align: center;
+    border-radius: 5px; color: #fff; }
+  .lt-form i.res-w { background: var(--status-good); }
+  .lt-form i.res-d { background: var(--text-muted); }
+  .lt-form i.res-l { background: var(--status-critical); }
   .lt-legend { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
   .lt-legend span { display: flex; align-items: center; gap: 7px; }
   .lt-legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
@@ -552,7 +553,10 @@
   .lg-sub { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .country-flag-lg { width: 60px; height: 42px; object-fit: cover; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }
   @media (max-width: 600px) {
-    table.league-table .lt-wide { display: none; }
+    table.league-table .lt-wide, table.league-table .lt-wdl { display: none; }
+    table.league-table th, table.league-table td { padding: 10px 3px; }
+    .lt-form { gap: 2px; }
+    .lt-form i { width: 15px; height: 17px; line-height: 17px; font-size: 9.5px; border-radius: 4px; }
     .lf-row { grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr); column-gap: 6px; }
   }
   .league-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -3087,17 +3091,17 @@ function leagueTableTab() {
     ${groups.length > 1 ? `<div class="modal-section">${escapeHtml(g)}</div>` : ""}
     <div class="table-scroll"><table class="league-table">
       <thead><tr><th class="lt-pos">#</th><th></th><th class="lt-club">Club</th>
-        <th title="Played">P</th><th title="Won">W</th><th title="Drawn">D</th><th title="Lost">L</th>
+        <th title="Played">P</th><th class="lt-wdl" title="Won">W</th><th class="lt-wdl" title="Drawn">D</th><th class="lt-wdl" title="Lost">L</th>
         <th class="lt-wide" title="Goals for and against">Goals</th><th title="Goal difference">GD</th><th title="Points">Pts</th>
-        <th class="lt-wide" title="Last five league games, oldest first">Form</th><th title="Rating: the club's long-term Elo rating">Elo</th></tr></thead>
+        <th title="Last five league games, oldest first: green won, grey drawn, red lost">Form</th><th title="Rating: the club's long-term Elo rating">Elo</th></tr></thead>
       <tbody>${rows.filter((r) => r.group === g).map((r) => {
         const rk = state.rankByTeam.get(r.team);
         return `<tr><td class="lt-pos" style="border-left-color:${zones.get(r.description) || "transparent"}">${r.rank}</td>
           <td class="lt-badge"><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td class="lt-club">${clubLink(r.team, data.teams[r.team] || teamName(r.team))}</td>
-          <td>${r.played ?? ""}</td><td>${r.win ?? ""}</td><td>${r.draw ?? ""}</td><td>${r.lose ?? ""}</td>
+          <td>${r.played ?? ""}</td><td class="lt-wdl">${r.win ?? ""}</td><td class="lt-wdl">${r.draw ?? ""}</td><td class="lt-wdl">${r.lose ?? ""}</td>
           <td class="lt-wide">${r.gf ?? ""}–${r.ga ?? ""}</td><td>${r.gd > 0 ? "+" : ""}${r.gd ?? ""}</td><td><b>${r.points ?? ""}</b></td>
-          <td class="lt-wide">${formChips(r.form)}</td><td class="lt-elo">${rk ? Math.round(rk.lt) : ""}</td></tr>`;
+          <td>${formChips(r.form)}</td><td class="lt-elo">${rk ? Math.round(rk.lt) : ""}</td></tr>`;
       }).join("")}</tbody></table></div>`;
   return groups.map(table).join("") + (zones.size ? `<div class="lt-legend">${[...zones].map(([d, c]) =>
     `<span><i style="background:${c}"></i>${escapeHtml(d)}</span>`).join("")}</div>` : "");
