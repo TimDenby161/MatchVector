@@ -105,6 +105,14 @@ PLAYER_LEAGUES = [
 # minutes are fetched for these
 INJURY_MODEL_LEAGUES = [39, 40, 140, 135, 78, 61, 203, 88, 253, 103]
 
+# Leagues with per-match player data (fixture_players: minutes, stats, line-up roles), used for
+# player ranks and the players list: the injury-model leagues plus League One and League Two
+MATCH_PLAYER_LEAGUES = INJURY_MODEL_LEAGUES + [41, 42]
+
+# Player ranks compare every player with the players in these leagues (stat norms, percentiles,
+# the "regulars" sample), so adding a league doesn't move everyone else's rank
+RATING_REFERENCE_LEAGUES = INJURY_MODEL_LEAGUES
+
 FINISHED_STATUSES = ("FT", "AET", "PEN")
 
 # Odds markets to keep (API-Football bet ids). Everything else is discarded.

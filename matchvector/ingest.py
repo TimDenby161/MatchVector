@@ -418,7 +418,7 @@ def sync_nightly(api, conn, league_ids):
     # All seasons, so earlier gaps and retries get picked up too.
     step("stats", sync_fixture_stats, league_ids)
     step("player minutes", sync_fixture_players,
-         [l for l in league_ids if l in config.INJURY_MODEL_LEAGUES])
+         [l for l in league_ids if l in config.MATCH_PLAYER_LEAGUES])
     for pair in pairs:
         step("odds", sync_odds, [pair])
     for league_id, season in pairs:
@@ -465,7 +465,7 @@ def check_retired(api, conn):
     often doesn't list the new season yet, even for regulars."""
     (current,) = conn.execute(
         "select max(season) from fixtures where league_id = any(%s) and status_short = any(%s)",
-        [config.INJURY_MODEL_LEAGUES, list(config.FINISHED_STATUSES)]).fetchone()
+        [config.MATCH_PLAYER_LEAGUES, list(config.FINISHED_STATUSES)]).fetchone()
     player_ids = [p for (p,) in conn.execute(
         """select l.player_id from (
                select fp.player_id, max(f.season) as last_season, max(f.kickoff) as last_kickoff

@@ -99,7 +99,7 @@ def main(argv=None):
                     ingest.sync_fixture_stats(api, conn, args.leagues, args.seasons, limit=args.limit)
                 elif target == "player_minutes":
                     ingest.sync_fixture_players(
-                        api, conn, [l for l in args.leagues if l in config.INJURY_MODEL_LEAGUES])
+                        api, conn, [l for l in args.leagues if l in config.MATCH_PLAYER_LEAGUES])
                 elif target in ("players", "injuries"):
                     leagues = [l for l in args.leagues if l in config.PLAYER_LEAGUES] or args.leagues
                     fn = ingest.sync_players if target == "players" else ingest.sync_injuries

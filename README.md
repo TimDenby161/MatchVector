@@ -76,7 +76,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 
 ## Player ranks and team XI ratings
 
-`matchvector/player_ratings.py` gives every player a **rank from 0 to 100** from his stats, for the 10 leagues with per-match player data (`config.INJURY_MODEL_LEAGUES`). Everything is **backdated**: it's replayed in kickoff order, so every number is what could have been known before that match.
+`matchvector/player_ratings.py` gives every player a **rank from 0 to 100** from his stats, for the 12 leagues with per-match player data (`config.MATCH_PLAYER_LEAGUES`). That's the 10 injury-model leagues plus League One and League Two, whose match-by-match data runs from 2020/21. Players are always compared with the players in the original 10 leagues (`config.RATING_REFERENCE_LEAGUES`) for stat averages, percentiles and the "regulars" sample. So adding a league doesn't move everyone else's rank. Everything is **backdated**: it's replayed in kickoff order, so every number is what could have been known before that match.
 
 **Player rank**
 1. Take the player's last 20 appearances within 18 months.

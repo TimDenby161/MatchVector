@@ -87,6 +87,7 @@ SHRINK_MINUTES = 900
 CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
+REFERENCE = set(config.RATING_REFERENCE_LEAGUES)   # the players everyone is compared with
 ANCHOR_MINUTES = 1500      # a season with this many minutes measures the age curve
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
 CURVE_MIN_PAIRS = 30       # an age needs this many season pairs to measure the curve there
@@ -275,10 +276,12 @@ def _add_season(entry, row, rating):
 
 
 def _norms(apps, offsets):
-    """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes."""
+    """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes in
+    config.RATING_REFERENCE_LEAGUES."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter()})
     for row in apps:
-        _add_season(seasons[(row[2], row[8])], row, _adjusted(row, offsets))
+        if row[9] in REFERENCE:
+            _add_season(seasons[(row[2], row[8])], row, _adjusted(row, offsets))
     groups = defaultdict(list)
     for entry in seasons.values():
         if entry["sums"]["minutes"] < 900:
@@ -420,7 +423,7 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
                    ps.duels, ps.duels_won, ps.dribbles_won, ps.fouls_committed, ps.yellow_cards,
                    ps.yellow_red_cards, ps.red_cards, ps.saves, ps.goals_conceded
             from player_seasons ps where ps.minutes > 0 and not (ps.league_id = any(%s))""",
-            [config.INJURY_MODEL_LEAGUES], order_by="player_id, team_id, league_id"),
+            [config.MATCH_PLAYER_LEAGUES], order_by="player_id, team_id, league_id"),
         other_offsets=q("""with l as (select league_id, left(position, 1) as pos,
                                              sum(rating * minutes) / sum(minutes) as r
                                       from player_seasons where rating is not null and minutes > 0 group by 1, 2),
@@ -428,7 +431,7 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
                                        from player_seasons where rating is not null and minutes > 0
                                          and league_id = any(%s) group by 1)
                           select l.league_id, l.pos, (l.r - ref.r)::float8 from l join ref using (pos)""",
-                        [config.INJURY_MODEL_LEAGUES]),
+                        [config.RATING_REFERENCE_LEAGUES]),
         retired=retired)
 
 
@@ -442,7 +445,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     estimates after it (retired_players). detail: a dict to fill with the
     workings per (player, season): (evidence, weight, level, curve), for checking."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
-                                   "club": [0.0, 0.0], "games": 0})
+                                   "club": [0.0, 0.0], "games": 0, "ref_mins": 0})
     team_games = {(t, y): n for t, y, n in team_games}
     team_level = {(t, y): (float(r), n) for t, y, r, n in team_level}
     for row in apps:
@@ -455,6 +458,8 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
             e["club"][0] += club * (row[3] or 0)
             e["club"][1] += row[3] or 0
         e["games"] = max(e["games"], team_games.get((row[1], row[8]), 0))
+        if row[9] in REFERENCE:
+            e["ref_mins"] += row[3] or 0
     born = dict(born)
 
     # 1. Each season's evidence: his clubs' LT ALGO over his matches, moved by his stat score
@@ -472,9 +477,9 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         sc = _stat_score(e["sums"], pos, norms)
         if sc is not None:
             raw[(player, season)] = (sc, mins, pos, e["club"][0] / e["club"][1])
-    ref = defaultdict(list)
-    for sc, mins, pos, _ in raw.values():
-        if mins >= 900:
+    ref = defaultdict(list)              # percentiles are among 900+ minute seasons in the reference leagues
+    for key, (sc, mins, pos, _) in raw.items():
+        if seasons[key]["ref_mins"] >= 900:
             ref[pos].append(sc)
     for v in ref.values():
         v.sort()
@@ -717,8 +722,9 @@ def compute_player_ratings(conn):
         """select fixture_id, kickoff, home_team_id, away_team_id, status_short in ('NS', 'TBD'), season
            from fixtures where league_id = any(%s)
              and (status_short in ('FT', 'AET', 'PEN') or (status_short in ('NS', 'TBD') and kickoff > now()))
-           order by kickoff, fixture_id""", [config.INJURY_MODEL_LEAGUES]).fetchall()
+           order by kickoff, fixture_id""", [config.MATCH_PLAYER_LEAGUES]).fetchall()
     apps = defaultdict(list)
+    fixture_league = {r[0]: r[9] for r in appearances}
     for r in appearances:
         apps[r[0]].append({"team": r[1], "player": r[2], "minutes": r[3], "started": r[4],
                            "position": r[5], "role": r[6], "rating": _adjusted(r, offsets),
@@ -778,7 +784,7 @@ def compute_player_ratings(conn):
                 s, pos, mins = raw_score(a["player"], kickoff)
                 if s is not None:
                     appearance_scores.append((fid, a["player"], s, pos))
-                    if mins >= SHRINK_MINUTES:
+                    if mins >= SHRINK_MINUTES and fixture_league.get(fid) in REFERENCE:
                         sample[pos].append(s[0])
                     if a["started"]:
                         actual.append((s, pos))
