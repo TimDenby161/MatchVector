@@ -403,6 +403,7 @@
   .pl-hero .head-meta { font-size: 12px; }
   .flag { width: 18px; height: 13px; flex: none; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px var(--border); }
   .pl-hero-nat { margin-top: 3px; font-size: 13px; }
+  .pl-hero-nat .dim-sep { color: var(--text-muted); font-weight: 500; }
   .pl-hero-rank { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px;
     padding: 10px 8px; border-radius: 12px; }
   .pl-hero-rank .val { font-size: 28px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
@@ -2096,7 +2097,6 @@ const PLAYER_TABS = [["overview", "Overview"], ["stats", "Stats"], ["matches", "
 function renderPlayerPage() {
   const { p } = state.player;
   const born = state.playerSeasons?.born?.[String(p.id)];
-  const group = GROUP_OF[p.position] || p.position;
   const league = p.team && p.league ? SHORT_NAMES[p.league] || state.data.competitions[p.league]?.name : "";
   const tab = state.playerTab || "overview";
   $("#club-body").innerHTML = `
@@ -2107,10 +2107,9 @@ function renderPlayerPage() {
         <h2>${escapeHtml(p.name)}</h2>
         <div class="pl-hero-club">${p.team ? `<img class="club-logo" src="${teamLogo(p.team)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
           <span>${playerClub(p)}${league ? `<span class="dim-sep"> · </span><span class="pl-league">${escapeHtml(league)}</span>` : ""}</span></div>
-        ${p.nationality ? `<div class="pl-hero-club pl-hero-nat">${flagImg(p.nationality)}<span>${natLink(p.nationality)}</span></div>` : ""}
-        <div class="head-meta"><span>${escapeHtml(p.position || "")}${GROUP_SINGLE[group] ? ` · ${GROUP_SINGLE[group]}` : ""}</span>
-          ${p.age != null ? `<span>Age ${p.age}${born ? ` · born ${escapeHtml(parseDateInput(born).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }))}` : ""}</span>` : ""}
-</div>
+        <div class="pl-hero-club pl-hero-nat">${p.nationality ? `${flagImg(p.nationality)}<span>${natLink(p.nationality)}</span><span class="dim-sep">·</span>` : ""}
+          <span class="pl-meta">${escapeHtml(p.position || "")}</span>${p.age != null ? `<span class="dim-sep">·</span>
+          <span class="pl-meta"${born ? ` title="Born ${escapeHtml(parseDateInput(born).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }))}"` : ""}>${p.age}</span>` : ""}</div>
       </div>
       <div class="pl-hero-rank rel-${rankTier(p.rank)}" title="His rank now (0-100), from his last 20 appearances">
         <span class="val">${Math.round(p.rank)}</span></div>
