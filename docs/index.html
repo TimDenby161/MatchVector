@@ -2148,8 +2148,7 @@ function playerOverviewTab() {
         ${hasMatchRanks && hasSeasons ? `<div class="chart-ranges">${[["matches", "Matches"], ["seasons", "Seasons"]].map(([k, l]) =>
           `<button type="button" class="filter-chip" data-pchart="${k}" aria-pressed="${chartMode === k}">${l}</button>`).join("")}</div>` : ""}</div>
       <div class="chart-wrap" id="pl-chart"></div>
-      <div class="chart-summary">${chartMode === "matches" ? `His last ${page.matchRows.filter((m) => m.rank != null).length} league matches, and his rank now.`
-        : "Hollow points are estimated seasons (no minutes in the leagues with player data): his level on the age curve for his position."}</div>
+      ${chartMode === "matches" ? `<div class="chart-summary">His last ${page.matchRows.filter((m) => m.rank != null).length} league matches, and his rank now.</div>` : ""}
     </div>` : ""}
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · match rating</div>
       <div class="form-strip">${form.map((m) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${pageTeamName(m.opponent)} ${m.gf}–${m.ga} · ${m.minutes}′`)}">
