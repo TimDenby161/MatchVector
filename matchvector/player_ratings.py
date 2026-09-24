@@ -26,6 +26,9 @@ and only leaves it where he has the minutes to (season_model)
                minutes), moved by his stat score that season (percentile among 900+ minute
                seasons in his role group; the top decile spread up to the best on record):
                final_rank(pct, club), i.e. 100 x club / CLUB_RANK_MAX - offset + weight x (pct - 50)
+               , scaled down up to 20% if he played under OUT_FULL_SHARE of his club's minutes
+               (a rotation player at a top club is below its regulars). players.current_rank is
+               his season rank for the current season
     curve    = the age curve for his role group (the one he's played most minutes in), in rank
                points, from how evidence changes between seasons (ANCHOR_MINUTES+ in the first,
                CURVE_NEXT_MINUTES+ in the next). Growth to CURVE_GROWTH_TO is measured, then a flat
@@ -394,18 +397,26 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
                         join fixtures f using (fixture_id) group by 1, 2"""),
         careers=q("select player_id, season, team_id from player_career_teams where season > 0"),
         covered=q("select distinct fp.team_id, f.season from fixture_players fp join fixtures f using (fixture_id)"),
+        team_games=q("""select team_id, season, count(*) from (
+               select home_team_id as team_id, season from fixtures
+               where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')
+               union all
+               select away_team_id, season from fixtures
+               where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
+           group by 1, 2""", {"l": config.INJURY_MODEL_LEAGUES}),
         retired=retired)
 
 
-def season_model(norms, apps, offsets, team_rank, born, team_level, careers, covered, retired=None,
-                 detail=None):
+def season_model(norms, apps, offsets, team_rank, born, team_level, careers, covered, team_games=(),
+                 retired=None, detail=None):
     """Season ranks: every player follows the age curve through all his seasons, from a level
     of his own, and only leaves it where he has the minutes to (see module docstring). Query
     results come in as rows so this can be run offline. retired: {player: last season}, no
     estimates after it (retired_players). detail: a dict to fill with the
     workings per (player, season): (evidence, weight, level, curve), for checking."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
-                                   "club": [0.0, 0.0]})
+                                   "club": [0.0, 0.0], "games": 0})
+    team_games = {(t, y): n for t, y, n in team_games}
     for row in apps:
         if row[10] not in ("FT", "AET", "PEN"):
             continue
@@ -415,11 +426,15 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         if club is not None:
             e["club"][0] += club * (row[3] or 0)
             e["club"][1] += row[3] or 0
+        e["games"] = max(e["games"], team_games.get((row[1], row[8]), 0))
     born = dict(born)
 
     # 1. Each season's evidence: his clubs' LT ALGO over his matches, moved by his stat score
-    #    that season (percentile among 900+ minute seasons in his role group)
+    #    that season (percentile among 900+ minute seasons in his role group), scaled down up to
+    #    20% if he played under OUT_FULL_SHARE of his club's minutes (GK_FULL_SHARE for keepers):
+    #    a rotation player at a top club is evidence of being below its regulars, not at them
     raw = {}                   # (player, season) -> (stat score, minutes, role group, club)
+    share = {k: min(e["sums"]["minutes"] / (90 * e["games"]), 1.0) for k, e in seasons.items() if e["games"]}
     for (player, season), e in seasons.items():
         mins = e["sums"]["minutes"]
         if mins <= 0 or not e["club"][1]:
@@ -438,7 +453,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
 
     def pct(score, pos):
         return stretched_pct(score, ref[pos]) if ref.get(pos) else 50.0
-    evidence = {k: (final_rank(pct(sc, pos), club, pos), mins, pos)
+    evidence = {k: (final_rank(pct(sc, pos), club, pos, share.get(k)), mins, pos)
                 for k, (sc, mins, pos, club) in raw.items()}
 
     # 2. Age curve (rank points), per role group, from how evidence changes from one season to
@@ -717,16 +732,20 @@ def compute_player_ratings(conn):
         if upcoming:
             lineups.extend((fid, team, p, label, to_rank(s, pos)) for p, pos, s, label in predicted)
 
-    # Current rank per player: latest window
+    # Current rank per player (the players list): his season rank for the current season from
+    # the season model, so it follows the same age curve and minutes weighting as his seasons;
+    # role and minutes from his latest window (players with nothing in the window are left off)
+    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired)
+    this_season = max(y for _, y, _, _, _ in season_rows)
+    now_rank = {p: r for p, y, r, _, _ in season_rows if y == this_season}
     current = []
     for player in list(windows):
         if player in retired:            # off the players list
             continue
         s, pos, minutes = raw_score(player, fixtures[-1][1] if fixtures else None)
         if s is not None:
-            current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
+            current.append((player, now_rank.get(player, to_rank(s, pos)), windows[player].label(), int(minutes)))
 
-    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired)
     _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows)
 
 
