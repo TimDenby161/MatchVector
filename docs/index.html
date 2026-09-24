@@ -1615,7 +1615,7 @@ function renderPlayers() {
   const ids = tableLeagueIds();
   const q = state.tableSearch.trim().toLowerCase();
   const all = tableFilterIsWide();
-  let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
+  let rows = q ? state.players.list.filter((p) => playerSearchMatch(p, q))
                : ids === null || state.clubs?.size ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
   rows = rows.filter(playerVisible);
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
@@ -1750,6 +1750,18 @@ function clubSearchText(r) {
   text = " " + parts.filter(Boolean).join(" ") + " ";
   searchIndex.set(r.team, text);
   return text;
+}
+// Players search: his name as typed ("yamal"), or every word starting a word of his name or of
+// his club's search text, so club short forms work too ("man city", "haaland city", "spurs")
+let rankingByTeam = null;
+function playerSearchMatch(p, q) {
+  if (p.name.toLowerCase().includes(q)) return true;
+  const words = foldText(q).split(" ").filter(Boolean);
+  if (!words.length) return false;
+  rankingByTeam ??= new Map(state.rankings.map((r) => [r.team, r]));
+  const r = p.team ? rankingByTeam.get(p.team) : null;
+  const text = ` ${foldText(p.name)} ${r ? clubSearchText(r) : ` ${foldText(teamName(p.team))} `}`;
+  return words.every((w) => text.includes(" " + w));
 }
 function clubSearchRows(q) {
   const words = foldText(q).split(" ").filter(Boolean);
