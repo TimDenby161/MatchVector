@@ -810,8 +810,9 @@
      centred; the header drops the name row on this tab to fit a full league on one screen */
   @media (min-width: 1160px) {
     section[data-tab="table"] { position: relative; }
-    #table-side { position: fixed; z-index: 11; left: 0; width: 220px; top: var(--menu-h, 230px); bottom: 0;
-      overflow-y: auto; padding: 14px 12px 16px; border-top: 1px solid var(--gridline); }
+    body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
+    #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
+    #table-side .side-stick { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-right: 4px; }
     #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
@@ -3361,12 +3362,6 @@ function setMenu(open) {
 $("#menu-btn").addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
 $("#menu-backdrop").addEventListener("click", () => setMenu(false));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
-// Wide screens: the Rankings filters sit in the sidebar, just under the menu
-function placeSideFilters() {
-  document.documentElement.style.setProperty("--menu-h", `${Math.ceil($("#main-menu").getBoundingClientRect().bottom + 14)}px`);
-}
-window.addEventListener("resize", placeSideFilters);
-placeSideFilters();
 function route() {
   const club = location.hash.match(/^#\/club\/(\d+)/);
   const player = location.hash.match(/^#\/player\/(\d+)/);
