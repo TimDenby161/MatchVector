@@ -137,7 +137,20 @@ These are set by judgement. The results data can't measure position value, becau
 - **Actual XI rating:** the average rank of the XI that started, for finished matches.
 - `predicted_lineups` holds the predicted XI for upcoming matches.
 
-Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group). Each row has the player's club badge and photo, with his club and nationality under his name. Above the league filter there's an age range slider, and a small pitch of positions you click to filter by (you can pick several). Under it, **Club & nationality** takes one or more clubs and nationalities, typed or picked from a list. Each shows as a chip you click to remove. They combine with the other filters, except that a club shows its players whatever league is selected. The counts in the filter follow both. The table shows each player's age and his **season ranks** for 26/27 back to 21/22, sorted by the current season (`player_season_ranks`, see below).
+Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group). Each row has the player's club badge and photo, with his club and nationality under his name. Clicking his name opens a **player page** (`#/player/<id>`) with:
+- his club, nationality, position and age;
+- where he ranks among players in his position, among his nationality, and overall;
+- a chart of his season ranks, with estimated seasons hollow;
+- a season-by-season table: club, club rank, minutes, rating, goals and assists;
+- his last 20 appearances.
+
+Clicking a nationality opens a **nationality page** (`#/nation/<name>`) with:
+- how many ranked players it has, the best XI's average rank, and the average age;
+- a best XI by current rank (1 keeper, 2 centre-backs, 2 full-backs, 3 midfielders and 3 forwards);
+- which leagues they play in;
+- every one of those players, ranked.
+
+Player names on club pages and in predicted XIs link to the player page too. Above the league filter there's an age range slider, and a small pitch of positions you click to filter by (you can pick several). Under it, **Club & nationality** takes one or more clubs and nationalities, typed or picked from a list. Each shows as a chip you click to remove. They combine with the other filters, except that a club shows its players whatever league is selected. The counts in the filter follow both. The table shows each player's age and his **season ranks** for 26/27 back to 21/22, sorted by the current season (`player_season_ranks`, see below).
 
 **Season ranks follow the age curve.** Every player follows the typical age curve through all his seasons, and only moves off it where he has the minutes to (`season_model` in `matchvector/player_ratings.py`):
 1. **Evidence for each season he played:** his clubs' average LT ALGO over his matches that season, moved by his stat score. The score is the same as above, as a percentile among player-seasons with 900+ minutes in the same role group. It goes through the same club-first formula as above, with no smoothing across seasons. A player under 70% of his club's minutes (80% for keepers) is scaled down by up to 20%, because a rotation player at a top club is evidence of being below its regulars. Gabriel Jesus played 55% of City's minutes in 21/22 and 44% of Arsenal's in 23/24.
