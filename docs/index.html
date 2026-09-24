@@ -330,7 +330,8 @@
   .years-btn { font: inherit; font-size: 15px; font-weight: 700; line-height: 1; width: 24px; height: 24px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--series-blue); cursor: pointer; }
   .years-btn:hover { border-color: var(--series-blue); }
-  table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now { border-right: 1px solid var(--gridline); }
+  table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now,
+  table.leaderboard.players.years td.col-posrank, table.leaderboard.players.years th.col-posrank { border-right: 1px solid var(--gridline); }
   table.leaderboard.players th.col-future { font-style: italic; }
   table.leaderboard.players th.col-f0, table.leaderboard.players td.col-f0 { padding-left: 8px; }
   table.leaderboard.players td.col-future .rel-chip { opacity: .7; }
@@ -433,7 +434,7 @@
   .pos-share { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--series-blue) 12%, transparent); color: var(--text-primary); }
   .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
-  /* "As ST" column (position filter on): last, styled like the current season, lightly tinted */
+  /* "As ST" column (position filter on): in Ability's place, styled like it, lightly tinted */
   table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank {
     width: 64px; padding-left: 10px; padding-right: 12px; text-align: center; white-space: nowrap;
     border-left: 1px solid var(--gridline); background: color-mix(in srgb, var(--series-blue) 6%, transparent); }
@@ -903,7 +904,6 @@
     table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 32px; }
     table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { width: 50px; padding-left: 6px; padding-right: 6px; }
     table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { width: 54px; padding-left: 6px; padding-right: 6px; }
-    table.leaderboard.players:has(.col-posrank) .col-s2 { display: none; }
   }
   /* Phones and small tablets, Rankings tab: the view toggle and search first, the league
      chips in one row that swipes sideways, and the player filters behind a Filters button */
@@ -1631,6 +1631,7 @@ function renderPlayers() {
   const groups = selectedGroups();
   let key = state.playerSort === "pos" && !groups.length ? `s${seasons[0]}` : state.playerSort || (groups.length ? "pos" : `s${seasons[0]}`);
   if (!open && /^[sf]\d/.test(key) && key !== `s${seasons[0]}`) key = `s${seasons[0]}`;   // a hidden column
+  if (groups.length && key === `s${seasons[0]}`) key = "pos";                                  // Ability is shown as "As ST"
   const val = (p) => key === "pos" ? posRank(p, groups) : key.startsWith("s") ? p.seasons?.[seasons.indexOf(Number(key.slice(1)))]
     : key.startsWith("f") ? p.future?.[future.indexOf(Number(key.slice(1)))] : p[key];
   rows = key === "age"
@@ -1639,6 +1640,8 @@ function renderPlayers() {
   const th = (k, label, tip, cls = "") =>
     `<th class="num sortable${key === k ? " active" : ""}${cls}" data-sort="${k}" data-tip="${escapeHtml(tip + " Click to sort.")}">${label}</th>`;
   const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
+  // With a position filter, "As ST" takes Ability's place (Ability is his rank in his own position)
+  const posTh = groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). Only positions he has started in get a number. With several positions picked, his best of them.`, " col-posrank") : "";
   if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No players match these filters.</div>`; return; }
   wrap.innerHTML = `
     <div class="table-scroll"><table class="leaderboard players${open ? " years" : ""}">
@@ -1647,9 +1650,8 @@ function renderPlayers() {
         <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
-        ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
+        ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => i === 0 && groups.length ? posTh : th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
         ${open ? future.map((y, j) => th(`f${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Projected for ${seasonName(y)}: his Ability moved along the typical age curve for his position, from his age now to his age that season (young players rise, from 31 (33 for keepers) they decline, faster each year). A guide, not a forecast of his form.`, ` col-season col-future col-f${j}`)).join("") : ""}
-        ${groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). Only positions he has started in get a number. With several positions picked, his best of them.`, " col-posrank") : ""}
         <th class="col-years">${future.length || seasons.length > 1 ? `<button type="button" class="years-btn" data-years aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} other seasons" title="${open ? "Hide" : "Show"} past and projected seasons">${open ? "−" : "+"}</button>` : ""}</th>
       </tr></thead>
       <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, shown, groups, open ? future : [])).join("")}</tbody>
@@ -1684,9 +1686,8 @@ function playerRow(p, i, seasons, groups = selectedGroups(), future = []) {
             <div>${playerLink(p.id, p.name)}<span class="club-sub">${playerClub(p)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${natLink(p.nationality)}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
-          ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
+          ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => k === 0 && groups.length ? `<td class="num col-posrank">${posRank(p, groups) == null ? `<span class="dim">–</span>` : rankChipSmall(posRank(p, groups))}</td>` : `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
           ${future.map((y, j) => `<td class="num col-season col-future col-f${j}">${p.future?.[j] == null ? `<span class="dim">–</span>` : rankChipSmall(p.future[j])}</td>`).join("")}
-          ${groups.length ? `<td class="num col-posrank">${posRank(p, groups) == null ? `<span class="dim">–</span>` : rankChipSmall(posRank(p, groups))}</td>` : ""}
           <td class="col-years"></td>
         </tr>`;
 }
