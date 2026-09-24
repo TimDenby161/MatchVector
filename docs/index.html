@@ -68,6 +68,8 @@
   }
 
   * { box-sizing: border-box; }
+  /* keep the scrollbar's room even when a page fits, so a short search result doesn't shift the page sideways */
+  html { scrollbar-gutter: stable; }
   html, body {
     margin: 0; padding: 0;
     background: var(--page-plane);
@@ -827,7 +829,7 @@
     section[data-tab="table"] { position: relative; }
     body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
     #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
-    #table-side .side-stick { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-right: 4px; }
+    #table-side .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
     #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
     #pos-filter { order: 3; margin: 0 0 14px; }
