@@ -415,6 +415,23 @@
   .side-stick { display: flex; flex-direction: column; }
   .side-brand { display: none; }
   #age-filter { order: 0; margin-bottom: 10px; }
+  #pos-filter { order: 0; margin-bottom: 10px; }
+  #pos-filter[hidden] { display: none; }
+  /* Position filter: a small pitch, attacking upwards; click positions to filter */
+  .pos-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 600;
+    color: var(--text-secondary); margin: 0 2px 4px; }
+  .pos-clear { appearance: none; border: 0; background: none; padding: 0; font: inherit; font-weight: 500;
+    color: var(--series-blue); cursor: pointer; }
+  .pos-clear[hidden] { display: none; }
+  .pitch { position: relative; width: 100%; max-width: 230px; aspect-ratio: 68 / 88; margin: 0 auto;
+    border-radius: 10px; background: #2c2e30; overflow: hidden; }
+  .pitch svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .pitch .pos { position: absolute; transform: translate(-50%, -50%); appearance: none; border: 0;
+    min-width: 34px; padding: 4px 7px; border-radius: 999px; font: 700 11px/1 inherit; font-family: inherit;
+    color: #f2f2f0; background: rgba(255,255,255,0.16); cursor: pointer; transition: background-color .12s, color .12s; }
+  .pitch .pos:hover { background: rgba(255,255,255,0.28); }
+  .pitch .pos[aria-pressed="true"] { background: var(--series-blue); color: #fff; }
+  .pitch .pos:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
   #age-filter[hidden] { display: none; }
   #table-filters { order: 1; }
   #table-view { order: 2; margin-bottom: 10px; }
@@ -445,6 +462,7 @@
     #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
+    #pos-filter { order: 3; margin: 0 0 14px; }
     #table-filters { order: 4; margin: 0; }
     /* Side menu: plain rows, counts on the right, groups slide open */
     #table-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
@@ -550,6 +568,7 @@
             <input type="range" id="age-max" aria-label="Oldest age">
           </div>
         </div>
+        <div id="pos-filter" hidden></div>
         <div class="filters-wrap" id="table-filters"></div>
         <div class="filter-row range-row" id="table-view">
           <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
@@ -642,7 +661,7 @@ const state = {
   tableSort: "current", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
-  players: null, tableView: "clubs", playerGroup: "all", playerSort: null, ageMin: null, ageMax: null,
+  players: null, tableView: "clubs", playerSort: null, ageMin: null, ageMax: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -793,7 +812,7 @@ function renderTableFilters() {
   let total = 0;
   const players = state.tableView === "players" && state.players;
   for (const r of players ? state.players.list : state.rankings)
-    if (players ? inAgeRange(r) : r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
+    if (players ? playerVisible(r) : r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
   const sum = (ids) => ids.reduce((n, id) => n + (counts.get(id) || 0), 0);
   const countOf = (value) => value === "all" ? total
     : value.startsWith("c:") ? sum(countries.find((c) => c.name === value.slice(2))?.leagues || [])
@@ -1069,10 +1088,6 @@ function formHtml(f) {
 }
 
 const POS_LABEL = { G: "GK", D: "DEF", M: "MID", F: "FWD" };
-const ROLE_GROUP = { GK: "GK", CB: "CB", LB: "FB", RB: "FB", LWB: "FB", RWB: "FB", DM: "DM", CM: "CM",
-  AM: "AM", LW: "W", RW: "W", LM: "W", RM: "W", ST: "ST" };
-const GROUP_CHIPS = [["all", "All"], ["GK", "GK"], ["CB", "CB"], ["FB", "Full-backs"], ["DM", "DM"],
-  ["CM", "CM"], ["AM", "AM"], ["W", "Wingers"], ["ST", "Strikers"]];
 function rankChipSmall(r) {
   if (r == null) return "–";
   const t = r >= 80 ? 4 : r >= 60 ? 3 : r >= 35 ? 2 : 1;
@@ -1133,8 +1148,7 @@ function renderPlayers() {
   const all = tableFilterIsWide();
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
                : ids === null ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
-  if (state.playerGroup !== "all") rows = rows.filter((p) => ROLE_GROUP[p.position] === state.playerGroup);
-  rows = rows.filter(inAgeRange);
+  rows = rows.filter(playerVisible);
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
   // (youngest first); blanks last
   const seasons = state.players.seasons || [];
@@ -1146,10 +1160,8 @@ function renderPlayers() {
   const th = (k, label, tip, cls = "") =>
     `<th class="num sortable${key === k ? " active" : ""}${cls}" data-sort="${k}" data-tip="${escapeHtml(tip + " Click to sort.")}">${label}</th>`;
   const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
-  const chips = `<div class="filter-row" id="player-groups" style="margin-bottom:10px">${GROUP_CHIPS.map(([g, label]) =>
-    `<button type="button" class="filter-chip" data-group="${g}" aria-pressed="${state.playerGroup === g}">${label}</button>`).join("")}</div>`;
-  if (!rows.length) { wrap.innerHTML = chips + `<div class="empty-state">No player ranks here (ranks cover the 10 leagues with per-match player data).</div>`; return; }
-  wrap.innerHTML = chips + `
+  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No players match these filters.</div>`; return; }
+  wrap.innerHTML = `
     <div class="table-scroll"><table class="leaderboard players">
       <thead><tr>
         <th data-tip="Position in this list, in the current sort order.">#</th>
@@ -1236,11 +1248,47 @@ function renderTable() {
 
 // ------------------------------------------------------------------ stats
 const pct = (x, d = 1) => `${(100 * x).toFixed(d)}%`;
-document.addEventListener("click", (e) => {
-  const chip = e.target.closest("#player-groups [data-group]");
-  if (!chip) return;
-  state.playerGroup = chip.dataset.group;
-  renderPlayers();
+// ---- Position filter (Players view): a pitch of positions, attacking upwards
+const PITCH_SPOTS = [       // [position, x %, y %]
+  ["ST", 50, 12],
+  ["LW", 18, 25], ["AM", 50, 27], ["RW", 82, 25],
+  ["LM", 18, 41], ["CM", 50, 43], ["RM", 82, 41],
+  ["LWB", 18, 57], ["DM", 50, 57], ["RWB", 82, 57],
+  ["LB", 18, 72], ["CB", 50, 73], ["RB", 82, 72],
+  ["GK", 50, 89],
+];
+const PITCH_LINES = `<svg viewBox="0 0 68 88" preserveAspectRatio="none" aria-hidden="true" fill="none"
+    stroke="rgba(255,255,255,0.16)" stroke-width="0.6">
+  <rect x="3" y="3" width="62" height="82" rx="1"/><line x1="3" y1="44" x2="65" y2="44"/>
+  <circle cx="34" cy="44" r="7"/><rect x="17" y="3" width="34" height="12"/><rect x="26" y="3" width="16" height="5"/>
+  <rect x="17" y="73" width="34" height="12"/><rect x="26" y="80" width="16" height="5"/></svg>`;
+function playerVisible(p) {
+  return inAgeRange(p) && (!state.positions?.size || state.positions.has(p.position));
+}
+function renderPosFilter() {
+  const box = $("#pos-filter");
+  box.hidden = state.tableView !== "players" || !state.players;
+  if (box.hidden) return;
+  const sel = state.positions || new Set();
+  const n = {};
+  for (const p of state.players.list) n[p.position] = (n[p.position] || 0) + 1;
+  box.innerHTML = `<div class="pos-head"><span>Position</span>
+      <button type="button" class="pos-clear" data-pos-clear${sel.size ? "" : " hidden"}>Clear</button></div>
+    <div class="pitch">${PITCH_LINES}${PITCH_SPOTS.map(([pos, x, y]) =>
+      `<button type="button" class="pos" data-pos="${pos}" style="left:${x}%;top:${y}%" aria-pressed="${sel.has(pos)}"
+         title="${pos}: ${n[pos] || 0} players">${pos}</button>`).join("")}</div>`;
+}
+$("#pos-filter").addEventListener("click", (e) => {
+  if (e.target.closest("[data-pos-clear]")) state.positions = new Set();
+  else {
+    const b = e.target.closest("[data-pos]");
+    if (!b) return;
+    state.positions ||= new Set();
+    state.positions.has(b.dataset.pos) ? state.positions.delete(b.dataset.pos) : state.positions.add(b.dataset.pos);
+  }
+  renderPosFilter();
+  renderTable();
+  renderTableFilters();
 });
 
 function renderStats() {
@@ -1720,6 +1768,7 @@ $("#table-view").addEventListener("click", (e) => {
   if (!btn) return;
   state.tableView = btn.dataset.view;
   renderAgeFilter();
+  renderPosFilter();
   document.querySelectorAll("#table-view [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
   $("#table-search").placeholder = state.tableView === "players" ? "Search players or clubs" : "Search clubs";
   renderTableFilters();
