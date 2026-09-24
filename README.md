@@ -186,7 +186,17 @@ These were tested and not adopted:
 - A faster rank K for the first games after the summer break. It was worse.
 - Pulling ranks towards the league level after the summer. It made no difference.
 - Variations on the injury weighting: 5 or 20 recent matches, rating-weighted, or goalkeepers and attackers weighted more. They made no real difference.
-- Blending in bookmaker odds. On the first 505 matches with odds, the bookmakers alone scored best (log loss 0.975 against the model's 0.991), so blending isn't worth it yet. Re-test once there are a few thousand matches.
+- Blending in bookmaker odds. On the first 506 finished matches with odds (16–24 September 2026), the bookmakers alone scored best. Blending still didn't help: the best weight fitted on the first half gave the model 10%, and that blend scored slightly worse than the odds alone on the second half. Re-test once there are a few thousand matches. Scores, with the model recomputed as it stood before each match:
+
+  | | Log loss | Brier | Favourite won |
+  |---|---|---|---|
+  | Bookmakers, closing odds | 0.9741 | 0.5800 | 52.4% |
+  | Model with xG in the ranks (current) | 0.9874 | 0.5897 | 52.0% |
+  | Model with goals-only ranks (before) | 0.9920 | 0.5928 | 51.6% |
+
+  - Blending xG into the ranks cut the gap to the bookmakers from 0.018 to 0.013.
+  - The 95% range for the current gap is 0.000 to 0.027, so the sample can't yet rule out the model matching the bookmakers.
+  - Opening odds scored the same as closing odds (0.9742).
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
 
