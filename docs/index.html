@@ -979,7 +979,7 @@
         <button type="button" class="filter-chip" id="more-filters" aria-expanded="false" aria-controls="table-side" hidden>Filters</button>
       </div>
     </div>
-    <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
+    <input type="search" id="table-search" class="table-search" placeholder="Search clubs, leagues or countries" aria-label="Search">
     <div id="table-wrap"></div>
   </section>
 
@@ -1663,6 +1663,19 @@ function playerRow(p, i, seasons, groups = selectedGroups()) {
         </tr>`;
 }
 
+// Club search: every word has to start a word of the club's name, its league (short or full name)
+// or that league's country, ignoring accents and punctuation ("england league one", "man city",
+// "munchen"). Clubs outside this season's leagues only match by name.
+const foldText = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ");
+function clubSearchRows(q) {
+  const words = foldText(q).split(/\s+/).filter(Boolean);
+  return state.rankings.filter((r) => {
+    const c = r.in_league ? state.data.competitions[r.league] : null;
+    const text = " " + foldText(teamName(r.team)) + (c ? ` ${foldText(SHORT_NAMES[r.league])} ${foldText(c.name)} ${foldText(countryDisplay(c.country))}` : "");
+    return words.every((w) => text.includes(" " + w));
+  });
+}
+
 function renderTable() {
   if (state.tableView === "players") return renderPlayers();
   const wrap = $("#table-wrap");
@@ -1674,7 +1687,7 @@ function renderTable() {
   // league and cup-only sides)
   const active = state.rankings.filter((r) => r.in_league);
   let rows = ids === null ? active : active.filter((r) => ids.includes(r.league));
-  if (q) rows = state.rankings.filter((r) => teamName(r.team).toLowerCase().includes(q));
+  if (q) rows = clubSearchRows(q);
   const key = state.tableSort;
   rows = rows.slice().sort((a, b) => (b[key] ?? -1e9) - (a[key] ?? -1e9));
   if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No clubs found.</div>`; return; }
@@ -3481,7 +3494,7 @@ function setTableView(view) {
   renderPosFilter();
   renderWhoFilter();
   syncMenu();
-  $("#table-search").placeholder = view === "players" ? "Search players or clubs" : "Search clubs";
+  $("#table-search").placeholder = view === "players" ? "Search players or clubs" : "Search clubs, leagues or countries";
   renderTableFilters();
   renderTable();
 }
