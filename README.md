@@ -112,6 +112,8 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 
 The same ceiling applies to keepers.
 
+**Low ranks are lifted more than high ones.** After the ceiling, every rank's gap to 100 is multiplied by 0.85: 95 becomes 95.8, 75 becomes 78.8, and 60 becomes 66. Adding a constant lifted everyone equally, but the lower half of the scale was spread too far down. Squad players at mid-table clubs sat in the 60s, for example Awoniyi at 66. The starting level (64.3) and the hand-set teenage steps (+3.4 a year at 17, +1.7 more for each year younger) are on the same scale. `GAP_SCALE` in `matchvector/player_ratings.py`.
+
 **Positions aren't worth the same.** Stats are compared within a role group, so without an adjustment a 97th-percentile full-back counted for more than a 94th-percentile striker. That put Davies above Haaland and Alexander-Arnold above Kane. So each role group's stats part is scaled, and a flat offset is added:
 
 | Role group | Stats × | Offset |
@@ -154,8 +156,8 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
      | Keeper (from 33) | −0.29 | −0.3 | −6.2 |
 
      Kane (32) is still on the flat part of his curve. Giroud's curve is −9 at 39, and Neuer's is −6 at 40.
-   - **Below 18** there are too few regulars to measure, so it's set by hand: +4 a year at 17, and 2 more for each year younger.
-3. **His level on the curve** is the average of (evidence − curve) over all his seasons, weighted by minutes. When rating one season, the others count 0.7 ^ years apart. A starting level of 58 (his rank at peak age) is added in, weighted as 450 minutes, so a player with little data anywhere sits below an average regular.
+   - **Below 18** there are too few regulars to measure, so it's set by hand: +3.4 a year at 17, and 1.7 more for each year younger.
+3. **His level on the curve** is the average of (evidence − curve) over all his seasons, weighted by minutes. When rating one season, the others count 0.7 ^ years apart. A starting level of 64.3 (his rank at peak age) is added in, weighted as 450 minutes, so a player with little data anywhere sits below an average regular.
 4. **Season rank** = level + curve for that season, plus the season's own difference from it, kept in proportion minutes ÷ (minutes + 1,500). A full season (3,000 minutes) keeps two thirds of its difference. A thin one stays on his curve: an injury year, the first weeks of this season, or a teenager's debut. Rodri's 24/25 (80 minutes, injured) is 93.6, where the old model gave 79. Tah's weak 22/23 (evidence 68) is 72, between his curve (79) and the season.
 
 Holding out each 1,500+ minute season and predicting it from the player's other seasons (level + curve) misses by 6.0 rank points on average. The settings are at the top of `matchvector/player_ratings.py`: `PRIOR_LEVEL`, `PRIOR_MINUTES`, `LEVEL_DECAY` and `DEVIATION_MINUTES`.

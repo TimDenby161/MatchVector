@@ -95,10 +95,10 @@ CURVE_GROWTH_TO = 24       # the curve's growth is measured up to this age
 DECLINE_FROM = {"GK": 33, "OUT": 31}   # flat prime until this age, then decline that speeds up
 CURVE_FIT_TO = 38          # oldest age used to fit the decline
 CURVE_PRIOR_PAIRS = 200    # an outfield group's decline leans on the pooled outfield one, weighted as this many pairs
-YOUNG_STEP_17 = 4.0        # age curve below the measured ages (too few regulars): yearly gain at 17,
-YOUNG_STEP_EXTRA = 2.0     # plus this for each year younger, in rank points
+YOUNG_STEP_17 = 3.4        # age curve below the measured ages (too few regulars): yearly gain at 17,
+YOUNG_STEP_EXTRA = 1.7     # plus this for each year younger, in rank points
 PRIOR_MINUTES = 450        # a player's level starts as PRIOR_LEVEL, weighted as this many minutes
-PRIOR_LEVEL = {"GK": 58.0, "OUT": 58.0}   # rank at peak age of a player we know nothing about
+PRIOR_LEVEL = {"GK": 64.3, "OUT": 64.3}   # rank at peak age of a player we know nothing about
 LEVEL_DECAY = 0.7          # a season's weight in his level for another season, per year apart
 DEVIATION_MINUTES = 1500   # a season keeps minutes / (minutes + this) of its difference from the curve
 GAP_CLUB_MINUTES = 450     # weight of a gap season's club level (a lower league we have no player data for)
@@ -303,15 +303,21 @@ SOFT_FROM = 86             # ranks above this bend smoothly towards 100 instead 
                            # cap: SOFT_FROM + (100 - SOFT_FROM) x (1 - exp(-(r - SOFT_FROM) / (100 - SOFT_FROM)))
 
 
+GAP_SCALE = 0.85           # every rank's gap to 100 is scaled by this, so low ranks are lifted more than
+                           # high ones (95 -> 95.8, 75 -> 78.8, 60 -> 66): the lower half was spread too far down
+
+
 def soft_ceiling(r):
     """Squeeze ranks above SOFT_FROM so the best spread out below 100 (Van Dijk's seasons were
-    all ~99 against the hard cap; now 94-96) instead of being clipped. Order is kept."""
-    if r <= SOFT_FROM:
-        return max(r, 0)
-    room = 100 - SOFT_FROM
-    return SOFT_FROM + room * (1 - math.exp(-(r - SOFT_FROM) / room))
+    all ~99 against the hard cap) instead of being clipped, then scale every rank's gap to 100
+    by GAP_SCALE. Order is kept."""
+    if r > SOFT_FROM:
+        room = 100 - SOFT_FROM
+        r = SOFT_FROM + room * (1 - math.exp(-(r - SOFT_FROM) / room))
+    return 100 - (100 - max(r, 0)) * GAP_SCALE
 
 
+SQUAD_MARKDOWN = 0.2       # a player under his FULL_SHARE of club minutes is scaled down by up to this
 GK_CLUB_OFFSET = 6         # keeper rank = 100 x club / CLUB_RANK_MAX - this + GK_RATING_WEIGHT x (pct - 50)
 GK_RATING_WEIGHT = 0.2
 GK_FULL_SHARE = 0.8        # keepers playing less than this share of their club's minutes are scaled down, up to 20% (backups)
@@ -326,7 +332,7 @@ def keeper_rank(pct, club, share=None):
     top club isn't rated as elite; it's a share of the games so far, so early season is fine."""
     r = 100 * min(club / CLUB_RANK_MAX, 1) - GK_CLUB_OFFSET + GK_RATING_WEIGHT * (pct - 50)
     if share is not None:
-        r *= min(1.0, 0.8 + 0.2 * share / GK_FULL_SHARE)
+        r *= min(1.0, 1 - SQUAD_MARKDOWN + SQUAD_MARKDOWN * share / GK_FULL_SHARE)
     return soft_ceiling(r)
 
 
@@ -354,7 +360,7 @@ def outfield_rank(pct, club, share=None, pos=None):
     r = (100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + POSITION_STATS.get(pos, 1.0) * stats
          + POSITION_OFFSET.get(pos, 0))
     if share is not None:
-        r *= min(1.0, 0.8 + 0.2 * share / OUT_FULL_SHARE)
+        r *= min(1.0, 1 - SQUAD_MARKDOWN + SQUAD_MARKDOWN * share / OUT_FULL_SHARE)
     return soft_ceiling(r)
 
 
