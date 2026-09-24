@@ -402,8 +402,7 @@
   .pl-hero-club .pl-league, .pl-hero-club .dim-sep { color: var(--text-muted); font-weight: 500; }
   .pl-hero .head-meta { font-size: 12px; }
   .pl-hero-rank { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px;
-    padding: 6px 8px 7px; border-radius: 12px; }
-  .pl-hero-rank .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; opacity: .85; }
+    padding: 10px 8px; border-radius: 12px; }
   .pl-hero-rank .val { font-size: 28px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
   .page-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
   .page-tabs::-webkit-scrollbar { display: none; }
@@ -469,7 +468,7 @@
     .pl-hero { gap: 10px; }
     .pl-hero .player-photo-lg { width: 52px; height: 52px; }
     .pl-hero h2 { font-size: 19px; }
-    .pl-hero-rank { min-width: 52px; padding: 5px 6px 6px; }
+    .pl-hero-rank { min-width: 52px; padding: 8px 6px; }
     .pl-hero-rank .val { font-size: 23px; }
     .page-tabs button { padding: 8px 10px 7px; }
     #pl-tab .team-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2103,7 +2102,7 @@ function renderPlayerPage() {
           ${p.nationality ? `<span>${natLink(p.nationality)}</span>` : ""}</div>
       </div>
       <div class="pl-hero-rank rel-${rankTier(p.rank)}" title="His rank now (0-100), from his last 20 appearances">
-        <span class="lbl">Rank</span><span class="val">${Math.round(p.rank)}</span></div>
+        <span class="val">${Math.round(p.rank)}</span></div>
     </div>
     <div class="page-tabs" role="tablist">${PLAYER_TABS.map(([k, label]) =>
       `<button type="button" role="tab" data-ptab="${k}" aria-selected="${k === tab}">${label}</button>`).join("")}</div>
