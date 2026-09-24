@@ -538,6 +538,24 @@
   .goal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .rank-move { font-size: 11px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
+  /* Club overview pitch: who can play in each position */
+  .pitch.dp-pitch { max-width: 420px; }
+  .dp-spot { position: absolute; transform: translate(-50%, -50%); width: 30%; padding: 3px 5px 4px; border-radius: 8px;
+    background: rgba(255,255,255,0.12); color: #f2f2f0; line-height: 1.2; }
+  .dp-spot.empty { width: auto; min-width: 38px; text-align: center; padding: 5px 7px; background: transparent;
+    border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
+  .dp-pos { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: rgba(255,255,255,0.7); }
+  .dp-spot.empty .dp-pos { color: inherit; }
+  .dp-more { font-weight: 600; color: rgba(255,255,255,0.5); }
+  a.dp-row { display: flex; justify-content: space-between; gap: 4px; font-size: 11px; font-weight: 600; color: #fff; text-decoration: none; }
+  a.dp-row:hover .dp-name { text-decoration: underline; }
+  .dp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .dp-rank { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .dp-rank.t4 { color: #3ecf5a; } .dp-rank.t3 { color: #f0c43a; } .dp-rank.t2 { color: #f08a5a; } .dp-rank.t1 { color: #f07878; }
+  @media (max-width: 480px) {
+    .dp-spot { width: 31%; padding: 2px 4px 3px; }
+    a.dp-row { font-size: 10px; }
+  }
   /* Club page: predicted XI on the pitch, squad list, end-of-season ranks */
   .pl-hero .club-logo-lg { width: 60px; height: 60px; }
   a.xi-spot { text-decoration: none; min-width: 58px; padding: 3px 5px 4px; }
@@ -937,6 +955,8 @@ function fmtDay(iso) { return new Date(iso).toLocaleDateString(undefined, { week
 function fmtShortDate(iso) { return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }); }
 
 // ------------------------------------------------------------------ data
+const decodeEntities = (t) => typeof t === "string" && t.includes("&")
+  ? t.replace(/&(apos|#39|quot|amp|lt|gt);/g, (_, e) => ({ apos: "'", "#39": "'", quot: '"', amp: "&", lt: "<", gt: ">" }[e])) : t;
 function rowsToObjects(fields, rows) {
   return rows.map((r) => Object.fromEntries(fields.map((f, i) => [f, r[i]])));
 }
@@ -951,6 +971,10 @@ async function loadData() {
     state.stats = st;
     state.bets = await fetch("data/bets.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
     const pj = await fetch("data/players.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
+    if (pj) {        // API-Football sends some names HTML-encoded ("O&apos;Reilly")
+      for (const r of pj.players) r[1] = decodeEntities(r[1]);
+      for (const xi of Object.values(pj.next_xi || {})) for (const r of xi.players) r[1] = decodeEntities(r[1]);
+    }
     state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [], teams: pj.teams || {} } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
@@ -1869,7 +1893,7 @@ async function openClubPage(id) {
   renderClubPage();
 }
 
-const CLUB_TABS = [["overview", "Overview"], ["matches", "Matches"], ["squad", "Squad"], ["history", "History"]];
+const CLUB_TABS = [["overview", "Overview"], ["xi", "Predicted XI"], ["matches", "Matches"], ["squad", "Squad"], ["history", "History"]];
 const clubOpp = (o) => state.club?.data?.teams?.[o] || teamName(o);
 // his club's upcoming fixtures from the matches file
 const clubUpcoming = (id) => state.data.matches.filter((m) => (m.home === id || m.away === id)
@@ -1914,12 +1938,12 @@ function renderClubPage() {
 function renderClubTab() {
   const tab = state.clubTab || "overview";
   document.querySelectorAll("#club-body [data-ctab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ctab === tab)));
-  $("#club-tab").innerHTML = tab === "matches" ? clubMatchesTab() : tab === "squad" ? clubSquadTab()
+  $("#club-tab").innerHTML = tab === "xi" ? clubXiTab() : tab === "matches" ? clubMatchesTab() : tab === "squad" ? clubSquadTab()
     : tab === "history" ? clubHistoryTab() : clubOverviewTab();
   if (tab === "history") drawRankChart();
 }
 
-// ---- Overview: next match beside the predicted XI, recent form, key numbers
+// ---- Overview: next match beside the squad by position, recent form, key numbers
 function clubOverviewTab() {
   const { id, data } = state.club;
   const r = state.rankByTeam.get(id);
@@ -1927,7 +1951,7 @@ function clubOverviewTab() {
   const rows = data?.rows || [];
   const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) }));
   const ga = data?.goal_averages;
-  const next = clubNextCard(), pitch = xiPitch(id);
+  const next = clubNextCard(), pitch = depthPitch(id);
   return `
     ${next && pitch ? `<div class="ov-top">${next}${pitch}</div>` : next + pitch}
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · rank change</div>
@@ -1963,6 +1987,50 @@ function clubNextCard() {
   </div>`;
 }
 
+// ---- Predicted XI: the next match, the XI on the pitch and as a list
+function clubXiTab() {
+  const { id } = state.club;
+  const xi = state.players?.nextXi?.[String(id)];
+  if (!xi?.players.length) return `<div class="empty-state">No predicted XI for this club (it needs an upcoming match and player data from its recent matches).</div>`;
+  const next = clubNextCard(), pitch = xiPitch(id);
+  const row = ([pid, name, pos, rank]) => {
+    const p = playerById(pid);
+    return `<div class="squad-row">
+      <img class="player-photo" src="${playerPhoto(pid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="sq-main"><div class="sq-name">${playerLink(pid, name)}</div>
+        <div class="sq-sub">${escapeHtml(pos || "")}${p?.age != null ? ` · ${p.age}` : ""}${p?.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""}</div></div>
+      <div>${rankChipSmall(rank)}</div>
+    </div>`;
+  };
+  return `
+    ${next ? `<div class="ov-top">${next}${pitch}</div>` : pitch}
+    <div class="club-section"><div class="modal-section">The XI</div><div class="match-list">${xi.players.map(row).join("")}</div>
+      <div class="page-note">A guess from recent minutes: the goalkeeper and the 10 outfield players with the most minutes over the club's last 5 matches, leaving out anyone on the injury list for this match. Each is shown at the position he has started in most, with his current rank.</div></div>`;
+}
+
+// Overview pitch: in each position, the squad's players who can play there (their main position,
+// or 25%+ of their starting minutes there over the last 12 months), best first by their rank in
+// that position. The top 3 are shown; the rest are counted.
+function depthPitch(teamId) {
+  const squad = (state.players?.list || []).filter((p) => p.team === teamId);
+  if (!squad.length) return "";
+  const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
+  const spots = PITCH_SPOTS.map(([r, x, y]) => {
+    const ps = squad.filter((p) => playsAt(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
+      .sort((a, b) => b.rank - a.rank);
+    if (!ps.length) return `<div class="dp-spot empty" style="left:${x}%;top:${y}%"><span class="dp-pos">${r}</span></div>`;
+    const more = ps.length - 3;
+    return `<div class="dp-spot" style="left:${x}%;top:${y}%" title="${escapeHtml(`${r}: ${ps.map(({ p, rank }) => `${p.name} ${Math.round(rank)}`).join(", ")}`)}">
+      <span class="dp-pos">${r}${more > 0 ? `<span class="dp-more"> +${more}</span>` : ""}</span>
+      ${ps.slice(0, 3).map(({ p, rank }) => `<a class="dp-row" href="#/player/${p.id}"><span class="dp-name">${escapeHtml(shortName(p.name))}</span>
+        <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`).join("")}
+    </div>`;
+  }).join("");
+  return `<div class="club-section pp-section"><div class="pitch dp-pitch">${PITCH_LINES}${spots}</div>
+    <div class="page-note" style="text-align:center">Who can play where · rank in that position</div></div>`;
+}
+const shortName = (name) => name.includes(" ") ? name.split(" ").slice(-1)[0] : name;
+
 // The predicted XI on the pitch: each player at his position with his rank. Players on the
 // same line are spread evenly across it (two centre-backs, two left wingers ...).
 function xiPitch(teamId) {
@@ -1986,7 +2054,7 @@ function xiPitch(teamId) {
     return ps.map((p, i) => {
       const x = clash ? from + i * gap : p.x;
       const [pid, name, pos, rank] = p.pl;
-      const short = name.includes(" ") ? name.split(" ").slice(-1)[0] : name;
+      const short = shortName(name);
       return `<a class="pp-spot xi-spot rel-${rank != null ? rankTier(rank) : 1}" href="#/player/${pid}" style="left:${x}%;top:${y}%"
           title="${escapeHtml(`${name} · ${pos}${rank != null ? ` · rank ${rank.toFixed(1)}` : ""}`)}">
         <span class="pp-rank">${rank != null ? Math.round(rank) : "–"}</span><span class="pp-name">${escapeHtml(short)}</span></a>`;
