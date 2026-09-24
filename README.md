@@ -336,6 +336,22 @@ These were tested and not adopted:
   - The goal markets are much closer than the match result: within ±0.005, against 0.015.
   - The lines other than 2.5 use a calibration fitted on 2023/24 (base, shrink): 0.5 (0.96, 1.1), 1.5 (0.76, 0.9), 3.5 (0.36, 0.9), 4.5 (0.04, 1.0).
   - *Opening prices:* these matches' odds were first downloaded on 23 September, after most had been played, so `first_odd` equals the closing price for 99.9% of rows. Opening vs closing can only be tested on matches from 24 September on.
+- **Beating one bookmaker instead of the market** (same 506 matches, closing prices, new model reconstructed pre-match). Every bookmaker was more accurate than the model, in both results and goals (model minus bookmaker log loss, with its margin removed):
+
+  | Bookmaker | Margin, results | Results | Goals | Model value bets at its prices only (results, goals) |
+  |---|---|---|---|---|
+  | SBO | 11.9% | +0.006 | +0.004 | −3%, −5% |
+  | Betano | 6.0% | +0.010 | +0.001 | −5%, −5% |
+  | BetVictor | 8.2% | +0.010 | +0.003 | −16%, −7% |
+  | Bet365 | 8.1% | +0.014 | +0.002 | −12%, −8% |
+  | William Hill | 9.8% | +0.014 | +0.008 | −9%, −1% |
+  | Pinnacle | 4.8% | +0.014 | +0.002 | −9%, −7% |
+  | 1xBet | 6.5% | +0.017 | +0.001 | −17%, −8% |
+
+  - The bookmakers were about equally accurate. Pinnacle stands out for its low margin, not for sharper prices. The softest bookmaker (SBO) charges the highest margin, so it's the worst one to bet with.
+  - Soft-bookmaker betting without the model was also tested: bet at one bookmaker when its price beats the other bookmakers' fair consensus, or Pinnacle's. That gave 5–36 bets per bookmaker with ranges of about ±100%, so it's inconclusive.
+  - Taking the best price across all 13 bookmakers is the real lever. The margin falls from about 8% at one bookmaker to 3.1% (result), 3.3% (over/under 2.5) and 5.1% (both teams score). Paper bets already use the best price. The best prices summed under 100% (an arbitrage) in 24 result markets (4.7%), 8 over/under 2.5 and 4 both-teams-score markets. Each bookmaker's price is stored at a different moment, though, so some of these are snapshot timing rather than prices on offer together.
+  - Next: the opening-price comparison (from matches collected before kickoff, 24 September on) will show whether any bookmaker is slow to move. That's the usual way to beat an individual bookmaker.
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
 
