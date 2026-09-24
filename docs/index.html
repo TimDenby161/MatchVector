@@ -586,6 +586,20 @@
   .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .pp-spot.hollow .pp-pos { color: inherit; }
   .pp-section { margin-bottom: 16px; }
+  /* Overview: a narrow next-match card to the left of the pitch */
+  .ov-top { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+  .ov-top .pp-section { margin: 0; }
+  .ov-top .next-card { margin: 0; padding: 9px 10px; }
+  .ov-top .next-top { flex-direction: column; gap: 2px; font-size: 10.5px; }
+  .ov-top .next-opp { font-size: 13px; gap: 6px; }
+  .ov-top .next-opp .club-logo { width: 18px; height: 18px; }
+  .ov-top .next-meta { flex-direction: column; gap: 1px; font-size: 11px; }
+  .ov-top .next-status { font-size: 11px; padding: 2px 8px; margin-top: 6px; }
+  @media (max-width: 599px) {
+    .ov-top { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .ov-top .next-top { flex-direction: row; justify-content: space-between; }
+    .ov-top .next-meta { flex-direction: row; flex-wrap: wrap; gap: 1px 10px; }
+  }
   #age-filter[hidden] { display: none; }
   /* Club and nationality filter: type-ahead inputs, picks shown as removable chips */
   #who-filter { order: 0; margin-bottom: 10px; }
@@ -2125,8 +2139,10 @@ function playerOverviewTab() {
   const now = page ? sumSeason(page.seasonRows.filter((r) => r.season === seasons[0])) : null;
   const form = (page?.matchRows || []).slice(0, 10).reverse();
   return `
-    ${nextMatchCard()}
-    ${positionPitch(p)}
+    ${(() => {       // next match beside the pitch (stacked on phones)
+      const next = nextMatchCard(), pitch = positionPitch(p);
+      return next && pitch ? `<div class="ov-top">${next}${pitch}</div>` : next + pitch;
+    })()}
     ${hasMatchRanks || hasSeasons ? `<div class="chart-card">
       <div class="chart-head"><span class="chart-title">${chartMode === "matches" ? "Rank going into each match" : "Season ranks"}</span>
         ${hasMatchRanks && hasSeasons ? `<div class="chart-ranges">${[["matches", "Matches"], ["seasons", "Seasons"]].map(([k, l]) =>
