@@ -794,7 +794,6 @@
   .who-chip:hover .x { color: var(--text-primary); }
   .who-chip .kind { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
   #table-filters { order: 1; }
-  #table-search { order: 3; }
   /* Age range: two range inputs over one track; only the thumbs take the pointer */
   .age-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
     color: var(--text-secondary); margin: 0 2px 4px; }
@@ -818,7 +817,7 @@
     body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
     #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
     #table-side .side-stick { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-right: 4px; }
-    #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
+    #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
     #pos-filter { order: 3; margin: 0 0 14px; }
     #who-filter { order: 3; margin: 0 0 14px; }
@@ -899,7 +898,7 @@
   @media (max-width: 759px) {
     .side-stick { flex-direction: row; flex-wrap: wrap; align-items: flex-start; column-gap: 8px; }
     .side-stick > * { flex: 0 0 100%; min-width: 0; }
-    #table-search { order: 1; flex: 1 1 0; margin-bottom: 8px; }
+    #table-search { margin-bottom: 8px; }
     #more-filters { order: 2; flex: none; display: inline-flex; align-items: center; gap: 5px;
       height: 40px; padding: 0 12px; border-radius: 8px; font-size: 13px; margin-bottom: 8px; }
     #more-filters[hidden] { display: none; }
@@ -977,10 +976,10 @@
           <div class="who-chips" id="who-chips"></div>
         </div>
         <div class="filters-wrap" id="table-filters"></div>
-        <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
         <button type="button" class="filter-chip" id="more-filters" aria-expanded="false" aria-controls="table-side" hidden>Filters</button>
       </div>
     </div>
+    <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
     <div id="table-wrap"></div>
   </section>
 
