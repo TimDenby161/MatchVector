@@ -274,8 +274,8 @@
   table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 32px; padding-left: 2px; padding-right: 2px; }
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
-  table.leaderboard.clubs td { padding-top: 10px; padding-bottom: 10px; }
-  table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 3px 6px; font-size: 12px; }
+  table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
+  table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 2px 6px; font-size: 12px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
   .pl-cell .pl-badge { flex: none; margin-right: -2px; }
@@ -510,18 +510,19 @@
   .xi-card .xi-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .xi-card .xi-sub { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* league and country pages */
-  table.league-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-  table.league-table th, table.league-table td { padding: 11px 5px; border-bottom: 1px solid var(--gridline); text-align: right; white-space: nowrap; }
+  table.league-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; }
+  table.league-table th, table.league-table td { padding: 4px 5px; border-bottom: 1px solid var(--gridline); text-align: right; white-space: nowrap; }
   table.league-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); font-weight: 600; cursor: help; }
   table.league-table .lt-pos { text-align: left; color: var(--text-muted); border-left: 3px solid transparent; padding-left: 6px; width: 30px; }
   table.league-table .lt-badge { width: 26px; padding-left: 0; padding-right: 0; }
+  table.league-table .lt-badge .club-logo { width: 20px; height: 20px; }
   table.league-table .lt-club { text-align: left; width: 100%; white-space: normal; overflow-wrap: anywhere; min-width: 110px; }
   table.league-table .lt-elo { color: var(--text-muted); }
   .table-scroll:has(table.league-table) { overflow-x: auto; }
   .table-scroll table.league-table tbody tr:last-child td { border-bottom: none; }
   .table-scroll + .modal-section { margin-top: 14px; }
   .lt-form { display: inline-flex; gap: 3px; vertical-align: middle; }
-  .lt-form i { font-style: normal; font-size: 11px; font-weight: 800; width: 21px; height: 21px; line-height: 21px; text-align: center;
+  .lt-form i { font-style: normal; font-size: 11px; font-weight: 800; width: 18px; height: 18px; line-height: 18px; text-align: center;
     border-radius: 5px; color: #fff; }
   .lt-form i.res-w { background: var(--status-good); }
   .lt-form i.res-d { background: var(--text-muted); }
@@ -556,7 +557,7 @@
   .country-flag-lg { width: 60px; height: 42px; object-fit: cover; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }
   @media (max-width: 600px) {
     table.league-table .lt-wide, table.league-table .lt-wdl { display: none; }
-    table.league-table th, table.league-table td { padding: 10px 3px; }
+    table.league-table th, table.league-table td { padding: 5px 3px; }
     .lt-form { gap: 2px; }
     .lt-form i { width: 15px; height: 17px; line-height: 17px; font-size: 9.5px; border-radius: 4px; }
     .lf-row { grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr); column-gap: 6px; }
@@ -819,7 +820,7 @@
     }
     body[data-tab="table"] header .app-bar { display: none; }
     body[data-tab="table"] nav.tabs { margin-bottom: 0; }
-    table.leaderboard.clubs td { padding-top: 10px; padding-bottom: 10px; }
+    table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
     table.leaderboard.clubs th { padding-top: 4px; padding-bottom: 4px; }
     body[data-tab="table"] header { padding-top: 6px; padding-bottom: 6px; }
     body[data-tab="table"] nav.tabs button { padding-top: 6px; padding-bottom: 6px; }
@@ -843,7 +844,7 @@
     table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 24px; padding-left: 0; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 28px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
-    table.leaderboard.clubs .rel-chip { min-width: 32px; padding: 3px 3px; font-size: 11.5px; }
+    table.leaderboard.clubs .rel-chip { min-width: 32px; padding: 2px 3px; font-size: 11.5px; }
     table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 46px; }
     table.leaderboard.clubs th:last-child, table.leaderboard.clubs td:last-child { width: 44px; padding-right: 8px; }
     .club-logo { width: 20px; height: 20px; }
