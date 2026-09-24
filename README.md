@@ -333,9 +333,9 @@ A line-up adjustment (the strength of the starting XI against normal) was backte
 
 `docs/index.html` is a single-page site in the same style as MatchLab. It has two tabs:
 - **Matches:** projected scores, win/draw/loss chances and results. Filter by competition and day.
-- **Rankings:** club rankings with rating, form and trend (reliability is kept in the data but not shown). Tap a club to see its fixtures.
+- **Rankings:** club rankings with rating, form and trend, sorted by rating (reliability is kept in the data but not shown). Tap a club to see its fixtures.
 
-The site labels the club rank as an **Elo rating** (**Rating** = LT ALGO, **Form** = current rank, **Trend** = change over the last 6 matches). The numbers are the same as the club rank below, and on that scale 100 points is worth one goal a game.
+The site labels the club rank as an **Elo rating** (**Rating** = LT ALGO, **Form** = current rank, **Trend** = Form minus Rating, how far a club is playing above or below its long-term level). The numbers are the same as the club rank below, and on that scale 100 points is worth one goal a game.
 
 **Club pages.** Club names link to `#/club/<team_id>`. The page has tabs:
 - **Overview:** the next match, the squad on a pitch by the positions each player can play, recent form, the rank tiles and 12-month goal averages

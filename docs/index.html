@@ -1084,7 +1084,7 @@ const storeFlag = (k, on) => { try { localStorage.setItem(`fc.${k}`, on ? "1" : 
 const state = {
   data: null, rankings: null, compLabels: {},
   matchFilter: "all", tableFilter: "all", date: null,
-  tableSort: "current", tableSearch: "", collapsed: new Set(),
+  tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
   players: null, tableView: "clubs", playerSort: null, playerYears: storedFlag("playerYears"), ageMin: null, ageMax: null,
@@ -1125,6 +1125,8 @@ async function loadData() {
     state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [], futureSeasons: pj.future_seasons || [], teams: pj.teams || {} } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
+    // Trend: Form less Rating (as shown, so the sum adds up), how far a club is playing above or below its long-term level
+    for (const x of state.rankings) x.trend = Math.round(x.current) - Math.round(x.lt);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
     buildCompetitionLabels();
     if (!state.date) state.date = defaultDate();
@@ -1594,16 +1596,18 @@ function stepDate(delta) {
 }
 
 // ------------------------------------------------------------------ rankings table
-// the current Elo's place among every ranked club, as the badge colours (top 5% green ...)
-function formTier(v) {
-  if (!state.formSorted) state.formSorted = state.rankings.map((x) => x.current).sort((a, b) => b - a);
-  const s = state.formSorted;
+// a value's place among every ranked club on that measure (Form = current, Rating = lt), as the
+// badge colours: top 5% green, top 20% amber, top half orange, the rest red
+const sortedBy = {};
+function clubTier(key, v) {
+  const s = sortedBy[key] ||= state.rankings.map((x) => x[key]).sort((a, b) => b - a);
   let lo = 0, hi = s.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (s[m] > v) lo = m + 1; else hi = m; }
   const share = (lo + 1) / s.length;
   return share <= 0.05 ? 4 : share <= 0.2 ? 3 : share <= 0.5 ? 2 : 1;
 }
-const formChip = (v) => `<span class="rel-chip rel-${formTier(v)}">${Math.round(v)}</span>`;
+const formChip = (v) => `<span class="rel-chip rel-${clubTier("current", v)}">${Math.round(v)}</span>`;
+const eloChip = (v) => `<span class="rel-chip rel-${clubTier("lt", v)}">${Math.round(v)}</span>`;
 function relTier(r) { return r >= 90 ? 4 : r >= 70 ? 3 : r >= 40 ? 2 : 1; }
 function formHtml(f) {
   if (f == null) return "";
@@ -1859,7 +1863,7 @@ function renderTable() {
         <th data-tip="Club name, with its country and league. Click a club to open its page.">Club</th>
         ${th("played", "Pl", "Played: matches counted in the Elo rating since 2020, including cups and European games.")}
         ${th("lt", "Rating", "Rating: the long-term Elo rating (LT ALGO), a smoothed rating weighted mostly to the average over the last 100 matches. Slow to move, and the better guide for matches months away.")}
-        ${th("form", "Trend", "Trend: Elo change over the last 6 matches. Green is rising, red is falling.")}
+        ${th("trend", "Trend", "Trend: Form minus Rating. Green: playing above its long-term level; red: below it.")}
         ${th("current", "Form", "Form: the current Elo rating, after the latest match. 100 points is worth a goal a game. It rises when a club does better than expected against that opponent, and falls when it does worse. Colour: green is the top 5% of all clubs, amber the top 20%, orange the top half, red the rest.")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
@@ -1868,8 +1872,8 @@ function renderTable() {
           <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td>${clubLink(r.team)}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
-          <td class="num">${Math.round(r.lt)}</td>
-          <td class="num">${formHtml(r.form)}</td>
+          <td class="num">${eloChip(r.lt)}</td>
+          <td class="num">${formHtml(r.trend)}</td>
           <td class="num">${formChip(r.current)}</td>
         </tr>`).join("")}
       </tbody>
@@ -2283,7 +2287,7 @@ function clubOverviewTab() {
     ${side && pitch ? `<div class="ov-top"><div class="ov-side">${side}</div>${pitch}</div>` : side + pitch}
     ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact" style="grid-template-columns:repeat(3,minmax(0,1fr))">
       ${tile("Rating", Math.round(r.lt))}${tile("Form", Math.round(r.current))}
-      ${tile("Trend", formHtml(r.form) || "–")}
+      ${tile("Trend", formHtml(r.trend) || "–")}
     </div>${r.attack != null ? `<div class="team-stats compact" style="margin-top:8px">
       ${tile("Attack", Math.round(r.attack))}${tile("Defence", Math.round(r.defence))}
       ${tile("Home", Math.round(r.home))}${tile("Away", Math.round(r.away))}
@@ -2807,7 +2811,7 @@ function openTeam(teamId) {
   const stat = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
   $("#team-modal-body").innerHTML = (r ? `<div class="team-stats">
       ${stat("Rating", Math.round(r.lt))}${stat("Form", Math.round(r.current))}
-      ${stat("Trend", formHtml(r.form) || "–")}${stat("Played", r.played)}
+      ${stat("Trend", formHtml(r.trend) || "–")}${stat("Played", r.played)}
       ${r.attack != null ? `${stat("Attack", Math.round(r.attack))}${stat("Defence", Math.round(r.defence))}${stat("Home", Math.round(r.home))}${stat("Away", Math.round(r.away))}` : ""}
     </div>` : "") +
     xiBlock(teamId) +
@@ -3438,7 +3442,7 @@ function leagueClubsTab() {
   const rows = [...ids].map((t) => state.rankByTeam.get(t)).filter(Boolean).sort((a, b) => b.lt - a.lt);
   if (!rows.length) return `<div class="empty-state">No ranked clubs.</div>`;
   return clubRatingTable(rows, data.tableRows.length ? (r) => pos.get(r.team) ?? "" : null, data.teams)
-    + `<div class="page-note">Rating: the long-term Elo rating. Form: the current Elo rating. Trend: its change over the last 6 matches.</div>`;
+    + `<div class="page-note">Rating: the long-term Elo rating. Form: the current Elo rating. Trend: Form minus Rating.</div>`;
 }
 
 // clubs table for the league and country pages; pos = the table position column (Pl when null)
@@ -3451,8 +3455,8 @@ function clubRatingTable(rows, pos, names = {}, meta = null) {
       <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
       <td>${clubLink(r.team, names[r.team] || teamName(r.team))}${meta ? meta(r) : ""}</td>
       <td class="num" style="color:var(--text-muted)">${pos ? pos(r) : r.played}</td>
-      <td class="num"><b>${Math.round(r.lt)}</b></td>
-      <td class="num">${formHtml(r.form)}</td>
+      <td class="num">${eloChip(r.lt)}</td>
+      <td class="num">${formHtml(r.trend)}</td>
       <td class="num">${formChip(r.current)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
