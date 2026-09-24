@@ -768,8 +768,12 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     #    POSITION_RANK_SEASONS seasons (LEVEL_DECAY ^ years back), is added to his current rank.
     #    Gakpo as a striker is judged on striker stats against strikers. Then less for a position
     #    he hasn't played: up to FAMILIARITY_PENALTY if he's never started there, none once it's
-    #    FAMILIAR_SHARE of his (recency-weighted) starting minutes in those seasons
+    #    FAMILIAR_SHARE of his (recency-weighted) starting minutes in those seasons. Only positions
+    #    he has started in at some point in our data get a rank
     if position_ranks is not None:
+        ever = defaultdict(set)              # player -> groups he has ever started in
+        for (player, _), e in seasons.items():
+            ever[player].update(role_group(r) for r, m in e["roles"].items() if m > 0 and role_group(r))
         now = {p: r for p, y, r, _, _ in rows if y == last_season}
         acc = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
         played = defaultdict(Counter)        # player -> {group: recency-weighted starting minutes}
@@ -795,7 +799,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
             fam = lambda g: min(played[player][g] / starts / FAMILIAR_SHARE, 1) if starts else 0.0
             position_ranks[player] = {
                 g: round(min(max(now[player] + d / w - FAMILIARITY_PENALTY * (1 - fam(g)), 0), 100), 1)
-                for g, (d, w) in groups.items() if w}
+                for g, (d, w) in groups.items() if w and g in ever[player]}
     return rows
 
 
