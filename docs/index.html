@@ -754,6 +754,12 @@
   .ov-top .pp-section { margin: 0; }
   .ov-top .next-card { margin: 0; padding: 9px 10px; }
   .ov-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .form-row { display: grid; grid-template-columns: 38px 16px minmax(0, 1fr) auto; align-items: center; gap: 6px;
+    margin-top: 6px; font-size: 12px; }
+  .form-row .rel-chip { min-width: 0; padding: 2px 0; font-size: 11px; }
+  .form-row .club-logo { width: 16px; height: 16px; }
+  .form-opp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .form-move { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
   .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
   .inj-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
   .inj-top .rel-chip { flex: none; min-width: 30px; }
@@ -2091,20 +2097,26 @@ function renderClubTab() {
   if (tab === "history") drawRankChart();
 }
 
-// ---- Overview: injured and suspended players beside the squad by position, recent form, key numbers
+// ---- Overview: injured and suspended players and recent form (newest first) beside the squad by
+// position, then the key numbers
 function clubOverviewTab() {
   const { id, data } = state.club;
   const r = state.rankByTeam.get(id);
   const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
   const rows = data?.rows || [];
-  const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) }));
+  const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) })).reverse();
   const ga = data?.goal_averages;
-  const next = injuredCard(id), pitch = depthPitch(id);          // the next match is on the Predicted XI tab
+  const formCard = form.length ? `<div class="next-card form-card">
+      <div class="next-top"><span class="next-label">Recent form</span><span>Elo change</span></div>
+      ${form.map(({ m, move }) => `<div class="form-row" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
+        <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span>
+        <img class="club-logo" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+        <span class="form-opp">${m.home ? "v" : "@"} ${escapeHtml(clubOpp(m.opponent))}</span>
+        <span class="form-move">${moveHtml(move)}</span></div>`).join("")}
+    </div>` : "";
+  const side = injuredCard(id) + formCard, pitch = depthPitch(id);   // the next match is on the Predicted XI tab
   return `
-    ${next && pitch ? `<div class="ov-top"><div class="ov-side">${next}</div>${pitch}</div>` : next + pitch}
-    ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · Elo change</div>
-      <div class="form-strip">${form.map(({ m, move }) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
-        <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span><span class="form-res">${moveHtml(move)}</span></div>`).join("")}</div></div>` : ""}
+    ${side && pitch ? `<div class="ov-top"><div class="ov-side">${side}</div>${pitch}</div>` : side + pitch}
     ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact" style="grid-template-columns:repeat(3,minmax(0,1fr))">
       ${tile("Rating", Math.round(r.lt))}${tile("Form", Math.round(r.current))}
       ${tile("Trend", formHtml(r.form) || "–")}
