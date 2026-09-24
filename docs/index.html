@@ -2017,7 +2017,8 @@ function clubXiTab() {
 // Overview pitch: in each position, the squad's players who can play there (their main position,
 // or 2+ full matches' worth of starting minutes there over the last 12 months; until the
 // position minutes have loaded, the 25% rule of the position filter), best first by their rank in
-// that position, all of them. Keeper at the top, strikers at the bottom. Laid out as a grid of lines so long lists push the pitch taller
+// that position, all of them. Keeper at the top, strikers at the bottom (attacking down the
+// page, so the left-sided positions are on the right). Laid out as a grid of lines so long lists push the pitch taller
 // instead of overlapping.
 const DEPTH_MINUTES = 180;
 function canPlay(p) {
@@ -2032,7 +2033,7 @@ function depthPitch(teamId) {
   const spots = PITCH_SPOTS.map(([r, x, y]) => {
     const ps = squad.filter((p) => canPlay(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
       .sort((a, b) => b.rank - a.rank);
-    const cell = `grid-row:${y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1};grid-column:${x < 35 ? 1 : x < 65 ? 2 : 3}`;
+    const cell = `grid-row:${y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1};grid-column:${x < 35 ? 3 : x < 65 ? 2 : 1}`;
     if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${r}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
       <span class="dp-pos">${r}</span>
