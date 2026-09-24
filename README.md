@@ -325,6 +325,8 @@ A line-up adjustment (the strength of the starting XI against normal) was backte
 - **Matches:** projected scores, win/draw/loss chances and results. Filter by competition and day.
 - **Rankings:** club rankings with form and reliability. Tap a club to see its fixtures.
 
+The site labels the club rank as an **Elo rating** (Elo = current rank, LT Elo = LT ALGO). The numbers are the same as the club rank below, and on that scale 100 points is worth one goal a game.
+
 **Club pages.** Club names link to `#/club/<team_id>`. The page has tabs:
 - **Overview:** the next match, the squad on a pitch by the positions each player can play, recent form, the rank tiles and 12-month goal averages
 - **Predicted XI:** the predicted line-up for the next match
