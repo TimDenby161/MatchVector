@@ -414,9 +414,27 @@
      Phones: stacked above the list (filters, toggle, search). */
   .side-stick { display: flex; flex-direction: column; }
   .side-brand { display: none; }
+  #age-filter { order: 0; margin-bottom: 10px; }
+  #age-filter[hidden] { display: none; }
   #table-filters { order: 1; }
   #table-view { order: 2; margin-bottom: 10px; }
   #table-search { order: 3; }
+  /* Age range: two range inputs over one track; only the thumbs take the pointer */
+  .age-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
+    color: var(--text-secondary); margin: 0 2px 4px; }
+  #age-label { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .age-slider { position: relative; height: 22px; }
+  .age-track { position: absolute; left: 8px; right: 8px; top: 9px; height: 4px; border-radius: 2px; background: var(--gridline); }
+  .age-fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--series-blue); }
+  .age-slider input { position: absolute; left: 0; top: 0; width: 100%; height: 22px; margin: 0;
+    background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+  .age-slider input::-webkit-slider-runnable-track { background: none; height: 22px; }
+  .age-slider input::-moz-range-track { background: none; }
+  .age-slider input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px;
+    margin-top: 3px; border-radius: 50%; background: var(--surface-1); border: 2px solid var(--series-blue); cursor: grab; }
+  .age-slider input::-moz-range-thumb { pointer-events: auto; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--surface-1); border: 2px solid var(--series-blue); cursor: grab; }
+  .age-slider input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--series-blue); outline-offset: 2px; }
   /* Wide screens: the panel becomes a column in the left margin, so the ranked list stays
      centred; the header drops the name row on this tab to fit a full league on one screen */
   @media (min-width: 1160px) {
@@ -426,7 +444,8 @@
     .side-brand { display: flex; align-items: center; gap: 7px; order: 0; font-size: 18px; font-weight: 800; margin: 2px 0 12px; }
     #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
-    #table-filters { order: 3; margin: 0; }
+    #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
+    #table-filters { order: 4; margin: 0; }
     /* Side menu: plain rows, counts on the right, groups slide open */
     #table-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
     #table-filters .cgroup { display: block; }
@@ -523,6 +542,14 @@
     <div id="table-side">
       <div class="side-stick">
         <div class="side-brand"><span class="brand-mark" aria-hidden="true"></span><span>MatchVector</span></div>
+        <div id="age-filter" hidden>
+          <div class="age-head"><span>Age</span><span id="age-label"></span></div>
+          <div class="age-slider">
+            <div class="age-track"><div class="age-fill" id="age-fill"></div></div>
+            <input type="range" id="age-min" aria-label="Youngest age">
+            <input type="range" id="age-max" aria-label="Oldest age">
+          </div>
+        </div>
         <div class="filters-wrap" id="table-filters"></div>
         <div class="filter-row range-row" id="table-view">
           <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
@@ -615,7 +642,7 @@ const state = {
   tableSort: "current", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
-  players: null, tableView: "clubs", playerGroup: "all", playerSort: null,
+  players: null, tableView: "clubs", playerGroup: "all", playerSort: null, ageMin: null, ageMax: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -766,7 +793,7 @@ function renderTableFilters() {
   let total = 0;
   const players = state.tableView === "players" && state.players;
   for (const r of players ? state.players.list : state.rankings)
-    if (players || r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
+    if (players ? inAgeRange(r) : r.in_league) { counts.set(r.league, (counts.get(r.league) || 0) + 1); total++; }
   const sum = (ids) => ids.reduce((n, id) => n + (counts.get(id) || 0), 0);
   const countOf = (value) => value === "all" ? total
     : value.startsWith("c:") ? sum(countries.find((c) => c.name === value.slice(2))?.leagues || [])
@@ -1107,6 +1134,7 @@ function renderPlayers() {
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
                : ids === null ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
   if (state.playerGroup !== "all") rows = rows.filter((p) => ROLE_GROUP[p.position] === state.playerGroup);
+  rows = rows.filter(inAgeRange);
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
   // (youngest first); blanks last
   const seasons = state.players.seasons || [];
@@ -1625,10 +1653,52 @@ $("#date-next").addEventListener("click", () => stepDate(1));
 $("#date-today").addEventListener("click", () => { state.date = localDateStr(new Date()); renderMatches(); });
 $("#date-input").addEventListener("change", (e) => { if (e.target.value) { state.date = e.target.value; renderMatches(); } });
 $("#table-search").addEventListener("input", (e) => { state.tableSearch = e.target.value; renderTable(); });
+// ---- Age range (Players view)
+function ageBounds() {
+  const ages = state.players?.list.map((p) => p.age).filter((a) => a != null) || [];
+  return ages.length ? [Math.min(...ages), Math.max(...ages)] : [15, 45];
+}
+function inAgeRange(p) {
+  const [lo, hi] = ageBounds();
+  const min = state.ageMin ?? lo, max = state.ageMax ?? hi;
+  if (min <= lo && max >= hi) return true;           // full range: include players with no age
+  return p.age != null && p.age >= min && p.age <= max;
+}
+function renderAgeFilter() {
+  const box = $("#age-filter");
+  box.hidden = state.tableView !== "players" || !state.players;
+  if (box.hidden) return;
+  const [lo, hi] = ageBounds();
+  const min = state.ageMin ?? lo, max = state.ageMax ?? hi;
+  for (const [id, v] of [["#age-min", min], ["#age-max", max]]) {
+    const el = $(id);
+    el.min = lo; el.max = hi; el.step = 1; el.value = v;
+  }
+  $("#age-label").textContent = min <= lo && max >= hi ? "All ages" : min === max ? `${min}` : `${min}–${max}`;
+  const pct = (v) => ((v - lo) / (hi - lo || 1)) * 100;
+  $("#age-fill").style.left = `${pct(min)}%`;
+  $("#age-fill").style.right = `${100 - pct(max)}%`;
+}
+function onAgeInput(e, done) {
+  const [lo, hi] = ageBounds();
+  let min = Number($("#age-min").value), max = Number($("#age-max").value);
+  if (min > max) { if (e.target.id === "age-min") min = max; else max = min; }   // handles can't cross
+  state.ageMin = min <= lo ? null : min;
+  state.ageMax = max >= hi ? null : max;
+  renderAgeFilter();
+  renderTable();
+  if (done) renderTableFilters();      // counts in the menu follow the range (on release)
+}
+for (const id of ["#age-min", "#age-max"]) {
+  $(id).addEventListener("input", (e) => onAgeInput(e, false));
+  $(id).addEventListener("change", (e) => onAgeInput(e, true));
+}
+
 $("#table-view").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-view]");
   if (!btn) return;
   state.tableView = btn.dataset.view;
+  renderAgeFilter();
   document.querySelectorAll("#table-view [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
   $("#table-search").placeholder = state.tableView === "players" ? "Search players or clubs" : "Search clubs";
   renderTableFilters();
