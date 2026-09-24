@@ -359,6 +359,15 @@ create table if not exists player_position_ranks (
     primary key (player_id, role_group)
 );
 
+-- Each player's next seasons (player_ratings.py, rebuilt on every run): his current rank
+-- moved along the age curve for his position
+create table if not exists player_projected_ranks (
+    player_id       int not null,
+    season          int not null,
+    projected_rank  numeric(4,1),
+    primary key (player_id, season)
+);
+
 -- Hand corrections to player details from API-Football (which the nightly sync would
 -- overwrite on players itself); applied when the site data is exported
 create table if not exists player_overrides (

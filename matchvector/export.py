@@ -456,14 +456,21 @@ def export_players(conn, out_dir=OUT_DIR):
                                           "AM", "RW", "LW", "ST"])}
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
+    # his next seasons, projected along his age curve (player_ratings.py)
+    future = defaultdict(dict)
+    for player, season, rank in conn.execute("select player_id, season, projected_rank from player_projected_ranks"):
+        future[player][season] = float(rank)
+    future_seasons = sorted({y for ys in future.values() for y in ys})
     (out_dir / "players.json").write_text(json.dumps({
         "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age", "estimated",
-                   "nationality", "positions_12m", "position_ranks"],
+                   "nationality", "positions_12m", "position_ranks", "future"],
         "seasons": PLAYER_SEASONS,
+        "future_seasons": future_seasons,    # oldest first
         "players": [[r[0], r[1], main_pos.get(r[0], r[2]), float(r[3]), r[4], r[5], r[6],
                      [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7],
                      [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]], r[8],
-                     pos_12m.get(r[0], []), pos_ranks.get(r[0], {})] for r in players],
+                     pos_12m.get(r[0], []), pos_ranks.get(r[0], {}),
+                     [future[r[0]].get(y) for y in future_seasons]] for r in players],
         "next_xi": next_xi,
         # names of players' clubs outside the club rankings (a move out of our leagues)
         "teams": {str(t): n for t, n in conn.execute(

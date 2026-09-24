@@ -323,9 +323,20 @@
   table.leaderboard.players .dim { color: var(--gridline); }
   /* a season estimated from the age curve (no minutes in covered leagues): outlined, not filled */
   table.season-table .est .rel-chip, table.leaderboard.players .est .rel-chip { background: transparent; box-shadow: inset 0 0 0 1px currentColor; font-style: italic; opacity: .8; }
+  /* Years toggle: past seasons left of Ability, projected ones (age curve) right of it, fainter */
+  table.leaderboard.players th.col-years, table.leaderboard.players td.col-years { width: 64px; padding-left: 6px; padding-right: 8px; text-align: right; }
+  .years-btn { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .02em; text-transform: none; white-space: nowrap;
+    padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--series-blue); cursor: pointer; }
+  .years-btn:hover { border-color: var(--series-blue); }
+  table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now { border-right: 1px solid var(--gridline); }
+  table.leaderboard.players th.col-future { font-style: italic; }
+  table.leaderboard.players th.col-f0, table.leaderboard.players td.col-f0 { padding-left: 8px; }
+  table.leaderboard.players td.col-future .rel-chip { opacity: .7; }
   @media (max-width: 480px) {
-    table.leaderboard.players .col-s3,
-    table.leaderboard.players .col-s4, table.leaderboard.players .col-s5 { display: none; }
+    /* expanded years on a phone: every column, and the table swipes sideways */
+    .table-scroll:has(table.players.years) { overflow-x: auto; }
+    table.leaderboard.players.years { width: max-content; min-width: 100%; }
+    table.leaderboard.players.years td:nth-child(2) { max-width: 150px; }
     table.leaderboard.players th.col-s2, table.leaderboard.players td.col-s2 { padding-left: 8px; width: 42px; }
     .pl-cell { gap: 5px; }
     .pl-cell .pl-badge { width: 16px; height: 16px; margin-right: 0; }
@@ -1058,13 +1069,17 @@ const FACTORS = [
 const LIVE = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT", "SUSP"]);
 const FINISHED = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
 
+// Remembered view choices (this browser only; storage can be blocked, so never required)
+const storedFlag = (k) => { try { return localStorage.getItem(`fc.${k}`) === "1"; } catch { return false; } };
+const storeFlag = (k, on) => { try { localStorage.setItem(`fc.${k}`, on ? "1" : "0"); } catch { /* not stored */ } };
+
 const state = {
   data: null, rankings: null, compLabels: {},
   matchFilter: "all", tableFilter: "all", date: null,
   tableSort: "current", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
   bets: null, betStrategy: "all", betMarket: "all",
-  players: null, tableView: "clubs", playerSort: null, ageMin: null, ageMax: null,
+  players: null, tableView: "clubs", playerSort: null, playerYears: storedFlag("playerYears"), ageMin: null, ageMax: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -1099,7 +1114,7 @@ async function loadData() {
       for (const r of pj.players) r[1] = decodeEntities(r[1]);
       for (const xi of Object.values(pj.next_xi || {})) for (const r of xi.players) r[1] = decodeEntities(r[1]);
     }
-    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [], teams: pj.teams || {} } : null;
+    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [], futureSeasons: pj.future_seasons || [], teams: pj.teams || {} } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
@@ -1605,10 +1620,17 @@ function renderPlayers() {
   rows = rows.filter(playerVisible);
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
   // (youngest first); blanks last
+  // Collapsed: Age and Ability only. Expanded (the Years button): past seasons before Ability and
+  // the projected ones (his Ability moved along his position's age curve) after it
   const seasons = state.players.seasons || [];
+  const future = state.players.futureSeasons || [];
+  const open = state.playerYears;
+  const shown = open ? seasons : seasons.slice(0, 1);
   const groups = selectedGroups();
-  const key = state.playerSort === "pos" && !groups.length ? `s${seasons[0]}` : state.playerSort || (groups.length ? "pos" : `s${seasons[0]}`);
-  const val = (p) => key === "pos" ? posRank(p, groups) : key.startsWith("s") ? p.seasons?.[seasons.indexOf(Number(key.slice(1)))] : p[key];
+  let key = state.playerSort === "pos" && !groups.length ? `s${seasons[0]}` : state.playerSort || (groups.length ? "pos" : `s${seasons[0]}`);
+  if (!open && /^[sf]\d/.test(key) && key !== `s${seasons[0]}`) key = `s${seasons[0]}`;   // a hidden column
+  const val = (p) => key === "pos" ? posRank(p, groups) : key.startsWith("s") ? p.seasons?.[seasons.indexOf(Number(key.slice(1)))]
+    : key.startsWith("f") ? p.future?.[future.indexOf(Number(key.slice(1)))] : p[key];
   rows = key === "age"
     ? rows.slice().sort((a, b) => (a.age ?? 999) - (b.age ?? 999))
     : rows.slice().sort((a, b) => (val(b) ?? -1) - (val(a) ?? -1));
@@ -1617,16 +1639,18 @@ function renderPlayers() {
   const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
   if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No players match these filters.</div>`; return; }
   wrap.innerHTML = `
-    <div class="table-scroll"><table class="leaderboard players">
+    <div class="table-scroll"><table class="leaderboard players${open ? " years" : ""}">
       <thead><tr>
         <th data-tip="Position in this list, in the current sort order.">#</th>
         <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
-        ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
+        ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
+        ${open ? future.map((y, j) => th(`f${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Projected for ${seasonName(y)}: his Ability moved along the typical age curve for his position, from his age now to his age that season (young players rise, from 31 (33 for keepers) they decline, faster each year). A guide, not a forecast of his form.`, ` col-season col-future col-f${j}`)).join("") : ""}
         ${groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). Only positions he has started in get a number. With several positions picked, his best of them.`, " col-posrank") : ""}
+        <th class="col-years">${future.length || seasons.length > 1 ? `<button type="button" class="years-btn" data-years aria-expanded="${open}">${open ? "− Years" : "+ Years"}</button>` : ""}</th>
       </tr></thead>
-      <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, seasons, groups)).join("")}</tbody>
+      <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, shown, groups, open ? future : [])).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
   // The rest of the rows go in BATCH_ROWS at a time as the bottom of the list scrolls into view
@@ -1641,7 +1665,7 @@ function renderPlayers() {
   let at = FIRST_ROWS;
   const observer = state.playerObserver = new IntersectionObserver((entries) => {
     if (!entries.some((e) => e.isIntersecting)) return;
-    tbody.insertAdjacentHTML("beforeend", rows.slice(at, at + BATCH_ROWS).map((p, j) => playerRow(p, at + j, seasons, groups)).join(""));
+    tbody.insertAdjacentHTML("beforeend", rows.slice(at, at + BATCH_ROWS).map((p, j) => playerRow(p, at + j, shown, groups, open ? future : [])).join(""));
     at += BATCH_ROWS;
     if (at >= rows.length) { observer.disconnect(); sentinel.remove(); }
     else { observer.unobserve(sentinel); observer.observe(sentinel); }   // re-check: still in view -> load again
@@ -1650,7 +1674,7 @@ function renderPlayers() {
 }
 
 const FIRST_ROWS = 100, BATCH_ROWS = 100;
-function playerRow(p, i, seasons, groups = selectedGroups()) {
+function playerRow(p, i, seasons, groups = selectedGroups(), future = []) {
   return `
         <tr${p.team ? ` data-team="${p.team}"` : ""} data-player="${p.id}">
           <td>${i + 1}</td>
@@ -1659,7 +1683,9 @@ function playerRow(p, i, seasons, groups = selectedGroups()) {
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
           ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
+          ${future.map((y, j) => `<td class="num col-season col-future col-f${j}">${p.future?.[j] == null ? `<span class="dim">–</span>` : rankChipSmall(p.future[j])}</td>`).join("")}
           ${groups.length ? `<td class="num col-posrank">${posRank(p, groups) == null ? `<span class="dim">–</span>` : rankChipSmall(posRank(p, groups))}</td>` : ""}
+          <td class="col-years"></td>
         </tr>`;
 }
 
@@ -3598,6 +3624,11 @@ $("#table-wrap").addEventListener("mouseout", (e) => {
 $("#table-wrap").addEventListener("scroll", () => { colTip.hidden = true; }, true);
 
 $("#table-wrap").addEventListener("click", (e) => {
+  if (e.target.closest("[data-years]")) {
+    state.playerYears = !state.playerYears;
+    storeFlag("playerYears", state.playerYears);
+    return renderTable();
+  }
   const th = e.target.closest("th[data-sort]");
   if (th) {
     if (state.tableView === "players") state.playerSort = th.dataset.sort; else state.tableSort = th.dataset.sort;

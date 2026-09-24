@@ -53,6 +53,10 @@ and only leaves it where he has the minutes to (season_model)
                level + curve (stored with minutes = 0, shown as an estimate). His club that season
                comes from player_career_teams; one we have fixtures for but no player data (a
                lower league) adds its level as a little evidence (GAP_CLUB_MINUTES)
+    future   = the FUTURE_SEASONS after the current one (player_projected_ranks): his current rank
+               moved by his curve's change from this season's age to that season's: a decline as
+               it is, growth added before the soft ceiling (so a 97 at 19 heads towards the high
+               90s, not a pile at 100)
     retired  = players a current-club check (/players/squads) finds in no squad since their last
                season, aged RETIRED_AGE+,
                (retired_players, ingest.check_retired) get no current rank, so they leave the
@@ -117,6 +121,7 @@ PRIOR_LEVEL = {"GK": 64.3, "OUT": 64.3}   # rank at peak age of a player we know
 LEVEL_DECAY = 0.7          # a season's weight in his level for another season, per year apart
 DEVIATION_MINUTES = 1500   # a season keeps minutes / (minutes + this) of its difference from the curve
 GAP_CLUB_MINUTES = 450     # weight of a gap season's club level (a lower league we have no player data for)
+FUTURE_SEASONS = 5         # seasons after the current one projected along his age curve
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -398,6 +403,15 @@ def soft_ceiling(r):
     return 100 - (100 - max(r, 0)) * GAP_SCALE
 
 
+def unsoft_ceiling(r):
+    """The rank before soft_ceiling (its inverse), so points can be added where they aren't squeezed."""
+    r = 100 - (100 - r) / GAP_SCALE
+    if r > SOFT_FROM:
+        room = 100 - SOFT_FROM
+        r = SOFT_FROM - room * math.log(max(1 - (r - SOFT_FROM) / room, 1e-9))
+    return r
+
+
 SQUAD_MARKDOWN = 0.2       # a player under his FULL_SHARE of club minutes is scaled down by up to this
 GK_CLUB_OFFSET = 6         # keeper rank = 100 x club / CLUB_RANK_MAX - this + GK_RATING_WEIGHT x (pct - 50)
 GK_RATING_WEIGHT = 0.2
@@ -476,7 +490,7 @@ def _stat_score(sums, pos, norms):
                for k, w in WEIGHTS[pos].items() if m[k] is not None)
 
 
-def _season_ranks(conn, norms, apps, offsets, team_rank, retired, position_ranks=None):
+def _season_ranks(conn, norms, apps, offsets, team_rank, retired, position_ranks=None, projections=None):
     """[(player, season, rank, minutes, gap-season club or None)] (see module docstring).
     team_rank: {(fixture, team): LT ALGO going into the match}."""
     q = lambda sql, p=None: conn.execute(sql, p).fetchall()
@@ -503,11 +517,12 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired, position_ranks
                                          and league_id = any(%s) group by 1)
                           select l.league_id, l.pos, (l.r - ref.r)::float8 from l join ref using (pos)""",
                         [config.RATING_REFERENCE_LEAGUES]),
-        retired=retired, position_ranks=position_ranks)
+        retired=retired, position_ranks=position_ranks, projections=projections)
 
 
 def season_model(norms, apps, offsets, team_rank, born, team_level, careers, covered, team_games=(),
-                 other_seasons=(), other_offsets=(), retired=None, detail=None, position_ranks=None):
+                 other_seasons=(), other_offsets=(), retired=None, detail=None, position_ranks=None,
+                 projections=None):
     """Season ranks: every player follows the age curve through all his seasons, from a level
     of his own, and only leaves it where he has the minutes to (see module docstring). Query
     results come in as rows so this can be run offline. other_seasons: player_seasons rows
@@ -515,7 +530,8 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     offsets by (league, position letter). retired: {player: last season}, no
     estimates after it (retired_players). detail: a dict to fill with the
     workings per (player, season): (evidence, weight, level, curve), for checking.
-    position_ranks: a dict to fill with {player: {role group: rank}} (see below)."""
+    position_ranks: a dict to fill with {player: {role group: rank}} (see below). projections: a
+    dict to fill with {player: {season: rank}} for the FUTURE_SEASONS after the current one."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(SUMS, 0.0), "roles": Counter(), "broad": Counter(),
                                    "club": [0.0, 0.0], "games": 0, "ref_mins": 0})
     team_games = {(t, y): n for t, y, n in team_games}
@@ -770,6 +786,15 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                 detail[(player, season)] = (ev, w, level, c)
             rows.append((player, season, round(min(max(r, 0), 100), 1), 0 if team is not None else int(w),
                          team or other_team.get((player, season))))
+            # Future seasons: his current rank moved along his age curve (the curve's change from
+            # this season's age). The curve is measured in rank points, so a decline is taken off
+            # as it is; growth is added before the soft ceiling so the best don't all reach 100
+            if projections is not None and season == last_season and player not in (retired or {}):
+                now = min(max(r, 0), 99.9)
+                projections[player] = {
+                    y: round(min(max(now + d if d < 0 else soft_ceiling(unsoft_ceiling(now) + d), 0), 100), 1)
+                    for y in range(last_season + 1, last_season + FUTURE_SEASONS + 1)
+                    for d in [curve(player, y, g) - c]}
 
     # 6. How good he'd be in each outfield position: his recent seasons' stats scored with each
     #    group's weights against that group's players (and its position weighting), minus the
@@ -959,8 +984,8 @@ def compute_player_ratings(conn):
     # Current rank per player (the players list): his season rank for the current season from
     # the season model, so it follows the same age curve and minutes weighting as his seasons;
     # role and minutes from his latest window (players with nothing in the window are left off)
-    position_ranks = {}
-    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired, position_ranks)
+    position_ranks, projections = {}, {}
+    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired, position_ranks, projections)
     this_season = max(y for _, y, _, _, _ in season_rows)
     now_rank = {p: r for p, y, r, _, _ in season_rows if y == this_season}
     current = []
@@ -971,10 +996,10 @@ def compute_player_ratings(conn):
         if s is not None:
             current.append((player, now_rank.get(player, to_rank(s, pos)), windows[player].label(), int(minutes)))
 
-    _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks)
+    _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks, projections)
 
 
-def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks):
+def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks, projections):
     with conn.cursor() as cur:
         # Rebuilt with truncate + copy rather than updating fixture_players, so the big table
         # isn't rewritten (and bloated with dead rows) on every run
@@ -1010,6 +1035,9 @@ def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_
         cur.execute("truncate player_position_ranks")
         with cur.copy("copy player_position_ranks (player_id, role_group, position_rank) from stdin") as cp:
             cp.write("".join(f"{p}\t{g}\t{r}\n" for p, gs in position_ranks.items() for g, r in gs.items()))
+        cur.execute("truncate player_projected_ranks")
+        with cur.copy("copy player_projected_ranks (player_id, season, projected_rank) from stdin") as cp:
+            cp.write("".join(f"{p}\t{y}\t{r}\n" for p, ys in projections.items() for y, r in ys.items()))
     conn.commit()
     log.info("Player ratings written: %d current player ranks, %d predicted-lineup rows, %d player-seasons",
              len(current), len(lineups), len(season_rows))
