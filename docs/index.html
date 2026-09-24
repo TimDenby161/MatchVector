@@ -580,9 +580,9 @@
   .pp-spot .pp-pct { font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
   .pp-spot.main { background: rgba(255,255,255,0.24); border-width: 2.5px; }
   /* a position he has a rank for but no starts in (0%): greyed out */
-  .pp-spot.unplayed { border-style: dashed; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.38); }
-  .pp-spot.unplayed .pp-pos, .pp-spot.unplayed .pp-pct { color: inherit; }
-  .pp-spot.unplayed .pp-rank { font-weight: 700; }
+  .pp-spot.unplayed { background: transparent; border: 1.5px dashed rgba(255,255,255,0.22); color: rgba(255,255,255,0.3); }
+  .pp-spot.unplayed .pp-pos { color: inherit; }
+  .pp-spot.unplayed .pp-rank { font-size: 15px; font-weight: 600; }
   .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .pp-spot.hollow .pp-pos { color: inherit; }
   .pp-section { margin-bottom: 16px; }
@@ -2185,7 +2185,7 @@ function positionPitch(p) {
       <span class="pp-pos">${r}</span></div>`;
     return `<div class="pp-spot${pct ? ` rel-${rankTier(rank)}` : " unplayed"}${r === p.position ? " main" : ""}" style="left:${x}%;top:${y}%"
         title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · ${pct}% of his starting minutes">
-      <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct ? `${pct}%` : "–"}</span></div>`;
+      <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span>${pct ? `<span class="pp-pct">${pct}%</span>` : ""}</div>`;
   }).join("");
   const periods = [["12m", "Last 12 months"], ["all", "Ever"]].filter(([k]) => pos[k]);
   return `<div class="club-section pp-section">${periods.length > 1 ? `<div class="seg pp-period">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}
