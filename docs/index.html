@@ -1572,7 +1572,6 @@ function renderTable() {
         <th data-tip="Club badge."></th>
         <th data-tip="Club name, with its country and league. Click a club to open its page.">Club</th>
         ${th("played", "Pl", "Played: matches counted in the Elo rating since 2020, including cups and European games.")}
-        ${th("reliability", "Rel", "Reliability, 0 to 100: how far to trust the Elo rating. Lower for clubs with few matches, or whose rating has been swinging a lot.")}
         ${th("lt", "Rating", "Rating: the long-term Elo rating (LT ALGO), a smoothed rating weighted mostly to the average over the last 100 matches. Slow to move, and the better guide for matches months away.")}
         ${th("form", "Trend", "Trend: Elo change over the last 6 matches. Green is rising, red is falling.")}
         ${th("current", "Form", "Form: the current Elo rating, after the latest match. 100 points is worth a goal a game. It rises when a club does better than expected against that opponent, and falls when it does worse.")}
@@ -1583,7 +1582,6 @@ function renderTable() {
           <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td>${clubLink(r.team)}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
-          <td class="num"><span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span></td>
           <td class="num">${Math.round(r.lt)}</td>
           <td class="num">${formHtml(r.form)}</td>
           <td class="num"><b>${Math.round(r.current)}</b></td>
@@ -1988,9 +1986,9 @@ function clubOverviewTab() {
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · Elo change</div>
       <div class="form-strip">${form.map(({ m, move }) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span><span class="form-res">${moveHtml(move)}</span></div>`).join("")}</div></div>` : ""}
-    ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact">
+    ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact" style="grid-template-columns:repeat(3,minmax(0,1fr))">
       ${tile("Rating", Math.round(r.lt))}${tile("Form", Math.round(r.current))}
-      ${tile("Trend", formHtml(r.form) || "–")}${tile("Reliability", `<span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span>`)}
+      ${tile("Trend", formHtml(r.form) || "–")}
     </div></div>` : ""}
     ${ga ? `<div class="club-section"><div class="modal-section">Goals per game · last 12 months</div><div class="team-stats compact">
       ${tile("Home", ga[0].toFixed(2), `conceded ${ga[1].toFixed(2)}`)}${tile("Away", ga[2].toFixed(2), `conceded ${ga[3].toFixed(2)}`)}
@@ -2429,7 +2427,7 @@ function openTeam(teamId) {
 
   const stat = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
   $("#team-modal-body").innerHTML = (r ? `<div class="team-stats">
-      ${stat("Rating", Math.round(r.lt))}${stat("Form", Math.round(r.current))}${stat("Reliability", Math.round(r.reliability))}
+      ${stat("Rating", Math.round(r.lt))}${stat("Form", Math.round(r.current))}
       ${stat("Trend", formHtml(r.form) || "–")}${stat("Played", r.played)}
     </div>` : "") +
     xiBlock(teamId) +
