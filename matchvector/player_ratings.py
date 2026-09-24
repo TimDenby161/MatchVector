@@ -87,6 +87,12 @@ SHRINK_MINUTES = 900
 CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
+DEFAULT_RATING = 6.5       # match rating for season totals the API has no rating for
+# season-total metrics and the stats they need: left out (not counted as 0) when the API lacks them
+METRIC_INPUTS = {"goals": {"goals"}, "assists": {"assists"}, "shots_on": {"shots_on"},
+                 "key_passes": {"key_passes"}, "dribbles_won": {"dribbles_won"}, "tackles_int": {"tackles"},
+                 "blocks": {"blocks"}, "passes": {"passes"}, "duels_pct": {"duels", "duels_won"},
+                 "discipline": {"fouls_committed"}, "save_pct": {"saves"}, "conceded": {"goals_conceded"}}
 REFERENCE = set(config.RATING_REFERENCE_LEAGUES)   # the players everyone is compared with
 ANCHOR_MINUTES = 1500      # a season with this many minutes measures the age curve
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
@@ -499,16 +505,17 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         main_pos.setdefault(player, Counter())[pos] += mins
     other_offsets = {(lg, b): off for lg, b, off in other_offsets}
     other = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "acc": True, "club": [0.0, 0.0],
-                                 "teams": Counter(), "broad": Counter(), "games": 0})
+                                 "teams": Counter(), "broad": Counter(), "games": 0, "known": set()})
     for (player, team, league, season, broad, mins, n_apps, rating, goals, assists, shots_on, key_passes,
          passes, pass_acc, tackles, interceptions, blocks, duels, duels_won, dribbles_won, fouls, yellow,
          yellow_red, red, saves, conceded) in other_seasons:
         e = other[(player, season)]
         sums = e["sums"]
         sums["minutes"] += mins
-        if rating is not None:
-            sums["rating_mins"] += (rating - other_offsets.get((league, broad), 0.0)) * mins
-            sums["rated_mins"] += mins
+        # no rating from the API (the National League, Azerbaijan): DEFAULT_RATING
+        sums["rating_mins"] += (DEFAULT_RATING if rating is None
+                                else rating - other_offsets.get((league, broad), 0.0)) * mins
+        sums["rated_mins"] += mins
         for k, v in (("goals", goals), ("assists", assists), ("shots_on", shots_on), ("key_passes", key_passes),
                      ("passes", passes), ("tackles", tackles), ("interceptions", interceptions),
                      ("blocks", blocks), ("duels", duels), ("duels_won", duels_won),
@@ -516,6 +523,8 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                      ("yellow_cards", (yellow or 0) + (yellow_red or 0)), ("red_cards", red), ("saves", saves),
                      ("goals_conceded", conceded)):
             sums[k] += v or 0
+            if v is not None:
+                e["known"].add(k)
         if pass_acc is None:
             e["acc"] = False
         else:
@@ -538,6 +547,11 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
             continue
         if not e["acc"]:
             m["pass_acc"] = None
+        for k, need in METRIC_INPUTS.items():   # stats the API doesn't have are unknown, not 0
+            if not e["known"] >= need:
+                m[k] = None
+        if "saves" not in e["known"]:
+            m["gk_rating"] = m["rating"]
         sc = sum(w * (m[k] - norms[pos][k][0]) / norms[pos][k][1] for k, w in WEIGHTS[pos].items() if m[k] is not None)
         mins = e["sums"]["minutes"]
         sh = min(mins / (90 * e["games"]), 1.0) if e["games"] else None
