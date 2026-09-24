@@ -1233,8 +1233,8 @@ function renderPlayers() {
         <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
-        ${groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). With several positions picked, his best of them.`, " col-posrank") : ""}
         ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
+        ${groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). With several positions picked, his best of them.`, " col-posrank") : ""}
       </tr></thead>
       <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, seasons, groups)).join("")}</tbody>
     </table></div>`;
@@ -1262,8 +1262,8 @@ function playerRow(p, i, seasons, groups = selectedGroups()) {
             <div>${playerLink(p.id, p.name)}<span class="club-sub">${clubLink(p.team)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${natLink(p.nationality)}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
-          ${groups.length ? `<td class="num col-posrank">${rankChipSmall(posRank(p, groups))}</td>` : ""}
           ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
+          ${groups.length ? `<td class="num col-posrank">${rankChipSmall(posRank(p, groups))}</td>` : ""}
         </tr>`;
 }
 
