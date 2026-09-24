@@ -420,25 +420,26 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
            where r.team_id is not null and r.player_id = any(%s)
            group by 1, 2, 3, 4""", [ids]).fetchall()
     spells = _club_spells(seasons + recent + gaps)
-    # Minutes by position per season: the role he started in (from the line-up grid and
-    # formation), "SUB" for minutes off the bench, his broad position (G/D/M/F) if a start has no
-    # grid. Seasons in leagues without per-match data have none
+    # Starting minutes by position per season: the role he started in (from the line-up grid and
+    # formation), or his broad position (G/D/M/F) if a start has no grid. Minutes off the bench
+    # have no position and aren't counted. Seasons in leagues without per-match data have none
     positions = defaultdict(dict)
     for player, season, role, mins in conn.execute(
             """select fp.player_id, f.season,
-                      coalesce(fp.role, case when fp.started then fp.position else 'SUB' end), sum(fp.minutes)
+                      coalesce(fp.role, fp.position), sum(fp.minutes)
                from fixture_players fp join fixtures f using (fixture_id)
                where fp.player_id = any(%s) and f.season = any(%s) and f.status_short = any(%s) and fp.minutes > 0
+                 and fp.started
                group by 1, 2, 3 order by 4 desc""", [ids, PLAYER_SEASONS, list(config.FINISHED_STATUSES)]):
         positions[player].setdefault(str(season), []).append([role, int(mins)])
     # ... and over the last 12 months ("12m") and all our data from 2020/21 ("all")
     for key, since in (("12m", "now() - interval '365 days'"), ("all", "'-infinity'::timestamptz")):
         for player, role, mins in conn.execute(
-                f"""select fp.player_id, coalesce(fp.role, case when fp.started then fp.position else 'SUB' end),
+                f"""select fp.player_id, coalesce(fp.role, fp.position),
                            sum(fp.minutes)
                     from fixture_players fp join fixtures f using (fixture_id)
                     where fp.player_id = any(%s) and f.status_short = any(%s) and fp.minutes > 0
-                      and f.kickoff > {since}
+                      and fp.started and f.kickoff > {since}
                     group by 1, 2 order by 3 desc""", [ids, list(config.FINISHED_STATUSES)]):
             positions[player].setdefault(key, []).append([role, int(mins)])
     team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}

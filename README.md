@@ -151,7 +151,7 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 - his club, nationality, position and age;
 - where he ranks among players in his position, among his nationality, and overall;
 - a chart of his season ranks, with estimated seasons hollow;
-- **positions played:** his share of minutes in each position, over the last 12 months, all time (our data from 2020/21) and each season (the role he started in, from the line-up and formation, and "Sub" for minutes off the bench);
+- **positions played:** his share of minutes in each position, over the last 12 months, all time (our data from 2020/21) and each season as shares of his starting minutes (the role he started in, from the line-up and formation; minutes off the bench have no position and aren't counted);
 - a season-by-season table: club, club rank, minutes, rating, goals and assists;
 - his last 20 appearances.
 

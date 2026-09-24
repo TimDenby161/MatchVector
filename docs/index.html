@@ -1867,8 +1867,10 @@ function seasonChart(p, seasons) {
     <div class="chart-summary">Hollow points are estimated seasons (no minutes in the leagues with player data): his level on the age curve for his position.</div></div>`;
 }
 const POS_WORD = { G: "GK", D: "DEF", M: "MID", F: "FWD", SUB: "Sub" };
-// [[role, minutes], ...] -> "LB 78% · LWB 15% · Sub 7%" (positions under 3% left out, as "other")
+// [[role, minutes], ...] -> "LB 84% · LWB 16%": shares of his starting minutes (minutes off the
+// bench have no position and aren't counted; positions under 3% grouped as "other")
 function positionShares(list) {
+  list = list.filter(([r]) => r !== "SUB");
   const total = list.reduce((a, [, m]) => a + m, 0);
   if (!total) return "";
   const shown = list.filter(([, m]) => m / total >= 0.03);
@@ -1918,7 +1920,7 @@ function renderPlayerPage(p) {
       ${sameNat.length ? tile(`Among ${escapeHtml(p.nationality)}`, rankAmong(p, sameNat)) : ""}
       ${tile("All players", rankAmong(p, list))}
     </div>
-    ${posBySeason["all"] ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played (share of his minutes)</div>
+    ${posBySeason["all"] ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played (share of his starting minutes)</div>
       ${posRow("Last 12 months", posBySeason["12m"])}${posRow("All time (since 2020/21)", posBySeason["all"])}</div>` : ""}
     ${seasonChart(p, seasons)}
     <div class="club-section"><div class="modal-section">Season by season</div>
