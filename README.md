@@ -82,7 +82,17 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 1. Take the player's last 20 appearances within 18 months.
 2. Work out his **role** from the line-ups. `matchvector/positions.py` turns each starter's grid position and the team's formation into a role: GK, LB, CB, RB, LWB, RWB, DM, CM, AM, LM, RM, LW, RW or ST. For example, 4-2-3-1 row 4 gives LW, AM and RW. His role is the one he's started in most over the window; players only seen as substitutes use their broad position. Roles are compared in groups, with left and right together: GK, CB, full-back, DM, CM, AM, winger and ST.
 3. Work out his per-90 stats and ratios, with weights set for each role group. The weights lean on the stats that reflect lasting ability:
-   - Centre-backs: duels won, passing volume and accuracy, tackles + interceptions, a little goal threat, minus fouls and cards.
+   - **Centre-backs:** duels won, passing volume and accuracy, tackles + interceptions and blocks. Minus times dribbled past, his team's xG conceded while he's on the pitch, and fouls and cards. Scoring isn't his job, so goals and shots on target are left out. His match rating has the goal bonus taken off: API-Football adds about 0.78 to a centre-back's rating when he scores (6.93 against 7.70). Each stat was checked on centre-backs with 1,500+ minutes in back-to-back seasons, by how well it repeats from one season to the next, overall and after a move to another club:
+
+     | Stat | Repeat, all | Repeat, changed club | Used? |
+     |---|---|---|---|
+     | Dribbled past | 0.63 | 0.55 | Yes: a player trait |
+     | Team xG conceded | 0.42 | 0.29 | Yes, lightly: mostly the team |
+     | Penalties conceded | 0.04 | 0.02 | No: noise |
+     | Goals | 0.17 | 0.08 | No: luck |
+     | Shots on target | 0.37 | 0.18 | No: team and role |
+
+     Dribbled past and penalties conceded come from API-Football's per-match stats (`fixture_players.dribbled_past`, `penalties_committed`, fetched for every match).
    - Full-backs: key passes, passing, duels, tackles + interceptions, dribbles and assists.
    - DM: passing, duels, tackles + interceptions and key passes.
    - CM and AM: key passes, shots on target, passing, goals and dribbles.

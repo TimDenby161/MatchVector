@@ -673,6 +673,8 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
                                  "yellow_cards": g("cards", "yellow"), "red_cards": g("cards", "red"),
                                  "saves": g("goals", "saves"), "goals_conceded": g("goals", "conceded"),
                                  "penalties_saved": g("penalty", "saved"),
+                                 "dribbled_past": g("dribbles", "past"),
+                                 "penalties_committed": g("penalty", "commited"),   # sic (API spelling)
                                  "grid": grids.get(p["player"]["id"], (None, None))[0],
                                  "role": grids.get(p["player"]["id"], (None, None))[1]})
             kickoff = datetime.fromisoformat(f["fixture"]["date"])

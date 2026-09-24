@@ -87,12 +87,14 @@ SHRINK_MINUTES = 900
 CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
+GOAL_RATING_BONUS = 0.78   # a centre-back's match rating with a goal vs without (6.93 -> 7.70)
 DEFAULT_RATING = 6.5       # match rating for season totals the API has no rating for
 # season-total metrics and the stats they need: left out (not counted as 0) when the API lacks them
 METRIC_INPUTS = {"goals": {"goals"}, "assists": {"assists"}, "shots_on": {"shots_on"},
                  "key_passes": {"key_passes"}, "dribbles_won": {"dribbles_won"}, "tackles_int": {"tackles"},
                  "blocks": {"blocks"}, "passes": {"passes"}, "duels_pct": {"duels", "duels_won"},
-                 "discipline": {"fouls_committed"}, "save_pct": {"saves"}, "conceded": {"goals_conceded"}}
+                 "discipline": {"fouls_committed"}, "save_pct": {"saves"}, "conceded": {"goals_conceded"},
+                 "dribbled_past": {"dribbled_past"}, "pens_conceded": {"penalties_committed"}}
 REFERENCE = set(config.RATING_REFERENCE_LEAGUES)   # the players everyone is compared with
 ANCHOR_MINUTES = 1500      # a season with this many minutes measures the age curve
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
@@ -112,7 +114,10 @@ GAP_CLUB_MINUTES = 450     # weight of a gap season's club level (a lower league
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
-         "dribbles_won", "fouls_committed", "yellow_cards", "red_cards", "saves", "goals_conceded")
+         "dribbles_won", "fouls_committed", "yellow_cards", "red_cards", "saves", "goals_conceded",
+         "dribbled_past", "penalties_committed")
+# plus, from the opponent's xG in matches with xG: xga = opponent xG x his minutes, xg_mins = those minutes
+SUMS = STATS + ("xga", "xg_mins")
 
 # weight per metric by role group; negative weight = lower is better
 # Weights per role group. Tested against results (2021-26, club rank as the baseline): match
@@ -124,8 +129,12 @@ WEIGHTS = {
     # conceded mostly measures the defence in front of him (Trafford went 41 -> 96 moving from a
     # relegated Premier League side to the Championship's best defence) and save % is mostly luck
     "GK": {"gk_rating": 1.0},
-    "CB": {"rating": .15, "duels_pct": .20, "passes": .18, "pass_acc": .10, "tackles_int": .12,
-           "blocks": .05, "goals": .05, "shots_on": .05, "discipline": -.10},
+    # Centre-backs: no goals or shots on target (season-to-season repeat 0.08 / 0.18 for CBs who
+    # changed club: luck and role), and a goal-neutral rating (see _adjusted). Times dribbled past
+    # repeats 0.55 across a move (a player trait); team xG conceded while he played 0.29 (mostly
+    # the team, a little him). Penalties conceded (0.02) is noise and left out
+    "CB": {"rating": .12, "duels_pct": .19, "passes": .15, "pass_acc": .09, "tackles_int": .13,
+           "blocks": .06, "dribbled_past": -.12, "team_xga": -.07, "discipline": -.07},
     "FB": {"rating": .12, "key_passes": .18, "passes": .15, "duels_pct": .12, "tackles_int": .10,
            "dribbles_won": .08, "assists": .08, "shots_on": .05, "pass_acc": .05, "discipline": -.07},
     "DM": {"rating": .12, "passes": .20, "duels_pct": .15, "tackles_int": .15, "key_passes": .12,
@@ -168,6 +177,9 @@ def metrics(s):
         "discipline": (s["fouls_committed"] + 3 * s["yellow_cards"] + 6 * s["red_cards"]) * 90 / m,
         "save_pct": s["saves"] / (s["saves"] + s["goals_conceded"]) if s["saves"] + s["goals_conceded"] else None,
         "conceded": p90("goals_conceded"),
+        "dribbled_past": p90("dribbled_past"), "pens_conceded": p90("penalties_committed"),
+        # his team's xG conceded per 90 while he was on the pitch (matches with xG only)
+        "team_xga": s["xga"] / s["xg_mins"] if s.get("xg_mins") else None,
     }
 
 
@@ -177,6 +189,9 @@ def _row_stats(r):
     d["minutes"] = r["minutes"]
     d["rating_mins"] = (r["rating"] or 0) * r["minutes"] if r["rating"] else 0
     d["rated_mins"] = r["minutes"] if r["rating"] else 0
+    if r.get("opp_xg") is not None:
+        d["xga"] = r["opp_xg"] * r["minutes"]
+        d["xg_mins"] = r["minutes"]
     return d
 
 
@@ -186,7 +201,7 @@ class Window:
 
     def __init__(self):
         self.apps = deque()                # (kickoff, stats dict, role, broad position)
-        self.sums = dict.fromkeys(STATS + ("club_mins",), 0.0)   # club_mins: club rank x minutes
+        self.sums = dict.fromkeys(SUMS + ("club_mins",), 0.0)   # club_mins: club rank x minutes
         self.roles = Counter()             # starting roles (LB, DM, ...)
         self.broad = Counter()             # API positions (G/D/M/F)
 
@@ -244,13 +259,14 @@ def _rating_offsets(conn):
 def _appearances(conn):
     """Every appearance, from the local cache (cache.py), in fixture order:
     (fixture_id, team, player, minutes, started, position, role, rating, season, league_id,
-    status, *STATS[3:]), rating not yet league-adjusted (see _adjusted)."""
+    status, *STATS[3:], opponent xG), rating not yet league-adjusted (see _adjusted)."""
     fcols = ", ".join(f"fp.{c}" for c in STATS[3:])
     return cached_rows(conn, "appearances", f"""
         select {WEEK.format('f.kickoff')} as part, fp.fixture_id, fp.team_id, fp.player_id,
                fp.minutes, fp.started, fp.position, fp.role, fp.rating::float8 as rating, f.season,
-               f.league_id, f.status_short, {fcols}
-        from fixture_players fp join fixtures f using (fixture_id)""",
+               f.league_id, f.status_short, {fcols}, ox.expected_goals::float8 as opp_xg
+        from fixture_players fp join fixtures f using (fixture_id)
+        left join fixture_team_stats ox on ox.fixture_id = fp.fixture_id and ox.team_id <> fp.team_id""",
         order_by="fixture_id, team_id, player_id")
 
 
@@ -262,8 +278,15 @@ def _offsets(conn):
 
 
 def _adjusted(row, offsets):
-    """League-adjusted match rating of an appearance row, or None if unrated."""
-    return None if row[7] is None else row[7] - offsets.get((row[9], row[5]), 0.0)
+    """League-adjusted match rating of an appearance row, or None if unrated. A centre-back's
+    rating has GOAL_RATING_BONUS taken off per goal: API-Football adds ~0.78 to a centre-back's
+    rating when he scores, and scoring isn't his job."""
+    if row[7] is None:
+        return None
+    r = row[7] - offsets.get((row[9], row[5]), 0.0)
+    if row[6] == "CB" and row[11]:
+        r -= GOAL_RATING_BONUS * row[11]
+    return r
 
 
 def _add_season(entry, row, rating):
@@ -276,6 +299,9 @@ def _add_season(entry, row, rating):
         sums["rated_mins"] += mins
     for k, v in zip(STATS[3:], row[11:]):
         sums[k] += v or 0
+    if row[-1] is not None:              # opponent's xG in the match
+        sums["xga"] += row[-1] * mins
+        sums["xg_mins"] += mins
     if row[6]:
         entry["roles"][row[6]] += mins
     entry["broad"][row[5]] += mins
@@ -284,7 +310,7 @@ def _add_season(entry, row, rating):
 def _norms(apps, offsets):
     """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes in
     config.RATING_REFERENCE_LEAGUES."""
-    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter()})
+    seasons = defaultdict(lambda: {"sums": dict.fromkeys(SUMS, 0.0), "roles": Counter(), "broad": Counter()})
     for row in apps:
         if row[9] in REFERENCE:
             _add_season(seasons[(row[2], row[8])], row, _adjusted(row, offsets))
@@ -427,7 +453,8 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
                    ps.minutes, ps.appearances, ps.rating::float8, ps.goals, ps.assists, ps.shots_on,
                    ps.key_passes, ps.passes, ps.pass_accuracy, ps.tackles, ps.interceptions, ps.blocks,
                    ps.duels, ps.duels_won, ps.dribbles_won, ps.fouls_committed, ps.yellow_cards,
-                   ps.yellow_red_cards, ps.red_cards, ps.saves, ps.goals_conceded
+                   ps.yellow_red_cards, ps.red_cards, ps.saves, ps.goals_conceded, ps.dribbled_past,
+                   ps.penalties_committed
             from player_seasons ps where ps.minutes > 0 and not (ps.league_id = any(%s))""",
             [config.MATCH_PLAYER_LEAGUES], order_by="player_id, team_id, league_id"),
         other_offsets=q("""with l as (select league_id, left(position, 1) as pos,
@@ -450,7 +477,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     offsets by (league, position letter). retired: {player: last season}, no
     estimates after it (retired_players). detail: a dict to fill with the
     workings per (player, season): (evidence, weight, level, curve), for checking."""
-    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
+    seasons = defaultdict(lambda: {"sums": dict.fromkeys(SUMS, 0.0), "roles": Counter(), "broad": Counter(),
                                    "club": [0.0, 0.0], "games": 0, "ref_mins": 0})
     team_games = {(t, y): n for t, y, n in team_games}
     team_level = {(t, y): (float(r), n) for t, y, r, n in team_level}
@@ -504,11 +531,11 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     for (player, season), (sc, mins, pos, club) in raw.items():
         main_pos.setdefault(player, Counter())[pos] += mins
     other_offsets = {(lg, b): off for lg, b, off in other_offsets}
-    other = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "acc": True, "club": [0.0, 0.0],
-                                 "teams": Counter(), "broad": Counter(), "games": 0, "known": set()})
+    other = defaultdict(lambda: {"sums": dict.fromkeys(SUMS, 0.0), "acc": True, "club": [0.0, 0.0],
+                                 "teams": Counter(), "broad": Counter(), "games": 0, "known": set(), "apps": 0})
     for (player, team, league, season, broad, mins, n_apps, rating, goals, assists, shots_on, key_passes,
          passes, pass_acc, tackles, interceptions, blocks, duels, duels_won, dribbles_won, fouls, yellow,
-         yellow_red, red, saves, conceded) in other_seasons:
+         yellow_red, red, saves, conceded, dribbled_past, pens_committed) in other_seasons:
         e = other[(player, season)]
         sums = e["sums"]
         sums["minutes"] += mins
@@ -521,10 +548,12 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                      ("blocks", blocks), ("duels", duels), ("duels_won", duels_won),
                      ("dribbles_won", dribbles_won), ("fouls_committed", fouls),
                      ("yellow_cards", (yellow or 0) + (yellow_red or 0)), ("red_cards", red), ("saves", saves),
-                     ("goals_conceded", conceded)):
+                     ("goals_conceded", conceded), ("dribbled_past", dribbled_past),
+                     ("penalties_committed", pens_committed)):
             sums[k] += v or 0
             if v is not None:
                 e["known"].add(k)
+        e["apps"] += n_apps or 0
         if pass_acc is None:
             e["acc"] = False
         else:
@@ -552,6 +581,8 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                 m[k] = None
         if "saves" not in e["known"]:
             m["gk_rating"] = m["rating"]
+        if pos == "CB" and e["apps"] and m["rating"] is not None:   # goal bonus off, as per match
+            m["rating"] -= GOAL_RATING_BONUS * e["sums"]["goals"] / e["apps"]
         sc = sum(w * (m[k] - norms[pos][k][0]) / norms[pos][k][1] for k, w in WEIGHTS[pos].items() if m[k] is not None)
         mins = e["sums"]["minutes"]
         sh = min(mins / (90 * e["games"]), 1.0) if e["games"] else None
@@ -742,7 +773,7 @@ def compute_player_ratings(conn):
     for r in appearances:
         apps[r[0]].append({"team": r[1], "player": r[2], "minutes": r[3], "started": r[4],
                            "position": r[5], "role": r[6], "rating": _adjusted(r, offsets),
-                           "stats": r[11:]})
+                           "stats": r[11:], "opp_xg": r[-1]})
     injured = defaultdict(set)
     for fid, team, player in cached_rows(conn, "injuries", f"""
             select {WEEK.format('f.kickoff')} as part, i.fixture_id, i.team_id, i.player_id
