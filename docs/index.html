@@ -569,7 +569,7 @@
   .pitch .pos[aria-pressed="true"] { background: var(--series-blue); color: #fff; }
   .pitch .pos:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
   /* Player page pitch: rank and share of starts in each position he can play, the rest hollow */
-  .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .pp-period { width: fit-content; margin: 0 auto 8px; }
   .pitch.pp-pitch { max-width: 340px; }
   .pp-spot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
     min-width: 52px; padding: 3px 6px 4px; border-radius: 10px; line-height: 1.05; color: #f2f2f0; text-align: center;
@@ -2189,8 +2189,7 @@ function positionPitch(p) {
       <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct ? `${pct}%` : "–"}</span></div>`;
   }).join("");
   const periods = [["12m", "Last 12 months"], ["all", "Ever"]].filter(([k]) => pos[k]);
-  return `<div class="club-section pp-section"><div class="pp-head"><span class="modal-section" style="margin:0">Positions · rank and share of starts</span>
-      ${periods.length > 1 ? `<div class="seg">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}</div>
+  return `<div class="club-section pp-section">${periods.length > 1 ? `<div class="seg pp-period">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}
     <div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
   </div>`;
 }
