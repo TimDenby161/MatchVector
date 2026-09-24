@@ -339,8 +339,9 @@
   .years-btn:hover { border-color: var(--series-blue); }
   table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now,
   table.leaderboard.players.years td.col-posrank, table.leaderboard.players.years th.col-posrank { border-right: 1px solid var(--gridline); }
-  /* expanded years: the table keeps room for the player's name (at least ~220px) and swipes
-     sideways when the window is narrower than that, instead of squeezing the Player column */
+  /* expanded years: the table keeps room for the player's name (at least ~220px); the box grows
+     to the right into the free space (fitYearsBox, so its top-left corner stays put) and swipes
+     sideways when there isn't enough, instead of squeezing the Player column */
   .table-scroll:has(table.players.years) { overflow-x: auto; }
   table.leaderboard.players.years { min-width: 860px; }
   table.leaderboard.players th.col-future { font-style: italic; }
@@ -837,8 +838,6 @@
   @media (min-width: 1160px) {
     section[data-tab="table"] { position: relative; }
     body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
-    /* players with the years open: the page widens to fit them (up to 1130px) before it swipes */
-    body[data-tab="table"] main:has(table.players.years) { max-width: 1130px; }
     #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
     #table-side .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
     #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
@@ -1637,7 +1636,23 @@ function fitTopRows(wrap, capped = true) {
   const room = window.innerHeight - box.getBoundingClientRect().top - 12;
   box.style.maxHeight = `${Math.max(minH + 2, room)}px`;
 }
-window.addEventListener("resize", () => { if (state.rankings && state.tab === "table") fitTopRows($("#table-wrap"), tableFilterIsWide() || !!state.tableSearch.trim()); });
+window.addEventListener("resize", () => {
+  if (!state.rankings || state.tab !== "table") return;
+  fitTopRows($("#table-wrap"), tableFilterIsWide() || !!state.tableSearch.trim());
+  fitYearsBox($("#table-wrap"));
+});
+// Players with the years open: the box widens to the right, as far as the window allows (16px
+// short of its edge), to fit the extra columns; its left edge and the page don't move
+function fitYearsBox(wrap) {
+  const box = wrap.querySelector(".table-scroll");
+  if (!box) return;
+  box.style.width = "";
+  const table = box.querySelector("table.players.years");
+  if (!table) return;
+  const room = document.documentElement.clientWidth - box.getBoundingClientRect().left - 16;
+  const need = table.scrollWidth + box.offsetWidth - box.clientWidth;   // plus its borders
+  if (need > box.offsetWidth) box.style.width = `${Math.max(box.offsetWidth, Math.min(need, room))}px`;
+}
 
 function loadPlayerSeasons() {
   if (state.playerSeasons || state.playerSeasonsLoading) return;
@@ -1716,6 +1731,7 @@ function renderPlayers() {
       <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, shown, groups, open ? future : [])).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
+  fitYearsBox(wrap);
   // The rest of the rows go in BATCH_ROWS at a time as the bottom of the list scrolls into view
   // (inside the box when it scrolls, else on the page), so thousands of rows are never built at
   // once; a newer render drops the old observer
