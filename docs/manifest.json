@@ -1,6 +1,6 @@
 {
-  "name": "MatchVector",
-  "short_name": "MatchVector",
+  "name": "FootCorner",
+  "short_name": "FootCorner",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0d0d0d",

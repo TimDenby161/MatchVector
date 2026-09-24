@@ -1,4 +1,4 @@
-# MatchVector
+# FootCorner
 
 Pulls football data from [API-Football](https://www.api-football.com/) (v3) into a Supabase Postgres database.
 
