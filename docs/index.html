@@ -388,6 +388,9 @@
     background: color-mix(in srgb, var(--series-blue) 12%, transparent); color: var(--text-primary); }
   .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
+  .pos-period { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .pos-period-label { font-size: 12px; color: var(--text-secondary); width: 150px; flex-shrink: 0; }
+  .pos-period .pos-shares { margin-top: 0; }
   .season-now .spell + .spell { margin-top: 3px; }
   .season-now .dim { color: var(--text-muted); }
   .season-table .dim, .page-note { color: var(--text-muted); }
@@ -1875,9 +1878,8 @@ function renderPlayerPage(p) {
   const seasons = state.players.seasons || [];
   const detail = state.playerSeasons?.players?.[String(p.id)] || {};
   const posBySeason = state.playerSeasons?.positions?.[String(p.id)] || {};
-  const posAll = new Map();                // all seasons shown, together
-  for (const list of Object.values(posBySeason)) for (const [r, m] of list) posAll.set(r, (posAll.get(r) || 0) + m);
-  const posAllList = [...posAll].sort((a, b) => b[1] - a[1]);
+  const posRow = (label, list) => list?.length
+    ? `<div class="pos-period"><span class="pos-period-label">${label}</span><div class="pos-shares big">${positionShares(list)}</div></div>` : "";
   const born = state.playerSeasons?.born?.[String(p.id)];
   const group = GROUP_OF[p.position] || p.position;
   const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
@@ -1913,8 +1915,8 @@ function renderPlayerPage(p) {
       ${sameNat.length ? tile(`Among ${escapeHtml(p.nationality)}`, rankAmong(p, sameNat)) : ""}
       ${tile("All players", rankAmong(p, list))}
     </div>
-    ${posAllList.length ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played, ${seasonShort(seasons[seasons.length - 1])} to now (share of his minutes)</div>
-      <div class="pos-shares big">${positionShares(posAllList)}</div></div>` : ""}
+    ${posBySeason["all"] ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played (share of his minutes)</div>
+      ${posRow("Last 12 months", posBySeason["12m"])}${posRow("All time (since 2020/21)", posBySeason["all"])}</div>` : ""}
     ${seasonChart(p, seasons)}
     <div class="club-section"><div class="modal-section">Season by season</div>
       <table class="season-table"><thead><tr><th>Season</th><th class="num">Age</th><th>Club · club rank · minutes · rating · goals, assists · positions</th><th class="num">Rank</th></tr></thead>

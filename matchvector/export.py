@@ -417,6 +417,16 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
                where fp.player_id = any(%s) and f.season = any(%s) and f.status_short = any(%s) and fp.minutes > 0
                group by 1, 2, 3 order by 4 desc""", [ids, PLAYER_SEASONS, list(config.FINISHED_STATUSES)]):
         positions[player].setdefault(str(season), []).append([role, int(mins)])
+    # ... and over the last 12 months ("12m") and all our data from 2020/21 ("all")
+    for key, since in (("12m", "now() - interval '365 days'"), ("all", "'-infinity'::timestamptz")):
+        for player, role, mins in conn.execute(
+                f"""select fp.player_id, coalesce(fp.role, case when fp.started then fp.position else 'SUB' end),
+                           sum(fp.minutes)
+                    from fixture_players fp join fixtures f using (fixture_id)
+                    where fp.player_id = any(%s) and f.status_short = any(%s) and fp.minutes > 0
+                      and f.kickoff > {since}
+                    group by 1, 2 order by 3 desc""", [ids, list(config.FINISHED_STATUSES)]):
+            positions[player].setdefault(key, []).append([role, int(mins)])
     team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}
     names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))
     (out_dir / "player_seasons.json").write_text(json.dumps({
