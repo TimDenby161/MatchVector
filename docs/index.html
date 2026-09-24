@@ -2121,7 +2121,7 @@ function renderPlayerTab() {
   const el = $("#pl-tab");
   el.innerHTML = tab === "stats" ? playerStatsTab() : tab === "matches" ? playerMatchesTab()
     : tab === "career" ? playerCareerTab() : playerOverviewTab();
-  if (tab === "overview") drawPlayerChart();
+  if (tab === "overview" || tab === "career") drawPlayerChart();
 }
 
 // ---- Overview: next match, positions pitch, rank chart, recent form, this season
@@ -2130,8 +2130,7 @@ function playerOverviewTab() {
   const seasons = state.players.seasons || [];
   const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
   const hasMatchRanks = page?.matchRows?.some((m) => m.rank != null);
-  const hasSeasons = seasons.filter((y, k) => p.seasons?.[k] != null).length >= 2;
-  const chartMode = state.player.chart = !hasMatchRanks ? "seasons" : !hasSeasons ? "matches" : state.playerChart || "matches";
+  state.player.chart = "matches";
   const now = page ? sumSeason(page.seasonRows.filter((r) => r.season === seasons[0])) : null;
   const form = (page?.matchRows || []).slice(0, 10).reverse();
   return `
@@ -2139,12 +2138,10 @@ function playerOverviewTab() {
       const next = nextMatchCard(), pitch = positionPitch(p);
       return next && pitch ? `<div class="ov-top">${next}${pitch}</div>` : next + pitch;
     })()}
-    ${hasMatchRanks || hasSeasons ? `<div class="chart-card">
-      <div class="chart-head"><span class="chart-title">${chartMode === "matches" ? "Rank going into each match" : "Season ranks"}</span>
-        ${hasMatchRanks && hasSeasons ? `<div class="chart-ranges">${[["matches", "Matches"], ["seasons", "Seasons"]].map(([k, l]) =>
-          `<button type="button" class="filter-chip" data-pchart="${k}" aria-pressed="${chartMode === k}">${l}</button>`).join("")}</div>` : ""}</div>
+    ${hasMatchRanks ? `<div class="chart-card">
+      <div class="chart-head"><span class="chart-title">Rank going into each match</span></div>
       <div class="chart-wrap" id="pl-chart"></div>
-      ${chartMode === "matches" ? `<div class="chart-summary">His last ${page.matchRows.filter((m) => m.rank != null).length} league matches, and his rank now.</div>` : ""}
+      <div class="chart-summary">His last ${page.matchRows.filter((m) => m.rank != null).length} league matches, and his rank now.</div>
     </div>` : ""}
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · match rating</div>
       <div class="form-strip">${form.map((m) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${pageTeamName(m.opponent)} ${m.gf}–${m.ga} · ${m.minutes}′`)}">
@@ -2378,6 +2375,8 @@ function playerMatchesTab() {
 function playerCareerTab() {
   const { p } = state.player;
   const seasons = state.players.seasons || [];
+  const hasSeasons = seasons.filter((y, k) => p.seasons?.[k] != null).length >= 2;
+  state.player.chart = "seasons";
   const detail = state.playerSeasons?.players?.[String(p.id)] || {};
   const posBySeason = state.playerSeasons?.positions?.[String(p.id)] || {};
   const spellHtml = (sp) => sp.map(([team, mins, clubRank, rating, goals, assists]) =>
@@ -2396,7 +2395,9 @@ function playerCareerTab() {
   }).join("");
   const now = detail.now || [];
   return `
-    <div class="club-section" style="margin-top:0"><div class="modal-section">Season by season</div>
+    ${hasSeasons ? `<div class="chart-card"><div class="chart-head"><span class="chart-title">Season ranks</span></div>
+      <div class="chart-wrap" id="pl-chart"></div></div>` : ""}
+    <div class="club-section"${hasSeasons ? "" : ' style="margin-top:0"'}><div class="modal-section">Season by season</div>
       <table class="season-table"><thead><tr><th>Season</th><th>Clubs · club rank · minutes · rating · goals, assists</th><th class="num">Rank</th></tr></thead>
       <tbody>${rows}</tbody></table>
       <div class="page-note">A season's rank starts from his clubs' level (LT ALGO over his matches) and his stats against players in his position, then follows the typical age curve for his position from a level of his own: a season only moves off that curve as far as its minutes justify. Outlined ranks are estimated.</div>
@@ -2404,12 +2405,11 @@ function playerCareerTab() {
     ${now.length ? `<div class="club-section"><div class="modal-section">His current rank is built on · last 20 appearances</div><div class="season-now">${spellHtml(now)}</div></div>` : ""}`;
 }
 $("#club-body").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pchart], [data-pitch]");
+  const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pitch]");
   if (!b || !state.player) return;
   if (b.dataset.ptab) state.playerTab = b.dataset.ptab;
   if (b.dataset.pseason) state.player.season = Number(b.dataset.pseason);
   if (b.dataset.per90) state.playerPer90 = b.dataset.per90 === "1";
-  if (b.dataset.pchart) state.playerChart = b.dataset.pchart;
   if (b.dataset.pitch) state.pitchPeriod = b.dataset.pitch;
   renderPlayerTab();
 });
