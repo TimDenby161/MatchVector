@@ -332,6 +332,9 @@ def export_players(conn, out_dir=OUT_DIR):
         role_mins[player][role] = mins
     pos_12m = {p: sorted((r for r, m in rm.items() if m >= POSITION_SHARE * sum(rm.values())), key=lambda r: -rm[r])
                for p, rm in role_mins.items()}
+    # his position on the site: where he's started most minutes over the last 12 months (his
+    # latest rating window's most common start if he hasn't started in that time)
+    main_pos = {p: max(rm, key=rm.get) for p, rm in role_mins.items()}
     lineups = conn.execute(
         """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
                   p.name, pl.position, pl.player_rank
@@ -352,7 +355,7 @@ def export_players(conn, out_dir=OUT_DIR):
         "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age", "estimated",
                    "nationality", "positions_12m"],
         "seasons": PLAYER_SEASONS,
-        "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6],
+        "players": [[r[0], r[1], main_pos.get(r[0], r[2]), float(r[3]), r[4], r[5], r[6],
                      [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7],
                      [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]], r[8],
                      pos_12m.get(r[0], [])] for r in players],
