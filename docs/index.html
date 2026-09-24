@@ -2721,7 +2721,10 @@ function positionPitch(p) {
   const mins = {};
   for (const [r, m] of rows) mins[r] = (mins[r] || 0) + m;
   const share = (r) => total ? Math.round(100 * (mins[r] || 0) / total) : 0;
-  const spots = PITCH_SPOTS.map(([r, x, y]) => {
+  // turned round from the filter's pitch: his keeper at the top, attacking downwards, so his
+  // left side (LB, LW) is on the right as you look at it
+  const spots = PITCH_SPOTS.map(([r, x0, y0]) => {
+    const x = 100 - x0, y = 100 - y0;
     const g = GROUP_OF[r], rank = rankIn(g), pct = share(r);
     if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})">
       <span class="pp-pos">${r}</span></div>`;
