@@ -326,7 +326,7 @@
   table.leaderboard.players th.col-s5, table.leaderboard.players td.col-s5 { padding-left: 12px; width: 46px; }
   /* current season: last column, bold */
   table.leaderboard.players th.col-now { color: var(--text-primary); font-weight: 800; }
-  table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { border-left: 1px solid var(--gridline); padding-left: 8px; padding-right: 8px; width: 56px; text-align: center; }
+  table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { border-left: 1px solid var(--gridline); padding-left: 8px; padding-right: 8px; width: 96px; text-align: center; }
   table.leaderboard.players td.col-now .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
   /* ages centred, so they sit between Pos and the Ability divider rather than against it */
   table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 52px; text-align: center; padding-left: 4px; padding-right: 4px; }
@@ -334,7 +334,7 @@
   /* a season estimated from the age curve (no minutes in covered leagues): outlined, not filled */
   table.season-table .est .rel-chip, table.leaderboard.players .est .rel-chip { background: transparent; box-shadow: inset 0 0 0 1px currentColor; font-style: italic; opacity: .8; }
   /* Years toggle: past seasons left of Ability, projected ones (age curve) right of it, fainter */
-  table.leaderboard.players th.col-years, table.leaderboard.players td.col-years { width: 40px; padding-left: 6px; padding-right: 6px; text-align: center; }
+  .now-head { display: inline-flex; align-items: center; gap: 6px; }
   .years-btn { font: inherit; font-size: 15px; font-weight: 700; line-height: 1; width: 24px; height: 24px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--series-blue); cursor: pointer; }
   .years-btn:hover { border-color: var(--series-blue); }
@@ -446,7 +446,7 @@
   .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
   /* "As ST" column (position filter on): in Ability's place, styled like it, lightly tinted */
   table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank {
-    width: 64px; padding-left: 10px; padding-right: 12px; text-align: center; white-space: nowrap;
+    width: 96px; padding-left: 8px; padding-right: 8px; text-align: center; white-space: nowrap;
     border-left: 1px solid var(--gridline); background: color-mix(in srgb, var(--series-blue) 6%, transparent); }
   table.leaderboard.players th.col-posrank { color: var(--series-blue); font-weight: 800; letter-spacing: 0; }
   table.leaderboard.players td.col-posrank .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
@@ -911,8 +911,9 @@
     table.leaderboard.players td:nth-child(2) { overflow: hidden; }
     table.leaderboard.players th:nth-child(3), table.leaderboard.players td:nth-child(3) { width: 34px; padding-left: 2px; padding-right: 2px; }
     table.leaderboard.players th.col-age, table.leaderboard.players td.col-age { width: 38px; padding-left: 2px; padding-right: 2px; }
-    table.leaderboard.players th.col-now, table.leaderboard.players td.col-now { width: 50px; padding-left: 6px; padding-right: 6px; }
-    table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { width: 54px; padding-left: 6px; padding-right: 6px; }
+    table.leaderboard.players th.col-now, table.leaderboard.players td.col-now,
+    table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { width: 86px; padding-left: 4px; padding-right: 4px; }
+    .now-head { gap: 4px; }
   }
   /* Phones and small tablets, Rankings tab: the view toggle and search first, the league
      chips in one row that swipes sideways, and the player filters behind a Filters button */
@@ -1727,7 +1728,10 @@ function renderPlayers() {
     `<th class="num sortable${key === k ? " active" : ""}${cls}" data-sort="${k}" data-tip="${escapeHtml(tip + " Click to sort.")}">${label}</th>`;
   const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
   // With a position filter, "As ST" takes Ability's place (Ability is his rank in his own position)
-  const posTh = groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). Only positions he has started in get a number. With several positions picked, his best of them.`, " col-posrank") : "";
+  // the + / − (other seasons) sits in the Ability (or "As ST") heading, and the values centre under both
+  const yearsBtn = future.length || seasons.length > 1 ? `<button type="button" class="years-btn" data-years aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} other seasons" title="${open ? "Hide" : "Show"} past and projected seasons">${open ? "−" : "+"}</button>` : "";
+  const nowHead = (text) => `<span class="now-head">${text}${yearsBtn}</span>`;
+  const posTh = groups.length ? th("pos", nowHead(groups.length === 1 ? `As ${groups[0]}` : "In pos"), `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). Only positions he has started in get a number. With several positions picked, his best of them.`, " col-posrank") : "";
   if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No players match these filters.</div>`; return; }
   wrap.innerHTML = `
     <div class="table-scroll"><table class="leaderboard players${open ? " years" : ""}">
@@ -1736,9 +1740,8 @@ function renderPlayers() {
         <th data-tip="Player, with his club's badge (click it for the club's page) and his country's flag (click it for the national team).">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
-        ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => i === 0 && groups.length ? posTh : th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
+        ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => i === 0 && groups.length ? posTh : th(`s${y}`, i === 0 ? nowHead("Ability") : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
         ${open ? future.map((y, j) => th(`f${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Projected for ${seasonName(y)}: his Ability moved along the typical age curve for his position, from his age now to his age that season (young players rise, from 31 (33 for keepers) they decline, faster each year). A guide, not a forecast of his form.`, ` col-season col-future col-f${j}`)).join("") : ""}
-        <th class="col-years">${future.length || seasons.length > 1 ? `<button type="button" class="years-btn" data-years aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} other seasons" title="${open ? "Hide" : "Show"} past and projected seasons">${open ? "−" : "+"}</button>` : ""}</th>
       </tr></thead>
       <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, shown, groups, open ? future : [])).join("")}</tbody>
     </table></div>`;
@@ -1775,7 +1778,6 @@ function playerRow(p, i, seasons, groups = selectedGroups(), future = []) {
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
           ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => k === 0 && groups.length ? `<td class="num col-posrank">${posRank(p, groups) == null ? `<span class="dim">–</span>` : rankChipSmall(posRank(p, groups))}</td>` : `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
           ${future.map((y, j) => `<td class="num col-season col-future col-f${j}">${p.future?.[j] == null ? `<span class="dim">–</span>` : rankChipSmall(p.future[j])}</td>`).join("")}
-          <td class="col-years"></td>
         </tr>`;
 }
 
