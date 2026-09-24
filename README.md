@@ -137,7 +137,7 @@ These are set by judgement. The results data can't measure position value, becau
 - **Actual XI rating:** the average rank of the XI that started, for finished matches.
 - `predicted_lineups` holds the predicted XI for upcoming matches.
 
-Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group). Each row has the player's club badge and photo, with his club and nationality under his name. Clicking his name opens a **player page** (`#/player/<id>`) with:
+Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group). Each row has the player's club badge and photo, with his club and nationality under his name. A player is listed if he has 450+ minutes in his last 20 appearances, or a season with 1,500+ minutes among the seasons shown. The second rule keeps established players who've been injured, such as John Stones. A nationality can be corrected by hand in `player_overrides`, for example Elliot Anderson as England. The nightly sync would overwrite a change made on `players` itself. Clicking his name opens a **player page** (`#/player/<id>`) with:
 - his club, nationality, position and age;
 - where he ranks among players in his position, among his nationality, and overall;
 - a chart of his season ranks, with estimated seasons hollow;

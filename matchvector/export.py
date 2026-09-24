@@ -290,19 +290,28 @@ def export_bets(conn, out_dir=OUT_DIR):
 PLAYER_SEASONS = list(range(2026, 2020, -1))     # season ranks shown, newest first
 
 
+LISTED = """p.current_rank is not null and (p.rank_minutes >= 450 or exists (
+    select 1 from player_season_ranks r where r.player_id = p.player_id and r.season = any(%s)
+      and r.minutes >= 1500))"""
+
+
 def export_players(conn, out_dir=OUT_DIR):
     """Current player ranks, season ranks and each team's predicted XI for its next match
     (players.json). A season rank is the player's average rank across that season (after each
     match, weighted by minutes; player_season_ranks), blank if he didn't play in these leagues."""
+    # Listed: 450+ minutes in his last 20 appearances, or a 1,500+ minute season in the seasons
+    # shown (an established player back from injury, e.g. John Stones). Nationality can be
+    # corrected by hand in player_overrides
     players = conn.execute(
-        """select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, x.team_id,
-                  f.league_id, extract(year from age(p.birth_date))::int, p.nationality
+        f"""select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, x.team_id,
+                  f.league_id, extract(year from age(p.birth_date))::int, coalesce(o.nationality, p.nationality)
            from players p
+           left join player_overrides o using (player_id)
            join lateral (select fp.team_id, fp.fixture_id from fixture_players fp
                          where fp.player_id = p.player_id order by fp.fixture_id desc limit 1) x on true
            join fixtures f on f.fixture_id = x.fixture_id
-           where p.current_rank is not null and p.rank_minutes >= 450
-           order by p.current_rank desc""").fetchall()
+           where {LISTED}
+           order by p.current_rank desc""", [PLAYER_SEASONS]).fetchall()
     season_ranks, estimated = defaultdict(dict), defaultdict(set)
     for player, season, rank, minutes in conn.execute(
             "select player_id, season, season_rank, minutes from player_season_ranks where season = any(%s)",
@@ -359,8 +368,7 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
     appearances, the ones the current rank is built from): the clubs he played for, his minutes
     for each, the club's average rank over those matches and his average match rating.
     """
-    ids = [r[0] for r in conn.execute(
-        "select player_id from players where current_rank is not null and rank_minutes >= 450")]
+    ids = [r[0] for r in conn.execute(f"select player_id from players p where {LISTED}", [PLAYER_SEASONS])]
     per_club = """sum(fp.minutes),
                   sum(h.lt_before * fp.minutes) / nullif(sum(fp.minutes) filter (where h.lt_before is not null), 0),
                   sum(fp.rating * fp.minutes) filter (where fp.rating is not null)

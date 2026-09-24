@@ -320,6 +320,13 @@ create table if not exists player_career_teams (
     primary key (player_id, season, team_id)
 );
 
+-- Hand corrections to player details from API-Football (which the nightly sync would
+-- overwrite on players itself); applied when the site data is exported
+create table if not exists player_overrides (
+    player_id    int primary key,
+    nationality  text              -- null: keep API-Football's
+);
+
 -- Latest current-club check (/players/squads) of a player who hasn't played this season
 -- (ingest.check_retired): one made after his last season finding no club marks him retired
 create table if not exists player_career_checks (
