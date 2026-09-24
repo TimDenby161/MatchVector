@@ -769,7 +769,9 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     #    Gakpo as a striker is judged on striker stats against strikers. Then less for a position
     #    he hasn't played: up to FAMILIARITY_PENALTY if he's never started there, none once it's
     #    FAMILIAR_SHARE of his (recency-weighted) starting minutes in those seasons. Only positions
-    #    he has started in at some point in our data get a rank
+    #    he has started in at some point in our data get a rank. Anchored on the position of his
+    #    latest season, which equals his current rank (Cherki, a winger in 24/25 and an attacking
+    #    mid since, isn't rated higher as an AM than his overall 92.1)
     if position_ranks is not None:
         ever = defaultdict(set)              # player -> groups he has ever started in
         for (player, _), e in seasons.items():
@@ -777,6 +779,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         now = {p: r for p, y, r, _, _ in rows if y == last_season}
         acc = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
         played = defaultdict(Counter)        # player -> {group: recency-weighted starting minutes}
+        latest = {}                          # player -> (season, group) of his latest season used
         for key, (sc, mins, pos, club) in raw.items():
             player, season = key
             if (pos == "GK" or player not in now or mins < POSITION_RANK_MINUTES
@@ -784,6 +787,8 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                 continue
             own = final_rank(pct(sc, pos), club, pos, share.get(key))
             w = mins * LEVEL_DECAY ** (last_season - season)
+            if season > latest.get(player, (0, None))[0]:
+                latest[player] = (season, pos)
             for role, rm in seasons[key]["roles"].items():
                 if role_group(role):
                     played[player][role_group(role)] += rm * LEVEL_DECAY ** (last_season - season)
@@ -797,8 +802,12 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         for player, groups in acc.items():
             starts = sum(played[player].values())
             fam = lambda g: min(played[player][g] / starts / FAMILIAR_SHARE, 1) if starts else 0.0
+            # anchored so his current position (his latest season's) equals his current rank
+            main = latest[player][1]
+            base = groups[main][0] / groups[main][1] if groups.get(main, [0, 0])[1] else 0.0
             position_ranks[player] = {
-                g: round(min(max(now[player] + d / w - FAMILIARITY_PENALTY * (1 - fam(g)), 0), 100), 1)
+                g: round(min(max(now[player] + d / w - base
+                                 - (0 if g == main else FAMILIARITY_PENALTY * (1 - fam(g))), 0), 100), 1)
                 for g, (d, w) in groups.items() if w and g in ever[player]}
     return rows
 
