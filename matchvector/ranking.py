@@ -29,7 +29,8 @@ Summary figures (Ranking tab), where history = [starting rank, rank after each m
 
 Reliability (0-100, not in the sheet):
     games_factor     = 1 - exp(-played / 35)       (66% after 38 games, 89% after 76)
-    rank_volatility  = standard deviation of the last 30 per-match rank changes
+    rank_volatility  = standard deviation of the last 30 per-match rank changes, in K_FACTOR units
+                       (a match with xG counts its change x K_FACTOR / K_FACTOR_XG)
     stability_factor = min(1, (10.5 / rank_volatility) ** 3)   (1 if under 10 games)
     reliability      = 100 * games_factor * stability_factor
 """
@@ -102,8 +103,11 @@ def run(matches, starting_rank):
     return rows, history
 
 
-def summarise(history):
-    """Ranking-tab figures for one team's history. None if no matches played."""
+def summarise(history, changes=None):
+    """Ranking-tab figures for one team's history. None if no matches played.
+
+    changes: per-match rank changes for the volatility, in K_FACTOR units (see _replay);
+    defaults to the raw differences of history."""
     played = len(history) - 1
     if played == 0:
         return None
@@ -111,7 +115,9 @@ def summarise(history):
     rank_30, rank_100 = mean(history[-30:]), mean(history[-100:])
     st = 0.6 * history[-1] + 0.2 * mean(history[-3:]) + 0.1 * rank_30 + 0.1 * rank_100
     lt = 0.1 * st + 0.3 * rank_30 + 0.6 * rank_100
-    changes = [b - a for a, b in zip(history, history[1:])][-VOLATILITY_WINDOW:]
+    if changes is None:
+        changes = [b - a for a, b in zip(history, history[1:])]
+    changes = changes[-VOLATILITY_WINDOW:]
     volatility = statistics.stdev(changes) if len(changes) >= 2 else None
     games_factor = 1 - math.exp(-played / GAMES_SCALE)
     stability = 1.0
@@ -161,12 +167,15 @@ def update_rankings(conn):
         league_id = first_league.get(team, first_comp.get(team))
         return float(levels.get(league_id, DEFAULT_STARTING_RANK))
 
-    _replay(conn, fixtures, starting_rank)
-    _rebuild_summary(conn, fixtures, first_league, first_comp)
+    vol_changes = _replay(conn, fixtures, starting_rank)
+    _rebuild_summary(conn, fixtures, first_league, first_comp, vol_changes)
     conn.commit()
 
 
 def _replay(conn, fixtures, starting_rank):
+    """Rebuild team_rank_history. Returns {team: rank changes in K_FACTOR units} for the
+    volatility: matches with xG move ranks by K_FACTOR_XG, so their changes are scaled back,
+    and volatility measures how surprising a team's results are rather than the step size."""
     conn.execute("truncate team_rank_history")
     xg = {(fid, is_home): float(v) for fid, is_home, v in conn.execute(
         "select fixture_id, is_home, expected_goals from fixture_team_stats "
@@ -178,9 +187,11 @@ def _replay(conn, fixtures, starting_rank):
 
     match_no = {}
     recent = {}    # last 101 history values per team, for LT ALGO going into each match
+    vol_changes = {}
 
     buf = io.StringIO()
     for m, h, a, exp_diff, act_diff, change in rows:
+        scale = K_FACTOR / actual_diff(m)[1]
         for team, opp, is_home, before, delta in (
             (m.home, m.away, True, h, change),
             (m.away, m.home, False, a, -change),
@@ -191,6 +202,7 @@ def _replay(conn, fixtures, starting_rank):
             lt_before = s["lt_algo"] if s else before
             hist.append(before + delta)
             del hist[:-101]            # LT ALGO only looks at the last 100 values
+            vol_changes.setdefault(team, []).append(delta * scale)
             buf.write("\t".join(map(str, (
                 m.key, team, match_no[team], kickoffs[m.key].isoformat(),
                 "t" if is_home else "f", opp, before, before + delta, exp_diff, act_diff, delta,
@@ -202,9 +214,10 @@ def _replay(conn, fixtures, starting_rank):
                       "lt_before) from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: replayed %d fixtures", len(rows))
+    return vol_changes
 
 
-def _rebuild_summary(conn, fixtures, first_league, first_comp):
+def _rebuild_summary(conn, fixtures, first_league, first_comp, vol_changes):
     """Recreate team_rankings (the Ranking tab) from the full history."""
     history, last_match = {}, {}
     for team, rank_before, rank_after, kickoff in conn.execute(
@@ -238,7 +251,7 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp):
 
     buf = io.StringIO()
     for team, hist in history.items():
-        s = summarise(hist)
+        s = summarise(hist, vol_changes[team])
         g = goals.get(team, {"hg": [], "ha": [], "ag": [], "aa": []})
         buf.write("\t".join(map(str, (
             team, latest_league.get(team, first_comp.get(team)), hist[0], s["played"],

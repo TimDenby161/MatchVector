@@ -149,7 +149,7 @@ A team's first rank is `leagues.starting_rank` of the first league it plays in. 
 - `team_rankings` holds the current summary, like the Ranking tab: current rank, 30 and 100 Ranking, ST ALGO, LT ALGO, and HG/HA/AG/AA over the last 12 months.
 - `team_rankings` also has a `reliability` score from 0 to 100, which isn't in the sheet:
   - It's mainly driven by games played: a team scores 66% after 38 games, 89% after 76 and 96% after 114.
-  - It's reduced when a team's rank swings a lot. `rank_volatility` is the standard deviation of the team's last 30 per-match rank changes. At 10.5 or below (about 78% of teams) there's no reduction. Above that the score falls with the cube: 11.8 gives ×0.70 and 14 gives ×0.42.
+  - It's reduced when a team's rank swings a lot. `rank_volatility` is the standard deviation of the team's last 30 per-match rank changes, measured at K 6: a match with xG moves the rank with K 10, so its change is scaled by 6/10. That way it measures how surprising a team's results are, not the size of the step. At 10.5 or below (about 78% of teams) there's no reduction. Above that the score falls with the cube: 11.8 gives ×0.70 and 14 gives ×0.42.
   - The constants are at the top of `matchvector/ranking.py`.
 
 ```bash
