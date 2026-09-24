@@ -157,13 +157,18 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 2. the club the weekly current-club check found this season, which is often outside our leagues;
 3. his last appearance, if neither of those is known.
 
-So a player who has left drops off his old club's list, even before he plays for his new one. A nationality can be corrected by hand in `player_overrides`, for example Elliot Anderson as England. The nightly sync would overwrite a change made on `players` itself. Clicking his name opens a **player page** (`#/player/<id>`) with:
-- his club, nationality, position and age;
-- where he ranks among players in his position, among his nationality, and overall;
-- a chart of his season ranks, with estimated seasons hollow;
-- **positions played:** his share of minutes in each position, over the last 12 months, all time (our data from 2020/21) and each season as shares of his starting minutes (the role he started in, from the line-up and formation; minutes off the bench have no position and aren't counted);
-- a season-by-season table: club, club rank, minutes, rating, goals and assists, and which position group the season was rated as;
-- his last 20 appearances.
+So a player who has left drops off his old club's list, even before he plays for his new one. A nationality can be corrected by hand in `player_overrides`, for example Elliot Anderson as England. The nightly sync would overwrite a change made on `players` itself. Clicking his name opens a **player page** (`#/player/<id>`). A header shows his club, league, position, age, nationality and current rank, and four tabs sit under it:
+- **Overview:**
+  - his club's next match, with the win chance, the projected score, and whether he's in the predicted XI, doubtful or out (with the injury reason);
+  - where he ranks among players in his position, among his nationality, and overall;
+  - a chart of his rank going into each of his last 20 league matches, or of his season ranks (estimated seasons hollow);
+  - **a pitch of his positions** (the spots of the position filter): in every position he can play, his rank there and his share of starting minutes in that spot, over the last 12 months or since 2020/21. Ranks are per role group, so LB and RB share his full-back rank. A spot he has a rank for but no starts in is dashed, and positions he has no rank in are hollow. Starting minutes are the role he started in, from the line-up and formation; minutes off the bench have no position and aren't counted;
+  - his match ratings over the last 10 matches, and this season so far.
+- **Stats:** one season's league stats, as totals or per 90 minutes: attacking, passing, defending and discipline (goalkeeping for keepers), added up across his clubs that season.
+- **Matches:** his last 20 league appearances, with the result, minutes, position, key stats, cards, match rating and his rank going into the match.
+- **Career:** a season-by-season table (club, club rank, minutes, rating, goals and assists, positions, and which position group the season was rated as), and the clubs his current rank is built on.
+
+The Stats and Matches tabs, and the injury status, come from `docs/data/players/<player_id>.json`, which is loaded only when the page opens. `export_player_pages` writes one file for each listed player, about 2.5 KB each. It builds them from the query cache (appearances, finished fixtures and the season totals in leagues without per-match data), so the only new database reads are the per-match ranks for those 20 matches and injuries for upcoming fixtures. Season stats in leagues without per-match data come from `player_seasons` totals, so starts and pass accuracy are missing there.
 
 Clicking a nationality opens a **nationality page** (`#/nation/<name>`) with:
 - how many ranked players it has, the best XI's average rank, and the average age;

@@ -375,7 +375,7 @@
   a.nat-link:hover, a.nat-link:focus-visible { text-decoration: underline; }
   /* Player and nationality pages */
   .player-photo-lg { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--chip-bg); }
-  .club-head .head-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+  .club-head .head-meta, .pl-hero .head-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
   .season-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .season-table th { text-align: left; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
     letter-spacing: .04em; padding: 4px 6px 6px 0; }
@@ -460,8 +460,9 @@
   .mr-opp .club-logo { width: 18px; height: 18px; flex: none; }
   .mr-res { font-weight: 700; font-variant-numeric: tabular-nums; }
   .mr-rating { text-align: right; }
-  .mr-sub { grid-column: 2 / -1; font-size: 11px; color: var(--text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
-  .mr-rank { float: right; }
+  .mr-sub { grid-column: 2 / -1; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    font-size: 11px; color: var(--text-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .mr-rank { flex: none; white-space: nowrap; }
   .card { display: inline-block; width: 8px; height: 11px; border-radius: 1.5px; background: var(--status-warning); vertical-align: -1px; }
   .card.red { background: var(--status-critical); }
   @media (max-width: 480px) {
@@ -472,7 +473,10 @@
     .pl-hero-rank .val { font-size: 23px; }
     .page-tabs button { padding: 8px 10px 7px; }
     #pl-tab .team-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    #pl-tab .team-stats.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #pl-tab .team-stats.compact { grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; }
+    #pl-tab .team-stats.compact .team-stat { padding: 7px 4px; }
+    .stats-controls { flex-wrap: wrap; }
+    .stats-controls .chip-scroll { flex: 1 1 100%; margin: 0 -12px; padding: 0 12px; }
     .stat-groups { grid-template-columns: minmax(0, 1fr); }
     .form-strip { gap: 3px; }
     .form-cell .rel-chip { font-size: 10.5px; padding: 3px 0; }
@@ -480,6 +484,9 @@
     .match-row { grid-template-columns: 42px minmax(0, 1fr) auto 40px; column-gap: 6px; }
     .season-table td:nth-child(2) { font-size: 12px; }
     .pos-period-label { width: auto; flex-basis: 100%; }
+    .pitch.pp-pitch { max-width: none; }
+    .pp-spot { min-width: 48px; padding: 2px 5px 3px; }
+    .pp-spot .pp-rank { font-size: 17px; }
   }
   .rated-as { font-size: 11px; color: var(--text-muted); align-self: center; margin-left: 2px; }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
@@ -562,6 +569,23 @@
   .pitch .pos:hover { background: rgba(255,255,255,0.28); }
   .pitch .pos[aria-pressed="true"] { background: var(--series-blue); color: #fff; }
   .pitch .pos:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+  /* Player page pitch: rank and share of starts in each position he can play, the rest hollow */
+  .pp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .pitch.pp-pitch { max-width: 340px; }
+  .pp-spot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
+    min-width: 52px; padding: 3px 6px 4px; border-radius: 10px; line-height: 1.05; color: #f2f2f0; text-align: center;
+    background: rgba(255,255,255,0.13); border: 1.5px solid currentColor; }
+  .pp-spot.rel-4 { color: #3ecf5a; } .pp-spot.rel-3 { color: #f0c43a; } .pp-spot.rel-2 { color: #f08a5a; } .pp-spot.rel-1 { color: #f07878; }
+  .pp-spot .pp-pos { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.75); letter-spacing: .03em; }
+  .pp-spot .pp-rank { font-size: 19px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .pp-spot .pp-pct { font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+  .pp-spot.main { background: rgba(255,255,255,0.24); border-width: 2.5px; }
+  .pp-spot.unplayed { border-style: dashed; background: rgba(255,255,255,0.07); }
+  .pp-spot.unplayed .pp-pct { color: rgba(255,255,255,0.5); }
+  .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
+  .pp-spot.hollow .pp-pos { color: inherit; }
+  .pp-note { max-width: 520px; }
+  .pp-section { margin-bottom: 16px; }
   #age-filter[hidden] { display: none; }
   /* Club and nationality filter: type-ahead inputs, picks shown as removable chips */
   #who-filter { order: 0; margin-bottom: 10px; }
@@ -2104,9 +2128,6 @@ function playerOverviewTab() {
   const sameGroup = list.filter((x) => (GROUP_OF[x.position] || x.position) === group);
   const sameNat = p.nationality ? list.filter((x) => x.nationality === p.nationality) : [];
   const among = (pool) => { const [n, of] = rankAmong(p, pool).slice(1).split(" of "); return [`#${n}`, `of ${of}`]; };
-  const posBySeason = state.playerSeasons?.positions?.[String(p.id)] || {};
-  const posRow = (label, rows) => rows?.length
-    ? `<div class="pos-period"><span class="pos-period-label">${label}</span><div class="pos-shares big">${positionShares(rows)}</div></div>` : "";
   const hasMatchRanks = page?.matchRows?.some((m) => m.rank != null);
   const hasSeasons = seasons.filter((y, k) => p.seasons?.[k] != null).length >= 2;
   const chartMode = state.player.chart = !hasMatchRanks ? "seasons" : !hasSeasons ? "matches" : state.playerChart || "matches";
@@ -2116,10 +2137,11 @@ function playerOverviewTab() {
     ${nextMatchCard()}
     <div class="team-stats">
       ${tile(`Among ${GROUP_NAME[group] || "his position"}`, ...among(sameGroup))}
-      ${sameNat.length ? tile(`Among ${escapeHtml(p.nationality)}`, ...among(sameNat)) : ""}
+      ${sameNat.length ? tile(`${escapeHtml(p.nationality)} players`, ...among(sameNat)) : ""}
       ${tile("All players", ...among(list))}
       ${tile("Minutes", p.minutes.toLocaleString(), "last 20 apps")}
     </div>
+    ${positionPitch(p)}
     ${hasMatchRanks || hasSeasons ? `<div class="chart-card">
       <div class="chart-head"><span class="chart-title">${chartMode === "matches" ? "Rank going into each match" : "Season ranks"}</span>
         ${hasMatchRanks && hasSeasons ? `<div class="chart-ranges">${[["matches", "Matches"], ["seasons", "Seasons"]].map(([k, l]) =>
@@ -2138,14 +2160,41 @@ function playerOverviewTab() {
         ${tile("Rating", now.rating != null ? now.rating.toFixed(2) : "–")}
         ${tile("Minutes", now.minutes.toLocaleString())}
       </div></div>` : ""}
-    ${posBySeason["all"] ? `<div class="club-section"><div class="modal-section">Positions played · share of starting minutes</div>
-      ${posRow("Last 12 months", posBySeason["12m"])}${posRow("Since 2020/21", posBySeason["all"])}</div>` : ""}
-    ${p.position_ranks && Object.keys(p.position_ranks).length ? `<div class="club-section"><div class="modal-section">Rank in each position (now)</div>
-      <div class="pos-shares big">${Object.entries(p.position_ranks).sort((a, b) => b[1] - a[1]).map(([g, r]) =>
-        `<span class="pos-share${g === group ? "" : " sub"}" title="${escapeHtml(GROUP_SINGLE[g])}">${escapeHtml(g)} ${Math.round(r)}</span>`).join("")}</div>
-      <div class="page-note">His recent stats scored as each position against its players, with up to 6 points off for a position he hasn't played much.</div></div>` : ""}`;
+    `;
 }
 const resClass = (m) => m.gf > m.ga ? "res-w" : m.gf === m.ga ? "res-d" : "res-l";
+
+// His positions on a pitch (the spots of the position filter): in every position he can play,
+// his rank there (his recent stats scored as that position; one per role group, so LB and RB
+// share the full-back rank) and his share of starting minutes in that spot. Positions he has no
+// rank in are hollow. Keepers have no position_ranks: their keeper rank is their rank.
+function positionPitch(p) {
+  const pos = state.playerSeasons?.positions?.[String(p.id)] || {};
+  const group = GROUP_OF[p.position];
+  const rankIn = (g) => p.position_ranks?.[g] ?? (g === group ? p.rank : null);
+  if (!PITCH_SPOTS.some(([r]) => rankIn(GROUP_OF[r]) != null)) return "";
+  const period = pos[state.pitchPeriod] ? state.pitchPeriod : pos["12m"] ? "12m" : "all";
+  const rows = (pos[period] || []).filter(([r]) => r !== "SUB");
+  const total = rows.reduce((a, [, m]) => a + m, 0);
+  const mins = {};
+  for (const [r, m] of rows) mins[r] = (mins[r] || 0) + m;
+  const share = (r) => total ? Math.round(100 * (mins[r] || 0) / total) : 0;
+  const unplaced = total ? 100 * rows.filter(([r]) => POS_WORD[r]).reduce((a, [, m]) => a + m, 0) / total : 0;
+  const spots = PITCH_SPOTS.map(([r, x, y]) => {
+    const g = GROUP_OF[r], rank = rankIn(g), pct = share(r);
+    if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})">
+      <span class="pp-pos">${r}</span></div>`;
+    return `<div class="pp-spot rel-${rankTier(rank)}${r === p.position ? " main" : ""}${pct ? "" : " unplayed"}" style="left:${x}%;top:${y}%"
+        title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · ${pct}% of his starting minutes">
+      <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct ? `${pct}%` : "–"}</span></div>`;
+  }).join("");
+  const periods = [["12m", "Last 12 months"], ["all", "Since 2020/21"]].filter(([k]) => pos[k]);
+  return `<div class="club-section pp-section"><div class="pp-head"><span class="modal-section" style="margin:0">Positions · rank and share of starts</span>
+      ${periods.length > 1 ? `<div class="seg">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}</div>
+    <div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
+    <div class="page-note pp-note">Big number: his rank in that position (his recent stats scored as it, with up to 6 points off for a position he hasn't played much). Percentage: his share of starting minutes there${period === "12m" ? " over the last 12 months" : " since 2020/21"}${unplaced >= 1 ? `, with ${Math.round(unplaced)}% of starts having no recorded position` : ""}. Hollow: positions he hasn't started in.</div>
+  </div>`;
+}
 
 // His club's next match: when, who, the model's view, and whether he's expected to play
 function nextMatchCard() {
@@ -2195,7 +2244,8 @@ function drawPlayerChart() {
   const W = Math.max(260, wrap.clientWidth), H = 180, L = 30, R = 14, T = 20, B = 22;
   let lo = Math.min(...pts.map((d) => d.v)), hi = Math.max(...pts.map((d) => d.v));
   const pad = Math.max(3, (hi - lo) * 0.15); lo = Math.max(0, lo - pad); hi = Math.min(100, hi + pad);
-  const x = (i) => L + (pts.length === 1 ? 0.5 : i / (pts.length - 1)) * (W - L - R);
+  const IN = 12;
+  const x = (i) => L + IN + (pts.length === 1 ? 0.5 : i / (pts.length - 1)) * (W - L - R - 2 * IN);
   const y = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
   const every = Math.max(1, Math.ceil(pts.length * 46 / (W - L - R)));     // x labels that fit
   const showLabel = (i) => i === pts.length - 1 || (i % every === 0 && pts.length - 1 - i >= every / 2);
@@ -2321,7 +2371,7 @@ function playerMatchesTab() {
         <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, pageTeamName(m.opponent))}</span></div>
       <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
       <div class="mr-rating">${ratingChip(m.rating)}</div>
-      <div class="mr-sub">${bits.join(" · ")}${m.rank != null ? `<span class="mr-rank">rank ${Math.round(m.rank)}</span>` : ""}</div>
+      <div class="mr-sub"><span>${bits.join(" · ")}</span>${m.rank != null ? `<span class="mr-rank">rank ${Math.round(m.rank)}</span>` : ""}</div>
     </div>`;
   };
   return `<div class="match-list">${page.matchRows.map(row).join("")}</div>
@@ -2358,12 +2408,13 @@ function playerCareerTab() {
     ${now.length ? `<div class="club-section"><div class="modal-section">His current rank is built on · last 20 appearances</div><div class="season-now">${spellHtml(now)}</div></div>` : ""}`;
 }
 $("#club-body").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pchart]");
+  const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pchart], [data-pitch]");
   if (!b || !state.player) return;
   if (b.dataset.ptab) state.playerTab = b.dataset.ptab;
   if (b.dataset.pseason) state.player.season = Number(b.dataset.pseason);
   if (b.dataset.per90) state.playerPer90 = b.dataset.per90 === "1";
   if (b.dataset.pchart) state.playerChart = b.dataset.pchart;
+  if (b.dataset.pitch) state.pitchPeriod = b.dataset.pitch;
   renderPlayerTab();
 });
 

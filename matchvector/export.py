@@ -139,6 +139,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     export_players(conn, out_dir)
     export_player_seasons(conn, out_dir)
     export_clubs(conn, out_dir)
+    export_player_pages(conn, out_dir)
 
 
 STAT_RANGES = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
@@ -493,6 +494,111 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
         "positions": {str(p): d for p, d in positions.items()},   # {player: {season: [[role, minutes], ...]}}
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported season detail for %d players", len(spells))
+
+
+PLAYER_MATCHES = 20      # match log on a player's page: his last this-many appearances
+SEASON_FIELDS = ["season", "team", "league", "apps", "starts", "minutes", "rating", "goals", "assists",
+                 "shots_on", "key_passes", "passes", "pass_acc", "tackles", "interceptions", "blocks",
+                 "duels_won", "duels", "dribbles_won", "fouls", "yellow", "red", "saves", "conceded"]
+MATCH_FIELDS = ["fixture", "date", "league", "team", "opponent", "home", "gf", "ga", "started", "minutes",
+                "role", "rating", "rank", "goals", "assists", "shots_on", "key_passes", "tackles_int",
+                "duels_won", "duels", "yellow", "red", "saves", "conceded"]
+
+
+def build_player_pages(ids, apps, fixtures, other_seasons):
+    """{player: page payload} for docs/data/players/<id>.json, from cached rows (runs offline).
+
+    apps: player_ratings._appearances rows; fixtures: cache.finished_fixtures rows;
+    other_seasons: player_ratings._other_seasons rows. Season lines are per club and league: from
+    his appearances in the per-match leagues, and the season totals (player_seasons) elsewhere,
+    where starts and pass accuracy aren't known. A match's rank (going into it) is filled in later.
+    """
+    ids = set(ids)
+    fx = {r[0]: r for r in fixtures}
+    # per (season, team, league): apps, starts, minutes, rated minutes, rating x minutes, goals,
+    # assists, shots_on, key_passes, passes, accurate passes, tackles, interceptions, blocks,
+    # duels_won, duels, dribbles_won, fouls, yellow, red, saves, conceded
+    lines = defaultdict(lambda: defaultdict(lambda: [0] * 22))
+    recent = defaultdict(list)
+    for r in apps:
+        if r[2] not in ids or r[3] <= 0 or r[10] not in config.FINISHED_STATUSES or r[0] not in fx:
+            continue
+        (goals, assists, shots_on, key_passes, passes, passes_acc, tackles, interceptions, blocks, duels,
+         duels_won, dribbles_won, fouls, yellow, red, saves, conceded, _, _) = (x or 0 for x in r[11:30])
+        s = lines[r[2]][(r[8], r[1], r[9])]
+        for i, v in enumerate((1, 1 if r[4] else 0, r[3], r[3] if r[7] else 0, (r[7] or 0) * r[3],
+                               goals, assists, shots_on, key_passes, passes, passes_acc, tackles, interceptions,
+                               blocks, duels_won, duels, dribbles_won, fouls, yellow, red, saves, conceded)):
+            s[i] += v
+        recent[r[2]].append(r)
+    out = {}
+    for player in ids:
+        seasons = [[season, team, league, *s[:3], round(s[4] / s[3], 2) if s[3] else None, *s[5:10],
+                    round(100 * s[10] / s[9]) if s[9] else None, *s[11:]]
+                   for (season, team, league), s in lines.get(player, {}).items()]
+        matches = []
+        for r in sorted(recent.get(player, []), key=lambda r: fx[r[0]][1], reverse=True)[:PLAYER_MATCHES]:
+            f = fx[r[0]]
+            home = r[1] == f[4]
+            st = [x or 0 for x in r[11:30]]
+            matches.append([r[0], f[1].date().isoformat(), r[9], r[1], f[5] if home else f[4], 1 if home else 0,
+                            f[6] if home else f[7], f[7] if home else f[6], 1 if r[4] else 0, r[3],
+                            r[6] or r[5], _r(r[7], 1), None, st[0], st[1], st[2], st[3], st[6] + st[7],
+                            st[10], st[9], st[13], st[14], st[15], st[16]])
+        out[player] = {"seasons": seasons, "matches": matches, "injury": None}
+    for (player, team, league, season, _, minutes, n, rating, goals, assists, shots_on, key_passes, passes, _,
+         tackles, interceptions, blocks, duels, duels_won, dribbles_won, fouls, yellow, yellow_red, red,
+         saves, conceded, _, _) in other_seasons:
+        if player in out:
+            out[player]["seasons"].append(
+                [season, team, league, n or 0, None, minutes, _r(rating), goals or 0, assists or 0, shots_on,
+                 key_passes, passes, None, tackles, interceptions, blocks, duels_won, duels, dribbles_won,
+                 fouls, yellow, (red or 0) + (yellow_red or 0), saves, conceded])
+    for page in out.values():
+        page["seasons"].sort(key=lambda x: (-x[0], -x[5]))     # newest season first, then most minutes
+    return out
+
+
+def export_player_pages(conn, out_dir=OUT_DIR):
+    """One small file per listed player for his page: docs/data/players/<player_id>.json, with his
+    stats per season and club, his last PLAYER_MATCHES appearances (with his rank going into each)
+    and his injury status for his next fixture. Built from the query cache (cache.py), so the
+    only database reads are the per-match ranks and injuries for those few rows."""
+    from .cache import finished_fixtures
+    from .player_ratings import _appearances, _other_seasons
+    ids = [r[0] for r in conn.execute(f"select player_id from players p where {LISTED}", [PLAYER_SEASONS])]
+    apps, fixtures, other = _appearances(conn), finished_fixtures(conn), _other_seasons(conn)
+    pages = build_player_pages(ids, apps, fixtures, other)
+    fids = sorted({m[0] for p in pages.values() for m in p["matches"]})
+    ranks = {(fid, player): float(rank) for fid, player, rank in conn.execute(
+        """select fixture_id, player_id, player_rank from fixture_player_ranks
+           where fixture_id = any(%s) and player_id = any(%s)""", [fids, ids])}
+    injuries = {}
+    for player, fid, kind, reason in conn.execute(
+            """select i.player_id, i.fixture_id, i.type, i.reason from injuries i join fixtures f using (fixture_id)
+               where i.player_id = any(%s) and f.status_short in ('NS', 'TBD') and f.kickoff > now()
+               order by f.kickoff""", [ids]):
+        injuries.setdefault(player, [fid, kind, reason])
+    for pid, page in pages.items():
+        for m in page["matches"]:
+            m[12] = _r(ranks.get((m[0], pid)), 1)
+        page["injury"] = injuries.get(pid)
+    team_ids = {x for p in pages.values() for x in [s[1] for s in p["seasons"]] + [m[4] for m in p["matches"]]}
+    names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))
+    player_dir = out_dir / "players"
+    player_dir.mkdir(parents=True, exist_ok=True)
+    for old in player_dir.glob("*.json"):
+        if int(old.stem) not in pages:
+            old.unlink()
+    for pid, page in pages.items():
+        teams = {s[1] for s in page["seasons"]} | {m[4] for m in page["matches"]}
+        payload = json.dumps({"id": pid, "season_fields": SEASON_FIELDS, "match_fields": MATCH_FIELDS, **page,
+                              "teams": {str(t): names.get(t) for t in sorted(teams)}},
+                             separators=(",", ":"), ensure_ascii=False)
+        path = player_dir / f"{pid}.json"
+        if not path.exists() or path.read_text(encoding="utf-8") != payload:
+            path.write_text(payload, encoding="utf-8")
+    log.info("Exported %d player pages", len(pages))
 
 
 CLUB_ACTIVE_DAYS = 400

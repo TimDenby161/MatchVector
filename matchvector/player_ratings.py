@@ -287,6 +287,23 @@ def _appearances(conn):
         order_by="fixture_id, team_id, player_id")
 
 
+def _other_seasons(conn):
+    """Season totals (player_seasons) in the player leagues without per-match data, from the
+    local cache: (player, team, league, season, broad position, minutes, appearances, rating,
+    goals, assists, shots_on, key_passes, passes, pass_accuracy, tackles, interceptions, blocks,
+    duels, duels_won, dribbles_won, fouls_committed, yellow, yellow-red, red, saves,
+    goals_conceded, dribbled_past, penalties_committed). Also read by export.py."""
+    return cached_rows(conn, "other_seasons", """
+            select ps.season as part, ps.player_id, ps.team_id, ps.league_id, ps.season, left(ps.position, 1),
+                   ps.minutes, ps.appearances, ps.rating::float8, ps.goals, ps.assists, ps.shots_on,
+                   ps.key_passes, ps.passes, ps.pass_accuracy, ps.tackles, ps.interceptions, ps.blocks,
+                   ps.duels, ps.duels_won, ps.dribbles_won, ps.fouls_committed, ps.yellow_cards,
+                   ps.yellow_red_cards, ps.red_cards, ps.saves, ps.goals_conceded, ps.dribbled_past,
+                   ps.penalties_committed
+            from player_seasons ps where ps.minutes > 0 and not (ps.league_id = any(%s))""",
+        [config.MATCH_PLAYER_LEAGUES], order_by="player_id, team_id, league_id")
+
+
 def _offsets(conn):
     """{(league_id, position): rating offset} (see _rating_offsets)."""
     _rating_offsets(conn)
@@ -477,15 +494,7 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired, position_ranks
                select away_team_id, season from fixtures
                where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
            group by 1, 2""", {"l": config.PLAYER_LEAGUES}),
-        other_seasons=cached_rows(conn, "other_seasons", """
-            select ps.season as part, ps.player_id, ps.team_id, ps.league_id, ps.season, left(ps.position, 1),
-                   ps.minutes, ps.appearances, ps.rating::float8, ps.goals, ps.assists, ps.shots_on,
-                   ps.key_passes, ps.passes, ps.pass_accuracy, ps.tackles, ps.interceptions, ps.blocks,
-                   ps.duels, ps.duels_won, ps.dribbles_won, ps.fouls_committed, ps.yellow_cards,
-                   ps.yellow_red_cards, ps.red_cards, ps.saves, ps.goals_conceded, ps.dribbled_past,
-                   ps.penalties_committed
-            from player_seasons ps where ps.minutes > 0 and not (ps.league_id = any(%s))""",
-            [config.MATCH_PLAYER_LEAGUES], order_by="player_id, team_id, league_id"),
+        other_seasons=_other_seasons(conn),
         other_offsets=q("""with l as (select league_id, left(position, 1) as pos,
                                              sum(rating * minutes) / sum(minutes) as r
                                       from player_seasons where rating is not null and minutes > 0 group by 1, 2),
