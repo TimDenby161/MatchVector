@@ -754,11 +754,11 @@
   .ov-top .pp-section { margin: 0; }
   .ov-top .next-card { margin: 0; padding: 9px 10px; }
   .ov-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  .form-row { display: grid; grid-template-columns: 38px 16px minmax(0, 1fr) auto; align-items: center; gap: 6px;
+  .form-row { display: grid; grid-template-columns: 38px 16px 14px minmax(0, 1fr); align-items: center; gap: 8px;
     margin-top: 6px; font-size: 12px; }
   .form-row .rel-chip { min-width: 0; padding: 2px 0; font-size: 11px; }
   .form-row .club-logo { width: 16px; height: 16px; }
-  .form-opp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .form-ha { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; }
   .form-move { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
   .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
   .inj-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
@@ -2101,10 +2101,10 @@ function clubOverviewTab() {
   const ga = data?.goal_averages;
   const formCard = form.length ? `<div class="next-card form-card">
       <div class="next-top"><span class="next-label">Recent form</span><span>Elo change</span></div>
-      ${form.map(({ m, move }) => `<div class="form-row" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
+      ${form.map(({ m, move }) => `<div class="form-row" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)}${m.home === 2 ? " (neutral)" : ""} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span>
-        <img class="club-logo" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-        <span class="form-opp">${m.home ? "v" : "@"} ${escapeHtml(clubOpp(m.opponent))}</span>
+        <img class="club-logo" src="${teamLogo(m.opponent)}" alt="${escapeHtml(clubOpp(m.opponent))}" loading="lazy" onerror="this.style.visibility='hidden'">
+        <span class="form-ha">${m.home === 2 ? "N" : m.home ? "H" : "A"}</span>
         <span class="form-move">${moveHtml(move)}</span></div>`).join("")}
     </div>` : "";
   const side = injuredCard(id) + formCard, pitch = depthPitch(id);   // the next match is on the Predicted XI tab

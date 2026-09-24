@@ -672,12 +672,32 @@ def export_player_pages(conn, out_dir=OUT_DIR):
 
 
 CLUB_ACTIVE_DAYS = 400
+# Finished matches at a neutral ground: in a city where neither club played its league home games
+# that season (2+ of them) and not at either's league ground by name (the API's venue names and
+# cities vary: Bayern's league games are at "Fußball Arena München", its cup games at "Allianz
+# Arena"; BayArena's city is sometimes "Bayer Leverkusen"). Wembley, the Stade de France and La
+# Cartuja host finals in their clubs' own cities, so they're neutral unless they're the home
+# club's league ground (Betis at La Cartuja while their stadium is rebuilt).
+NEUTRAL_SQL = """
+    with hv as (
+        select f.home_team_id t, f.season, lower(trim(split_part(f.venue_city, ',', 1))) c, f.venue_name n
+        from fixtures f join leagues l using (league_id) where l.type = 'League'),
+    hc as (select t, season, c from hv where c is not null group by 1, 2, 3 having count(*) >= 2),
+    hn as (select t, season, n from hv where n is not null group by 1, 2, 3 having count(*) >= 2)
+    select f.fixture_id from fixtures f
+    where f.venue_city is not null and f.status_short = any(%s)
+      and exists (select 1 from hc where hc.t = f.home_team_id and hc.season = f.season)
+      and not exists (select 1 from hn where hn.t = f.home_team_id and hn.season = f.season and hn.n = f.venue_name)
+      and (f.venue_name ~* '^(wembley|stade de france|estadio de la cartuja)'
+           or (not exists (select 1 from hn where hn.t = f.away_team_id and hn.season = f.season and hn.n = f.venue_name)
+               and not exists (select 1 from hc where hc.t in (f.home_team_id, f.away_team_id) and hc.season = f.season
+                               and hc.c = lower(trim(split_part(f.venue_city, ',', 1))))))"""
 
 
 def export_clubs(conn, out_dir=OUT_DIR):
     """One small file per active club for its club page: docs/data/clubs/<team_id>.json.
 
-    history: every match since 2020 as [date, rank after, opponent, home?, goals for, against,
+    history: every match since 2020 as [date, rank after, opponent, home (1, 0 away, 2 neutral), goals for, against,
     competition, formation (null where the line-up isn't known)]; plus 12-month home/away goal
     averages, the current manager and the home kit colours. Loaded only when the page opens.
     """
@@ -694,12 +714,14 @@ def export_clubs(conn, out_dir=OUT_DIR):
     coaches = {t: {"id": c, "name": n, "photo": p, "since": s.isoformat() if s else None}
                for t, c, n, p, s in conn.execute("select team_id, coach_id, name, photo, since from team_coaches")}
     colors = {t: [s, n] for t, s, n in conn.execute("select team_id, shirt, number from team_colors")}
+    neutral = {f for (f,) in conn.execute(NEUTRAL_SQL, [list(config.FINISHED_STATUSES)])}
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league in club_rows:
         rows = history.setdefault(team, {"start": round(rank_before), "matches": []})["matches"]
         gf, ga = (hg, ag) if is_home else (ag, hg)
-        rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 1 if is_home else 0, gf, ga, league,
+        rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 2 if fid in neutral else 1 if is_home else 0,
+                     gf, ga, league,
                      formations.get((fid, team))])
     stats = {t: [_r(x) for x in rest] for t, *rest in conn.execute(
         "select team_id, hg, ha, ag, aa from team_rankings where team_id = any(%s)", [list(active)])}

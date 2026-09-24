@@ -1,1 +1,1 @@
-{"id":3620,"start":748,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-06-05",739.3,21953,0,0,0,333,null],["2026-06-09",737.9,21953,1,2,2,333,null]],"goal_averages":[2.0,2.0,0.0,0.0],"coach":null,"colors":null,"teams":{"21953":"Kudrivka"}}
+{"id":3620,"start":748,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-06-05",739.3,21953,2,0,0,333,null],["2026-06-09",737.9,21953,1,2,2,333,null]],"goal_averages":[2.0,2.0,0.0,0.0],"coach":null,"colors":null,"teams":{"21953":"Kudrivka"}}
