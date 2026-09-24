@@ -96,18 +96,48 @@
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
   }
 
-  nav.tabs {
-    display: flex; gap: 4px; background: var(--chip-bg);
-    border-radius: 10px; padding: 3px; margin-bottom: 8px;
-  }
+  /* Main menu: a column down the left. Wide screens keep it open as a sidebar;
+     phones slide it in from the menu button. */
+  nav.tabs { display: flex; flex-direction: column; gap: 2px; }
   nav.tabs button {
-    flex: 1; appearance: none; border: none; background: transparent; cursor: pointer;
-    color: var(--text-secondary); font-family: inherit; font-size: 13px; font-weight: 600;
-    padding: 8px 4px; border-radius: 8px;
+    appearance: none; border: none; background: transparent; cursor: pointer; text-align: left;
+    color: var(--text-secondary); font-family: inherit; font-size: 14px; font-weight: 600;
+    padding: 9px 12px; border-radius: 8px; transition: background-color .15s, color .15s;
   }
+  nav.tabs button:hover { background: var(--chip-bg); color: var(--text-primary); }
+  nav.tabs button:focus-visible { outline: 2px solid var(--series-blue); outline-offset: -2px; }
   nav.tabs button[aria-selected="true"] {
-    background: var(--surface-1); color: var(--text-primary); box-shadow: 0 1px 2px var(--border);
+    background: color-mix(in srgb, var(--series-blue) 14%, transparent); color: var(--series-blue);
   }
+  .menu-btn {
+    appearance: none; border: none; background: transparent; cursor: pointer; color: var(--text-primary);
+    font-size: 20px; line-height: 1; padding: 4px 6px; margin: -4px 0 -4px -6px; border-radius: 6px;
+  }
+  .app-title { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .menu-backdrop { position: fixed; inset: 0; z-index: 1; background: rgba(0,0,0,0.45); }
+  .menu-backdrop[hidden] { display: none; }
+  @media (min-width: 760px) {
+    header {
+      position: fixed; top: 0; bottom: 0; left: 0; width: 220px; z-index: 10;
+      border-bottom: none; border-right: 1px solid var(--border);
+      padding: calc(env(safe-area-inset-top) + 16px) 12px 16px; overflow-y: auto;
+    }
+    header .app-bar { margin: 2px 4px 16px; }
+    .menu-btn, .app-title, .menu-backdrop { display: none; }
+    body { padding-left: 220px; }
+  }
+  @media (max-width: 759px) {
+    .app-bar { justify-content: flex-start; }
+    nav.tabs {
+      position: fixed; top: 0; bottom: 0; left: 0; z-index: 2; width: 240px; max-width: 80vw;
+      background: var(--surface-1); border-right: 1px solid var(--border);
+      padding: calc(env(safe-area-inset-top) + 14px) 10px 16px;
+      transform: translateX(-100%); visibility: hidden; transition: transform .22s ease, visibility .22s;
+    }
+    body.menu-open header { z-index: 60; }
+    body.menu-open nav.tabs { transform: none; visibility: visible; }
+  }
+  @media (max-width: 759px) and (prefers-reduced-motion: reduce) { nav.tabs { transition: none; } }
 
   main { padding: 12px 16px 40px; max-width: 720px; margin: 0 auto; }
   .panel { display: none; }
@@ -686,7 +716,6 @@
   /* Rankings side panel: brand, view toggle, search and league filters.
      Phones: stacked above the list (filters, toggle, search). */
   .side-stick { display: flex; flex-direction: column; }
-  .side-brand { display: none; }
   #age-filter { order: 0; margin-bottom: 10px; }
   #pos-filter { order: 0; margin-bottom: 10px; }
   #pos-filter[hidden] { display: none; }
@@ -780,9 +809,8 @@
      centred; the header drops the name row on this tab to fit a full league on one screen */
   @media (min-width: 1160px) {
     section[data-tab="table"] { position: relative; }
-    #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
-    #table-side .side-stick { position: sticky; top: 56px; max-height: calc(100vh - 68px); overflow-y: auto; padding-right: 4px; }
-    .side-brand { display: flex; align-items: center; gap: 7px; order: 0; font-size: 18px; font-weight: 800; margin: 2px 0 12px; }
+    #table-side { position: fixed; z-index: 11; left: 0; width: 220px; top: var(--menu-h, 230px); bottom: 0;
+      overflow-y: auto; padding: 14px 12px 16px; border-top: 1px solid var(--gridline); }
     #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
@@ -818,12 +846,8 @@
     @media (prefers-reduced-motion: reduce) {
       #table-filters .league-list, #table-filters .caret, #table-filters .filter-chip { transition: none; }
     }
-    body[data-tab="table"] header .app-bar { display: none; }
-    body[data-tab="table"] nav.tabs { margin-bottom: 0; }
     table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
     table.leaderboard.clubs th { padding-top: 4px; padding-bottom: 4px; }
-    body[data-tab="table"] header { padding-top: 6px; padding-bottom: 6px; }
-    body[data-tab="table"] nav.tabs button { padding-top: 6px; padding-bottom: 6px; }
     body[data-tab="table"] main { padding-top: 8px; }
     .club-logo { width: 20px; height: 20px; }
   }
@@ -867,8 +891,6 @@
      chips in one row that swipes sideways, and the player filters behind a Filters button */
   #more-filters { display: none; }
   @media (max-width: 759px) {
-    body[data-tab="table"] header .app-bar { display: none; }
-    body[data-tab="table"] nav.tabs { margin-bottom: 0; }
     .side-stick { flex-direction: row; flex-wrap: wrap; align-items: flex-start; column-gap: 8px; }
     .side-stick > * { flex: 0 0 100%; min-width: 0; }
     #table-view { order: 0; margin-bottom: 8px; }
@@ -896,15 +918,18 @@
 <body data-tab="table">
 
 <header>
-  <nav class="tabs" role="tablist">
+  <div class="app-bar">
+    <button type="button" class="menu-btn" id="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">&#9776;</button>
+    <h1><span class="brand-mark" aria-hidden="true"></span><span>MatchVector</span></h1>
+    <span class="app-title" id="app-title">Rankings</span>
+  </div>
+  <nav class="tabs" id="main-menu" role="tablist" aria-orientation="vertical">
     <button role="tab" data-tab="table" aria-selected="true">Rankings</button>
     <button role="tab" data-tab="matches" aria-selected="false">Matches</button>
     <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
     <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
   </nav>
-  <div class="app-bar">
-    <h1><span class="brand-mark" aria-hidden="true"></span><span>MatchVector</span></h1>
-  </div>
+  <div class="menu-backdrop" id="menu-backdrop" hidden></div>
 </header>
 
 <main>
@@ -925,7 +950,6 @@
   <section class="panel" data-tab="table" data-active="true">
     <div id="table-side">
       <div class="side-stick">
-        <div class="side-brand"><span class="brand-mark" aria-hidden="true"></span><span>MatchVector</span></div>
         <div id="age-filter" hidden>
           <div class="age-head"><span>Age</span><span id="age-label"></span></div>
           <div class="age-slider">
@@ -1984,6 +2008,7 @@ const CHART_RANGES = [["6m", "6M", 183], ["1y", "1Y", 365], ["3y", "3Y", 1095], 
 function showPage() {            // club, player and nationality pages share one panel
   document.body.dataset.tab = "club";
   document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", "false"));
+  $("#app-title").textContent = "";
   document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === "club"));
   window.scrollTo(0, 0);
 }
@@ -3300,11 +3325,28 @@ function showTab(tab) {
   document.body.dataset.tab = tab;
   document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === tab));
+  $("#app-title").textContent = document.querySelector(`nav.tabs button[data-tab="${tab}"]`)?.textContent || "";
 }
 document.querySelectorAll("nav.tabs button").forEach((btn) => btn.addEventListener("click", () => {
   if (location.hash.startsWith("#/")) history.pushState(null, "", location.pathname + location.search);
   showTab(btn.dataset.tab);
+  setMenu(false);
 }));
+// Phones: the menu slides in from the left behind the menu button
+function setMenu(open) {
+  document.body.classList.toggle("menu-open", open);
+  $("#menu-btn").setAttribute("aria-expanded", String(open));
+  $("#menu-backdrop").hidden = !open;
+}
+$("#menu-btn").addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
+$("#menu-backdrop").addEventListener("click", () => setMenu(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+// Wide screens: the Rankings filters sit in the sidebar, just under the menu
+function placeSideFilters() {
+  document.documentElement.style.setProperty("--menu-h", `${Math.ceil($("#main-menu").getBoundingClientRect().bottom + 14)}px`);
+}
+window.addEventListener("resize", placeSideFilters);
+placeSideFilters();
 function route() {
   const club = location.hash.match(/^#\/club\/(\d+)/);
   const player = location.hash.match(/^#\/player\/(\d+)/);
