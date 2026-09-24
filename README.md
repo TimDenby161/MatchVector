@@ -225,6 +225,7 @@ This is based on the Club Ranking Google Sheet. Every finished fixture is replay
 - Expected goal difference = (home rank − away rank + 30) / 100
 - Result = actual goal difference, capped at ±3. When both teams have **xG** for the match, result = 30% capped goal difference + 70% xG difference.
 - Rank change = (result − expected goal difference) × K, where K is 6, or 10 for matches with xG.
+- One-off curtain-raisers count for a third: the rank change is × 1/3 for the **Community Shield** and the **UEFA Super Cup** (`COMPETITION_WEIGHT`). Sides treat them as pre-season, so a result says less than a league match. The 1/3 is World Football Elo's friendly-to-World-Cup ratio. Only two or three of these games are played a year, too few to backtest a value.
 - The home team gains the rank change and the away team loses it.
 
 This differs from the sheet, which uses (home × 1.09 − away) / 100, × 10 and no cap. Backtesting 2023–26 showed the ×1.09 gave 0.4–1.1 goals of home advantage, when the real figure is about 0.3 for every team. A smaller K and the goal cap also stop one freak result from swinging a rank. Prediction error fell from 1.77 to 1.68 goals per match. The settings are at the top of `matchvector/ranking.py`.

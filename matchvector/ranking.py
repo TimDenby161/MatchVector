@@ -4,7 +4,9 @@ Per match:
     exp_diff    = (home_rank - away_rank + HOME_ADVANTAGE_POINTS) / 100
     act_diff    = home_goals - away_goals, capped at +/- MAX_GOAL_DIFF
                   when both sides have xG: GOALS_WEIGHT * that + (1 - GOALS_WEIGHT) * (home xG - away xG)
-    rank_change = (act_diff - exp_diff) * K   (K_FACTOR, or K_FACTOR_XG for matches with xG)
+    rank_change = (act_diff - exp_diff) * K * weight
+                  K: K_FACTOR, or K_FACTOR_XG for matches with xG
+                  weight: COMPETITION_WEIGHT (1/3 for the Community Shield and UEFA Super Cup, else 1)
     home_rank  += rank_change;  away_rank -= rank_change
 
 Differences from the sheet (exp_diff = (home*1.09 - away)/100, K = 10, no cap), chosen by
@@ -52,6 +54,14 @@ MAX_GOAL_DIFF = 3            # a 7-0 counts as 3-0
 GOALS_WEIGHT = 0.3           # in matches with xG: 30% capped goal difference, 70% xG difference
 K_FACTOR_XG = 10             # K for matches with xG (less noisy, so ranks can move further)
 DEFAULT_STARTING_RANK = 650
+# One-off curtain-raisers count for less than a league or cup match: their rank change is
+# scaled by this. Sides rest players and treat them as pre-season, so a result says less.
+# 1/3 is World Football Elo's friendly-to-World-Cup ratio (K 20 against 60). Too few of
+# these games are played (two or three a year) to backtest a value.
+COMPETITION_WEIGHT = {
+    528: 1 / 3,     # Community Shield
+    531: 1 / 3,     # UEFA Super Cup
+}
 
 # Reliability score tuning
 GAMES_SCALE = 35            # games for the games factor to reach ~63%
@@ -70,6 +80,7 @@ class Match:
     away_goals: int
     home_xg: float = None
     away_xg: float = None
+    weight: float = 1.0  # COMPETITION_WEIGHT of its competition
 
 
 def actual_diff(m):
@@ -96,7 +107,7 @@ def run(matches, starting_rank):
         exp_diff = (h - a + HOME_ADVANTAGE_POINTS) / 100
         act_diff = m.home_goals - m.away_goals
         result, k = actual_diff(m)
-        change = (result - exp_diff) * k
+        change = (result - exp_diff) * k * m.weight
         current[m.home], current[m.away] = h + change, a - change
         history[m.home].append(current[m.home])
         history[m.away].append(current[m.away])
@@ -170,11 +181,12 @@ def _replay(conn, fixtures, xg, starting_rank):
     """Rebuild team_rank_history. xg: {fixture_id: (home xG, away xG)}.
 
     Returns ({team: history}, {team: last kickoff}, {team: rank changes in K_FACTOR units}).
-    The last is for the volatility: matches with xG move ranks by K_FACTOR_XG, so their changes
-    are scaled back, and volatility measures how surprising a team's results are rather than
+    The last is for the volatility: matches with xG move ranks by K_FACTOR_XG, and weighted
+    competitions by less, so their changes are scaled back, and volatility measures how surprising a team's results are rather than
     the step size."""
     conn.execute("truncate team_rank_history")
-    matches = [Match(f[0], f[4], f[5], f[6], f[7], *xg[f[0]]) for f in fixtures]
+    matches = [Match(f[0], f[4], f[5], f[6], f[7], *xg[f[0]], COMPETITION_WEIGHT.get(f[2], 1.0))
+               for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, history = run(matches, starting_rank)
     last_match = {}
@@ -185,7 +197,7 @@ def _replay(conn, fixtures, xg, starting_rank):
 
     buf = io.StringIO()
     for m, h, a, exp_diff, act_diff, change in rows:
-        scale = K_FACTOR / actual_diff(m)[1]
+        scale = K_FACTOR / (actual_diff(m)[1] * m.weight)
         for team, opp, is_home, before, delta in (
             (m.home, m.away, True, h, change),
             (m.away, m.home, False, a, -change),
