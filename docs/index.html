@@ -2172,7 +2172,7 @@ function positionPitch(p) {
         title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · ${pct}% of his starting minutes">
       <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct ? `${pct}%` : "–"}</span></div>`;
   }).join("");
-  const periods = [["12m", "Last 12 months"], ["all", "Since 2020/21"]].filter(([k]) => pos[k]);
+  const periods = [["12m", "Last 12 months"], ["all", "Ever"]].filter(([k]) => pos[k]);
   return `<div class="club-section pp-section"><div class="pp-head"><span class="modal-section" style="margin:0">Positions · rank and share of starts</span>
       ${periods.length > 1 ? `<div class="seg">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}</div>
     <div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
