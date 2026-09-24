@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import config, positions
 from .cache import WEEK, cached_rows, rank_history
+from .predictions import GOAL_LINES, goal_lines
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +223,81 @@ def _stats(rows):
     }
 
 
+# Stats tab, model vs bookmakers per market: market -> (bet id, API line or "", selections)
+STAT_MARKETS = {
+    "1X2": (1, "", ("Home", "Draw", "Away")),
+    "BTTS": (8, "", ("Yes", "No")),
+    **{f"OU{int(l * 10)}": (5, str(l), ("Over", "Under")) for l in GOAL_LINES},
+}
+
+
+def market_consensus(conn, since):
+    """{(fixture, market): {"close": [probs], "open": [probs] or None}} for finished fixtures
+    since `since`, in STAT_MARKETS' selection order.
+
+    Each bookmaker's complete set of prices with its margin removed, averaged, worked out in the
+    database so only a dozen numbers per fixture come back. Closing = the last price before
+    kickoff (odds.odd); opening = odds.first_odd, only where the bookmaker's whole set was
+    first seen before kickoff (odds loaded after a match was played have no real opening)."""
+    lines = [f"{side} {l}" for l in GOAL_LINES for side in ("Over", "Under")]
+    out = defaultdict(lambda: {"close": {}, "open": {}})
+    for fid, bet, line, sel, close, open_ in conn.execute(
+            """with o as (
+                 select o.fixture_id, o.bookmaker_id, o.bet_id,
+                        case when o.bet_id = 5 then split_part(o.selection, ' ', 2) else '' end as line,
+                        case when o.bet_id = 5 then split_part(o.selection, ' ', 1) else o.selection end as sel,
+                        o.odd::float8 as odd, o.first_odd::float8 as first_odd,
+                        o.first_seen_at < f.kickoff and o.first_odd > 1 as has_open
+                 from odds o join fixtures f using (fixture_id)
+                 where f.status_short = any(%s) and f.kickoff >= %s and o.odd > 1
+                   and (o.bet_id in (1, 8) or (o.bet_id = 5 and o.selection = any(%s)))),
+               s as (
+                 select *, sum(1 / odd) over w as tot, count(*) over w as n,
+                        bool_and(has_open) over w as all_open,
+                        sum(case when has_open then 1 / first_odd end) over w as tot_open
+                 from o window w as (partition by fixture_id, bookmaker_id, bet_id, line))
+               select fixture_id, bet_id, line, sel, avg(1 / odd / tot),
+                      avg(1 / first_odd / tot_open) filter (where all_open)
+               from s where n = case when bet_id = 1 then 3 else 2 end
+               group by 1, 2, 3, 4""",
+            [["FT", "AET", "PEN"], since, lines]):
+        market = next((m for m, (b, l, _) in STAT_MARKETS.items() if b == bet and l == line), None)
+        if market:
+            out[(fid, market)]["close"][sel] = close
+            if open_ is not None:
+                out[(fid, market)]["open"][sel] = open_
+    result = {}
+    for (fid, market), d in out.items():
+        sels = STAT_MARKETS[market][2]
+        if all(x in d["close"] for x in sels):
+            result[(fid, market)] = {"close": [d["close"][x] for x in sels],
+                                     "open": [d["open"][x] for x in sels] if all(x in d["open"] for x in sels) else None}
+    return result
+
+
+def _market_stats(rows):
+    """Model vs bookmakers per market for rows of (model {market: probs}, index of what
+    happened per market, consensus {market: {close, open}}): log losses on the same matches."""
+    out = {}
+    for market in STAT_MARKETS:
+        n = no = 0
+        m_ll = c_ll = mo_ll = o_ll = 0.0
+        for model, happened, cons in rows:
+            c = cons.get(market)
+            if not c or market not in model:
+                continue
+            i = happened[market]
+            ll = lambda p: -math.log(max(p[i], 1e-6))
+            n += 1; m_ll += ll(model[market]); c_ll += ll(c["close"])
+            if c["open"]:
+                no += 1; mo_ll += ll(model[market]); o_ll += ll(c["open"])
+        if n:
+            out[market] = {"n": n, "model_ll": round(m_ll / n, 4), "close_ll": round(c_ll / n, 4),
+                           "open_n": no, "model_open_ll": round(mo_ll / no, 4) if no else None,
+                           "open_ll": round(o_ll / no, 4) if no else None}
+    return out or None
+
+
 def export_stats(conn, out_dir=OUT_DIR):
     """Prediction accuracy by date range and competition, for the site's Stats tab."""
     now = datetime.now(timezone.utc)
@@ -235,6 +311,27 @@ def export_stats(conn, out_dir=OUT_DIR):
         [["FT", "AET", "PEN"], now - timedelta(days=max(STAT_RANGES.values()))]).fetchall()
     market = market_probabilities(conn)
     rows = [(*r, market.get(r[-1])) for r in rows]
+
+    # every market with odds: the model's chances (goal lines from its projected goals) and
+    # what happened over 90 minutes, per fixture
+    since = now - timedelta(days=max(STAT_RANGES.values()))
+    cons = market_consensus(conn, since)
+    with_odds = {fid for fid, _ in cons}
+    per_fixture = {}
+    for fid, ph, pd, pa, pb, hx, ax, hg, ag in conn.execute(
+            """select f.fixture_id, p.p_home, p.p_draw, p.p_away, p.p_btts, p.home_xg, p.away_xg,
+                      f.ft_home, f.ft_away
+               from fixture_predictions p join fixtures f using (fixture_id)
+               where f.fixture_id = any(%s) and f.ft_home is not null and p.home_xg is not null""",
+            [list(with_odds)]):
+        model = {"1X2": [float(ph), float(pd), float(pa)]}
+        if pb is not None:
+            model["BTTS"] = [float(pb), 1 - float(pb)]
+        for line, po in goal_lines(float(hx), float(ax)).items():
+            model[f"OU{int(line * 10)}"] = [po, 1 - po]
+        happened = {"1X2": 0 if hg > ag else 1 if hg == ag else 2, "BTTS": 0 if hg > 0 and ag > 0 else 1,
+                    **{f"OU{int(l * 10)}": 0 if hg + ag > l else 1 for l in GOAL_LINES}}
+        per_fixture[fid] = (model, happened, {m: cons[(fid, m)] for m in STAT_MARKETS if (fid, m) in cons})
     stats = {}
     for key, days in STAT_RANGES.items():
         recent = [r for r in rows if r[0] >= now - timedelta(days=days)]
@@ -243,6 +340,9 @@ def export_stats(conn, out_dir=OUT_DIR):
             by_group.setdefault(str(r[1]), []).append(r)
         # drop the fixture_id column (second to last) before summarising
         stats[key] = {g: _stats([(*r[2:-2], r[-1]) for r in rs]) for g, rs in by_group.items() if rs}
+        for g, rs in by_group.items():
+            if g in stats[key]:
+                stats[key][g]["markets"] = _market_stats([per_fixture[r[-2]] for r in rs if r[-2] in per_fixture])
     (out_dir / "stats.json").write_text(json.dumps(
         {"generated_at": now.isoformat(), "ranges": stats}, separators=(",", ":")), encoding="utf-8")
     log.info("Exported prediction stats for %d finished fixtures", len(rows))

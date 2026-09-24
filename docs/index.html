@@ -1033,7 +1033,10 @@
     <div class="filter-row" id="bet-market" style="margin-bottom:10px">
       <button type="button" class="filter-chip" data-market="all" aria-pressed="true">All markets</button>
       <button type="button" class="filter-chip" data-market="1X2" aria-pressed="false">Result</button>
-      <button type="button" class="filter-chip" data-market="OU25" aria-pressed="false">Over/Under 2.5</button>
+      <button type="button" class="filter-chip" data-market="OU15" aria-pressed="false">O/U 1.5</button>
+      <button type="button" class="filter-chip" data-market="OU25" aria-pressed="false">O/U 2.5</button>
+      <button type="button" class="filter-chip" data-market="OU35" aria-pressed="false">O/U 3.5</button>
+      <button type="button" class="filter-chip" data-market="OU45" aria-pressed="false">O/U 4.5</button>
       <button type="button" class="filter-chip" data-market="BTTS" aria-pressed="false">Both score</button>
     </div>
     <div id="bets-body"></div>
@@ -2107,7 +2110,7 @@ function renderStats() {
         <span>Log loss</span><span class="num${cmp(mk.model_ll, mk.market_ll, true)}">${mk.model_ll.toFixed(3)}</span><span class="num${cmp(mk.market_ll, mk.model_ll, true)}">${mk.market_ll.toFixed(3)}</span>
       </div>
       <div class="stats-note">Bookmakers' chances are the average across bookmakers with their margin removed, from the last odds before kickoff. Only matches with odds are compared${mk.n < 1000 ? "; the sample is still small, so treat this as a rough guide" : ""}.</div>
-    </div>` : `<div class="stats-card" style="margin-bottom:12px"><div class="stats-label">Model vs bookmakers</div><div class="stats-note">No finished matches with bookmaker odds in this range yet. Odds are collected nightly for upcoming matches.</div></div>`;
+    </div>${marketsTable(s.markets)}` : `<div class="stats-card" style="margin-bottom:12px"><div class="stats-label">Model vs bookmakers</div><div class="stats-note">No finished matches with bookmaker odds in this range yet. Odds are collected nightly for upcoming matches.</div></div>`;
   body.innerHTML = ratingBlock + marketBlock + `
     <div class="stats-grid">
       ${card("Matches", s.n.toLocaleString(), liveNote)}
@@ -2127,9 +2130,28 @@ function renderStats() {
     </div>`;
 }
 
+// Model vs bookmakers in every market: log loss on the same matches against the closing
+// prices, and against opening prices where the odds were first seen before kickoff
+function marketsTable(ms) {
+  if (!ms) return "";
+  const keys = ["1X2", "BTTS", "OU15", "OU25", "OU35", "OU45"].filter((k) => ms[k]);
+  const gap = (model, book) => {
+    const d = model - book;
+    return `<span class="${d < 0 ? "pos" : d > 0 ? "neg" : ""}">${d > 0 ? "+" : ""}${d.toFixed(3)}</span>`;
+  };
+  const rows = keys.map((k) => { const m = ms[k]; return `<tr><td>${MARKET_LABELS[k]}</td><td>${m.n.toLocaleString()}</td>
+    <td>${m.model_ll.toFixed(3)}</td><td>${m.close_ll.toFixed(3)}</td><td>${gap(m.model_ll, m.close_ll)}</td>
+    <td>${m.open_n ? `${gap(m.model_open_ll, m.open_ll)} <span class="dim">(${m.open_n.toLocaleString()})</span>` : `<span class="dim">–</span>`}</td></tr>`; }).join("");
+  return `<div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">Every market: model vs bookmakers</div>
+      <table class="calib-table"><thead><tr><th>Market</th><th>Matches</th><th>Model</th><th>Bookmakers</th><th>Gap</th><th>Gap at opening</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="stats-note">Log loss, lower is better, on the same matches. Gap = model minus bookmakers: green means the model was more accurate. "At opening" compares with the first prices seen, only for matches whose odds were collected before kickoff (count in brackets). Beating the opening price is where an early edge would show first. The goal lines come from the model's projected goals.</div>
+    </div>`;
+}
+
 // ------------------------------------------------------------------ bets
-const MARKET_LABELS = { "1X2": "Result", OU25: "Over/Under 2.5", BTTS: "Both teams score" };
-const SEL_LABELS = { Home: "Home win", Draw: "Draw", Away: "Away win", "Over 2.5": "Over 2.5", "Under 2.5": "Under 2.5", Yes: "Both score", No: "Not both score" };
+const MARKET_LABELS = { "1X2": "Result", OU15: "Over/Under 1.5", OU25: "Over/Under 2.5", OU35: "Over/Under 3.5", OU45: "Over/Under 4.5", BTTS: "Both teams score" };
+const SEL_LABELS = { Home: "Home win", Draw: "Draw", Away: "Away win", Yes: "Both score", No: "Not both score" };
 
 function summarise(bets) {
   const settled = bets.filter((b) => b.result === "win" || b.result === "loss");
@@ -2161,7 +2183,7 @@ function renderBets() {
   const card = (label, value, note = "") =>
     `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
   const rules = state.bets.rules;
-  const markets = ["1X2", "OU25", "BTTS"].map((mk) => {
+  const markets = ["1X2", "OU15", "OU25", "OU35", "OU45", "BTTS"].map((mk) => {
     const x = summarise(all.filter((b) => b.market === mk));
     if (!x.placed) return "";
     return `<tr><td>${MARKET_LABELS[mk]}</td><td>${x.settled}</td><td>${signed(x.profit, 1)}</td>

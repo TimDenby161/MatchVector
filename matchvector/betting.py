@@ -15,6 +15,8 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from .predictions import goal_lines
+
 log = logging.getLogger(__name__)
 
 MIN_EDGE = 0.03
@@ -22,13 +24,22 @@ MAX_ODDS = 10.0
 EARLY_HOURS = 36
 LATE_MINUTES = 75
 
-# market -> (API-Football bet id, selections, how to read model probabilities from a prediction)
+def _over(line):
+    return lambda p: (p["lines"][line], 1 - p["lines"][line])
+
+
+# market -> (API-Football bet id, selections, how to read model probabilities from a prediction).
+# The goal lines other than 2.5 were added on 25 September 2026: in the model-vs-bookmaker check
+# the goal markets were the closest to the bookmakers, so they're the ones to gather bets on.
 MARKETS = {
     "1X2": (1, ("Home", "Draw", "Away"), lambda p: (p["p_home"], p["p_draw"], p["p_away"])),
+    "OU15": (5, ("Over 1.5", "Under 1.5"), _over(1.5)),
     "OU25": (5, ("Over 2.5", "Under 2.5"), lambda p: (p["p_over25"], 1 - p["p_over25"])),
+    "OU35": (5, ("Over 3.5", "Under 3.5"), _over(3.5)),
+    "OU45": (5, ("Over 4.5", "Under 4.5"), _over(4.5)),
     "BTTS": (8, ("Yes", "No"), lambda p: (p["p_btts"], 1 - p["p_btts"])),
 }
-BET_TO_MARKET = {bet: (m, sels) for m, (bet, sels, _) in MARKETS.items()}
+SELECTION_MARKET = {(bet, sel): m for m, (bet, sels, _) in MARKETS.items() for sel in sels}
 
 
 def load_prices(conn, fixture_ids):
@@ -39,9 +50,9 @@ def load_prices(conn, fixture_ids):
     for fid, bm, bet, sel, odd in conn.execute(
             """select fixture_id, bookmaker_id, bet_id, selection, odd from odds
                where fixture_id = any(%s) and bet_id = any(%s) and odd > 1""",
-            [list(fixture_ids), list(BET_TO_MARKET)]):
-        market, sels = BET_TO_MARKET[bet]
-        if sel in sels:
+            [list(fixture_ids), list({bet for bet, _ in SELECTION_MARKET})]):
+        market = SELECTION_MARKET.get((bet, sel))
+        if market:
             by_book[(fid, market)][bm][sel] = float(odd)
     out = defaultdict(dict)
     for (fid, market), books in by_book.items():
@@ -66,7 +77,7 @@ def place_bets(conn, strategy, within):
     now = datetime.now(timezone.utc)
     preds = conn.execute(
         """select p.fixture_id, f.league_id, f.kickoff, p.p_home, p.p_draw, p.p_away,
-                  p.p_over25, p.p_btts
+                  p.p_over25, p.p_btts, p.home_xg, p.away_xg
            from fixture_predictions p join fixtures f using (fixture_id)
            where f.status_short in ('NS', 'TBD') and f.kickoff > %s and f.kickoff <= %s""",
         [now, now + within]).fetchall()
@@ -75,10 +86,14 @@ def place_bets(conn, strategy, within):
         return 0
     prices = load_prices(conn, [r[0] for r in preds])
     rows = []
-    for fid, league_id, kickoff, ph, pd, pa, po, pb in preds:
+    for fid, league_id, kickoff, ph, pd, pa, po, pb, hx, ax in preds:
         pred = {"p_home": ph, "p_draw": pd, "p_away": pa, "p_over25": po, "p_btts": pb}
+        if None in pred.values() or hx is None or ax is None:
+            continue
+        pred = {k: float(v) for k, v in pred.items()}
+        pred["lines"] = goal_lines(float(hx), float(ax))
         for market, (_, sels, model_fn) in MARKETS.items():
-            if market not in prices.get(fid, {}) or None in pred.values():
+            if market not in prices.get(fid, {}):
                 continue
             best, fair = prices[fid][market]["best"], prices[fid][market]["fair"]
             for sel, prob in zip(sels, model_fn(pred)):
@@ -104,8 +119,8 @@ def place_bets(conn, strategy, within):
 def _won(market, selection, hg, ag):
     if market == "1X2":
         return {"Home": hg > ag, "Draw": hg == ag, "Away": hg < ag}[selection]
-    if market == "OU25":
-        return (hg + ag > 2.5) == (selection == "Over 2.5")
+    if market.startswith("OU"):
+        return (hg + ag > int(market[2:]) / 10) == selection.startswith("Over")
     if market == "BTTS":
         return (hg > 0 and ag > 0) == (selection == "Yes")
     raise ValueError(market)

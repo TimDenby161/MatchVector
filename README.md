@@ -351,10 +351,10 @@ python -m matchvector predict   # the nightly job runs this after the rankings
 
 A bet is placed when model chance × the best price across bookmakers is at least 3% better than even, at odds up to 10. Each bet is 1 unit, with at most one bet per selection per strategy. Markets:
 - match result
-- over/under 2.5 goals (`p_over25`)
+- over/under 1.5, 2.5, 3.5 and 4.5 goals (2.5 is `p_over25`; the other lines are worked out from the stored projected goals by `predictions.goal_lines`). Lines other than 2.5 were added on 25 September 2026, because the goal markets were the closest to the bookmakers.
 - both teams to score (`p_btts`)
 
-The goal-market probabilities come from the same Poisson grid, calibrated towards the base rate. Bets settle on the 90-minute score and are stored in `paper_bets`.
+The goal-market probabilities come from the same Poisson grid, calibrated towards the base rate. The 1.5, 3.5 and 4.5 calibrations were fitted on 2023/24 (`GOAL_LINE_CALIBRATION`). Bets settle on the 90-minute score and are stored in `paper_bets`.
 
 **Closing line value.** `odds.first_odd` keeps the opening price. `odds.odd` is never updated after kickoff, so it holds the closing price. Each bet records `clv` = odds taken × the fair closing probability − 1. Consistently positive CLV is the early sign of a real edge. Profit needs thousands of bets before it means much.
 
@@ -396,7 +396,7 @@ The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `
 - `live`: recorded before kickoff.
 - `backfill`: reconstructed afterwards for matches since July 2023, using each team's pre-match rank and goal averages. It shows what the current model would have said at the time.
 
-Result cards show `proj` for live projections and `recon` for backfilled ones. The **Stats** tab (`docs/data/stats.json`) scores the projections over 7, 30 and 90 days and 12 months, by competition. It shows how often the predicted result was right, exact scores, goal error, log loss, Brier score and calibration.
+Result cards show `proj` for live projections and `recon` for backfilled ones. The **Stats** tab (`docs/data/stats.json`) scores the projections over 7, 30 and 90 days and 12 months, by competition. It shows how often the predicted result was right, exact scores, goal error, log loss, Brier score and calibration. **Every market: model vs bookmakers** compares log loss with the bookmakers in each market (result, both teams score, over/under 1.5–4.5) on the same matches. It uses closing prices, and opening prices for matches whose odds were collected before kickoff (`export.market_consensus`, which removes each bookmaker's margin in the database). Beating the opening price is where an early edge would show first.
 
 **Ratings.** Every finished match's projection is rated from 1 (terrible) to 5 (excellent), using MatchLab's grading ported to `matchvector/rating.py`. There are five factors, each scored 0–5 and weighted:
 - Winner 30%

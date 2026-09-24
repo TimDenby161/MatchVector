@@ -120,6 +120,25 @@ def goal_markets(home_xg, away_xg):
             BTTS_BASE + BTTS_SHRINK * (btts - BTTS_BASE))
 
 
+# The other over/under lines, calibrated the same way: (base, shrink), fitted on 2023/24
+# with the current projections (2.5 keeps OVER25_* above)
+GOAL_LINE_CALIBRATION = {1.5: (0.76, 0.9), 3.5: (0.36, 0.9), 4.5: (0.04, 1.0)}
+GOAL_LINES = (1.5, 2.5, 3.5, 4.5)
+
+
+def goal_lines(home_xg, away_xg):
+    """{line: P(over line)} for GOAL_LINES, calibrated. Worked out from the projected goals, so
+    stored projections (fixture_predictions.home_xg / away_xg) give them back exactly."""
+    ph, pa = _pmf(home_xg), _pmf(away_xg)
+    total = sum(ph) * sum(pa)
+    out = {2.5: goal_markets(home_xg, away_xg)[0]}
+    for line, (base, shrink) in GOAL_LINE_CALIBRATION.items():
+        under = sum(ph[i] * pa[j] for i in range(MAX_GOALS + 1) for j in range(MAX_GOALS + 1)
+                    if i + j < line) / total
+        out[line] = min(max(base + shrink * ((1 - under) - base), 0.005), 0.995)
+    return out
+
+
 def _shrunk(records, idx, league_avg):
     """Mean of records[*][idx], pulled toward league_avg by SHRINK_GAMES pseudo-matches."""
     total = sum(r[idx] for r in records)
