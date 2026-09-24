@@ -322,6 +322,16 @@ create table if not exists player_career_teams (
     primary key (player_id, season, team_id)
 );
 
+-- Current squads of the clubs in the per-match player leagues (/players/squads?team=, nightly):
+-- a player's club on the site, and squad members are listed whatever their minutes
+create table if not exists team_squads (
+    team_id     int not null,
+    player_id   int not null,
+    fetched_at  timestamptz not null default now(),
+    primary key (team_id, player_id)
+);
+create index if not exists team_squads_player_idx on team_squads (player_id);
+
 -- How good each player would be in each outfield position group now (player_ratings.py,
 -- rebuilt on every run): his recent stats scored as that position, against its players
 create table if not exists player_position_ranks (

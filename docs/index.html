@@ -393,6 +393,7 @@
     border-left: 1px solid var(--gridline); background: color-mix(in srgb, var(--series-blue) 6%, transparent); }
   table.leaderboard.players th.col-posrank { color: var(--series-blue); font-weight: 800; letter-spacing: 0; }
   table.leaderboard.players td.col-posrank .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
+  .dim-text { color: var(--text-muted); font-style: italic; }
   .rated-as { font-size: 11px; color: var(--text-muted); align-self: center; margin-left: 2px; }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
   .pos-period { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -757,7 +758,7 @@ async function loadData() {
     state.stats = st;
     state.bets = await fetch("data/bets.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
     const pj = await fetch("data/players.json", { cache: "no-store" }).then((res) => res.json()).catch(() => null);
-    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [] } : null;
+    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [], teams: pj.teams || {} } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
@@ -800,11 +801,13 @@ function countryLeague(id) {
   if (!text) return "";
   return ` <span class="club-meta">${escapeHtml(text)}</span>`;
 }
-const teamName = (id) => state.data.teams[id] || `Team ${id}`;
+const teamName = (id) => state.data.teams[id] || state.players?.teams?.[id] || `Team ${id}`;
 const teamLogo = (id) => `https://media.api-sports.io/football/teams/${id}.png`;
 const playerPhoto = (id) => `https://media.api-sports.io/football/players/${id}.png`;
 const clubHref = (id) => `#/club/${id}`;
 const clubLink = (id, text = teamName(id)) => `<a class="team-link" href="${clubHref(id)}">${escapeHtml(text)}</a>`;
+// a player's club, or a note when he has left his last club and his new one isn't known
+const playerClub = (p) => p.team ? clubLink(p.team) : `<span class="dim-text">club not known</span>`;
 const playerLink = (id, text) => `<a class="player-link" href="#/player/${id}">${escapeHtml(text)}</a>`;
 const natLink = (nat) => nat ? `<a class="nat-link" href="#/nation/${encodeURIComponent(nat)}">${escapeHtml(nat)}</a>` : "";
 
@@ -1261,10 +1264,10 @@ function renderPlayers() {
 const FIRST_ROWS = 100, BATCH_ROWS = 300;
 function playerRow(p, i, seasons, groups = selectedGroups()) {
   return `
-        <tr data-team="${p.team}" data-player="${p.id}">
+        <tr${p.team ? ` data-team="${p.team}"` : ""} data-player="${p.id}">
           <td>${i + 1}</td>
-          <td><div class="pl-cell"><img class="club-logo pl-badge" src="${teamLogo(p.team)}" alt="" title="${escapeHtml(teamName(p.team))}" loading="lazy" onerror="this.style.visibility='hidden'"><img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-            <div>${playerLink(p.id, p.name)}<span class="club-sub">${clubLink(p.team)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${natLink(p.nationality)}</span>` : ""}</span></div></div></td>
+          <td><div class="pl-cell">${p.team ? `<img class="club-logo pl-badge" src="${teamLogo(p.team)}" alt="" title="${escapeHtml(teamName(p.team))}" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="club-logo pl-badge"></span>`}<img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+            <div>${playerLink(p.id, p.name)}<span class="club-sub">${playerClub(p)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${natLink(p.nationality)}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
           ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
@@ -1356,7 +1359,7 @@ function playerVisible(p) {
 function whoOptions() {          // {clubs: label -> team id, nats: sorted names}, built once
   if (!state.whoCache && state.players) {
     const league = new Map(), names = new Map();
-    for (const p of state.players.list) if (!league.has(p.team)) league.set(p.team, p.league);
+    for (const p of state.players.list) if (p.team && !league.has(p.team)) league.set(p.team, p.league);
     for (const t of league.keys()) {
       const n = teamName(t);
       names.set(n, (names.get(n) || 0) + 1);
@@ -1939,7 +1942,7 @@ function renderPlayerPage(p) {
     <div class="club-head">
       <img class="player-photo-lg" src="${playerPhoto(p.id)}" alt="" onerror="this.style.visibility='hidden'">
       <div><h2>${escapeHtml(p.name)}</h2>
-        <div class="head-meta"><span>${clubLink(p.team)}</span>${p.nationality ? `<span>${natLink(p.nationality)}</span>` : ""}
+        <div class="head-meta"><span>${playerClub(p)}</span>${p.nationality ? `<span>${natLink(p.nationality)}</span>` : ""}
           <span>${escapeHtml(p.position || "")}${GROUP_NAME[group] ? ` · ${GROUP_NAME[group].replace(/s$/, "")}` : ""}</span>
           ${p.age != null ? `<span>Age ${p.age}${born ? ` (born ${escapeHtml(born)})` : ""}</span>` : ""}</div></div>
     </div>
@@ -1985,14 +1988,14 @@ function openNationPage(nat) {
   const xi = lines.flatMap(([, ps]) => ps);
   const xiAvg = xi.length ? xi.reduce((a, p) => a + p.rank, 0) / xi.length : null;
   const card = (p) => `<div class="xi-card"><div class="xi-pos">${escapeHtml(p.position || "")} · ${Math.round(p.rank)}</div>
-    <div class="xi-name">${playerLink(p.id, p.name)}</div><div class="xi-sub">${clubLink(p.team)}</div></div>`;
+    <div class="xi-name">${playerLink(p.id, p.name)}</div><div class="xi-sub">${playerClub(p)}</div></div>`;
   const leagues = new Map();
   for (const p of list) leagues.set(p.league, (leagues.get(p.league) || 0) + 1);
   const leagueChips = [...leagues].sort((a, b) => b[1] - a[1]).map(([lg, n]) =>
     `<span>${escapeHtml(SHORT_NAMES[lg] || state.data.competitions[lg]?.name || String(lg))} · ${n}</span>`).join("");
   const LIMIT = 100;
   const row = (p, i) => `<div class="team-row"><span class="team-row-date">${i + 1}. ${escapeHtml(p.position || "")}</span>
-    <span class="team-row-opp">${playerLink(p.id, p.name)} <span class="club-sub" style="display:inline">${clubLink(p.team)}${p.age != null ? ` · ${p.age}` : ""}</span></span>
+    <span class="team-row-opp">${playerLink(p.id, p.name)} <span class="club-sub" style="display:inline">${playerClub(p)}${p.age != null ? ` · ${p.age}` : ""}</span></span>
     <span class="team-row-res">${rankChipSmall(p.rank)}</span></div>`;
   body.innerHTML = `
     ${backButton()}

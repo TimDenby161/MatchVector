@@ -294,26 +294,48 @@ POSITION_SHARE = 0.25      # a position counts for the filter at this share of h
 
 LISTED = """p.current_rank is not null and (p.rank_minutes >= 450 or exists (
     select 1 from player_season_ranks r where r.player_id = p.player_id and r.season = any(%s)
-      and r.minutes >= 1500))"""
+      and r.minutes >= 1500) or exists (select 1 from team_squads s where s.player_id = p.player_id))"""
 
 
 def export_players(conn, out_dir=OUT_DIR):
     """Current player ranks, season ranks and each team's predicted XI for its next match
     (players.json). A season rank is the player's average rank across that season (after each
     match, weighted by minutes; player_season_ranks), blank if he didn't play in these leagues."""
-    # Listed: 450+ minutes in his last 20 appearances, or a 1,500+ minute season in the seasons
-    # shown (an established player back from injury, e.g. John Stones). Nationality can be
-    # corrected by hand in player_overrides
+    # Listed: 450+ minutes in his last 20 appearances, a 1,500+ minute season in the seasons
+    # shown (an established player back from injury, e.g. John Stones), or in a current squad
+    # (a new signing). His club: the squad he's in now (team_squads), else the club the weekly
+    # current-club check found this season (player_career_checks), else his last appearance.
+    # Nationality can be corrected by hand in player_overrides
     players = conn.execute(
-        f"""select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, x.team_id,
-                  f.league_id, extract(year from age(p.birth_date))::int, coalesce(o.nationality, p.nationality)
+        f"""with club_league as (           -- each club's league: its latest league fixture
+                select distinct on (team_id) team_id, league_id from (
+                    select f.home_team_id team_id, f.league_id, f.kickoff from fixtures f join leagues l using (league_id)
+                    where l.type = 'League'
+                    union all
+                    select f.away_team_id, f.league_id, f.kickoff from fixtures f join leagues l using (league_id)
+                    where l.type = 'League') x
+                order by team_id, kickoff desc),
+            this_season as (select max(season) s from fixtures where league_id = any(%s))
+           select p.player_id, p.name, p.rank_position, p.current_rank, p.rank_minutes, c.team_id,
+                  coalesce(cl.league_id, f.league_id), extract(year from age(p.birth_date))::int,
+                  coalesce(o.nationality, p.nationality)
            from players p
            left join player_overrides o using (player_id)
            join lateral (select fp.team_id, fp.fixture_id from fixture_players fp
                          where fp.player_id = p.player_id order by fp.fixture_id desc limit 1) x on true
            join fixtures f on f.fixture_id = x.fixture_id
+           left join lateral (select s.team_id from team_squads s where s.player_id = p.player_id
+                              order by (s.team_id = x.team_id) desc, s.fetched_at desc limit 1) sq on true
+           left join player_career_checks cc on cc.player_id = p.player_id
+                and cc.season = (select s from this_season) and cc.team_id is not null
+           -- his last club, unless we have its current squad and he isn't in it (he has left and his
+           -- new club isn't known yet: no club rather than the wrong one)
+           cross join lateral (select coalesce(sq.team_id, cc.team_id,
+                case when exists (select 1 from team_squads s2 where s2.team_id = x.team_id) then null
+                     else x.team_id end) team_id) c
+           left join club_league cl on cl.team_id = c.team_id
            where {LISTED}
-           order by p.current_rank desc""", [PLAYER_SEASONS]).fetchall()
+           order by p.current_rank desc""", [config.MATCH_PLAYER_LEAGUES, PLAYER_SEASONS]).fetchall()
     season_ranks, estimated = defaultdict(dict), defaultdict(set)
     for player, season, rank, minutes in conn.execute(
             "select player_id, season, season_rank, minutes from player_season_ranks where season = any(%s)",
@@ -372,6 +394,9 @@ def export_players(conn, out_dir=OUT_DIR):
                      [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]], r[8],
                      pos_12m.get(r[0], []), pos_ranks.get(r[0], {})] for r in players],
         "next_xi": next_xi,
+        # names of players' clubs outside the club rankings (a move out of our leagues)
+        "teams": {str(t): n for t, n in conn.execute(
+            "select team_id, name from teams where team_id = any(%s)", [list({r[5] for r in players if r[5]})])},
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))
 

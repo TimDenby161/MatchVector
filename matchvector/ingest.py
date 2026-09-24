@@ -427,6 +427,7 @@ def sync_nightly(api, conn, league_ids):
             step("injuries", sync_injuries, [league_id], [season])
     step("rankings", lambda api, conn: update_rankings(conn))
     step("retirement checks", check_retired)
+    step("squads", sync_squads)
     step("player ratings", lambda api, conn: compute_player_ratings(conn))
     step("player careers", sync_player_careers)
     step("predictions", lambda api, conn: update_predictions(conn))
@@ -451,6 +452,45 @@ def sync_player_careers(api, conn, player_ids=None):
                  and not exists (select 1 from player_career_teams c where c.player_id = r.player_id)""")]
     log.info("Player careers to fetch: %d", len(player_ids))
     _fetch_careers(api, conn, player_ids)
+
+
+def sync_squads(api, conn):
+    """Current squad of every club in this season's per-match player leagues (/players/squads,
+    one call per club) into team_squads, replacing each club's list: the club a player is shown
+    at, and the players listed even with few minutes (a new signing)."""
+    teams = [t for (t,) in conn.execute(
+        """select distinct t from (
+               select f.home_team_id t from fixtures f join league_seasons ls using (league_id, season)
+               where f.league_id = any(%(l)s) and ls.is_current
+               union select f.away_team_id from fixtures f join league_seasons ls using (league_id, season)
+               where f.league_id = any(%(l)s) and ls.is_current) x""", {"l": config.MATCH_PLAYER_LEAGUES})]
+    log.info("Squads to fetch: %d clubs", len(teams))
+    known = {p for (p,) in conn.execute("select player_id from players")}
+    for n, team in enumerate(teams, 1):
+        resp = api.get("players/squads", team=team)
+        items = resp["response"] if isinstance(resp, dict) else resp
+        if not items:                    # no answer: keep the last list rather than empty it
+            continue
+        # API-Football sometimes lists a player under a second id (Chesterfield's F. Bryden is
+        # 535484 in the squad, 350623 in match data): an unknown id takes the id of a player with
+        # the same name who has played for the club in the last 12 months
+        by_name = dict(conn.execute(
+            """select p.name, max(p.player_id) from fixture_players fp join fixtures f using (fixture_id)
+               join players p using (player_id)
+               where fp.team_id = %s and f.kickoff > now() - interval '365 days' group by 1""", [team]).fetchall())
+        ids = set()
+        for item in items:
+            for pl in item.get("players") or []:
+                pid = pl.get("id") if pl.get("id") in known else by_name.get(pl.get("name"))
+                if pid:
+                    ids.add(pid)
+        conn.execute("delete from team_squads where team_id = %s", [team])
+        if ids:
+            conn.execute("insert into team_squads (team_id, player_id) select %s, unnest(%s::int[])", [team, list(ids)])
+        if n % 50 == 0:
+            conn.commit()
+            log.info("Squads: %d/%d", n, len(teams))
+    conn.commit()
 
 
 RETIRED_RECHECK_DAYS = 7
@@ -481,9 +521,13 @@ def check_retired(api, conn):
     log.info("Retirement checks: %d players", len(player_ids))
     for n, player in enumerate(player_ids, 1):
         resp = api.get("players/squads", player=player)
-        clubs = [item["team"]["id"] for item in (resp["response"] if isinstance(resp, dict) else resp) or []
+        found = [item["team"] for item in (resp["response"] if isinstance(resp, dict) else resp) or []
                  if not (item["team"].get("name") in countries
                          or any(tag in (item["team"].get("name") or "") for tag in (" U1", " U2", " U-")))]
+        clubs = [t["id"] for t in found]
+        for t in found:
+            conn.execute("insert into teams (team_id, name, logo) values (%s, %s, %s) on conflict (team_id) do nothing",
+                         [t["id"], t.get("name") or f"Team {t['id']}", t.get("logo")])
         conn.execute("""insert into player_career_checks (player_id, season, team_id) values (%s, %s, %s)
                         on conflict (player_id) do update
                         set season = excluded.season, team_id = excluded.team_id, checked_at = now()""",

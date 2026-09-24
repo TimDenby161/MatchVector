@@ -147,7 +147,17 @@ These are set by judgement. The results data can't measure position value, becau
 - **Actual XI rating:** the average rank of the XI that started, for finished matches.
 - `predicted_lineups` holds the predicted XI for upcoming matches.
 
-Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group). Each row has the player's club badge and photo, with his club and nationality under his name. A player is listed if he has 450+ minutes in his last 20 appearances, or a season with 1,500+ minutes among the seasons shown. The second rule keeps established players who've been injured, such as John Stones. A nationality can be corrected by hand in `player_overrides`, for example Elliot Anderson as England. The nightly sync would overwrite a change made on `players` itself. Clicking his name opens a **player page** (`#/player/<id>`) with:
+Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, and formations in `fixture_formations`. The site shows player ranks on the Rankings tab (Players view, filterable by role group). Each row has the player's club badge and photo, with his club and nationality under his name. A player is listed if any of these hold:
+- he has 450+ minutes in his last 20 appearances;
+- he has a season with 1,500+ minutes among the seasons shown, which keeps established players who've been injured, such as John Stones;
+- he's in a current squad, which lists new signings straight away.
+
+**His club** comes from, in order:
+1. the squad he's in now: every club in the 13 leagues has its squad fetched nightly from `/players/squads?team=` (`team_squads`, `python -m matchvector sync squads`);
+2. the club the weekly current-club check found this season, which is often outside our leagues;
+3. his last appearance, if neither of those is known.
+
+So a player who has left drops off his old club's list, even before he plays for his new one. A nationality can be corrected by hand in `player_overrides`, for example Elliot Anderson as England. The nightly sync would overwrite a change made on `players` itself. Clicking his name opens a **player page** (`#/player/<id>`) with:
 - his club, nationality, position and age;
 - where he ranks among players in his position, among his nationality, and overall;
 - a chart of his season ranks, with estimated seasons hollow;
