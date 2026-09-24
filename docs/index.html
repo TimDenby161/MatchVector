@@ -580,8 +580,10 @@
   .pp-spot .pp-rank { font-size: 19px; font-weight: 900; font-variant-numeric: tabular-nums; }
   .pp-spot .pp-pct { font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
   .pp-spot.main { background: rgba(255,255,255,0.24); border-width: 2.5px; }
-  .pp-spot.unplayed { border-style: dashed; background: rgba(255,255,255,0.07); }
-  .pp-spot.unplayed .pp-pct { color: rgba(255,255,255,0.5); }
+  /* a position he has a rank for but no starts in (0%): greyed out */
+  .pp-spot.unplayed { border-style: dashed; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.38); }
+  .pp-spot.unplayed .pp-pos, .pp-spot.unplayed .pp-pct { color: inherit; }
+  .pp-spot.unplayed .pp-rank { font-weight: 700; }
   .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .pp-spot.hollow .pp-pos { color: inherit; }
   .pp-note { max-width: 520px; }
@@ -2184,7 +2186,7 @@ function positionPitch(p) {
     const g = GROUP_OF[r], rank = rankIn(g), pct = share(r);
     if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})">
       <span class="pp-pos">${r}</span></div>`;
-    return `<div class="pp-spot rel-${rankTier(rank)}${r === p.position ? " main" : ""}${pct ? "" : " unplayed"}" style="left:${x}%;top:${y}%"
+    return `<div class="pp-spot${pct ? ` rel-${rankTier(rank)}` : " unplayed"}${r === p.position ? " main" : ""}" style="left:${x}%;top:${y}%"
         title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · ${pct}% of his starting minutes">
       <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct ? `${pct}%` : "–"}</span></div>`;
   }).join("");
@@ -2192,7 +2194,7 @@ function positionPitch(p) {
   return `<div class="club-section pp-section"><div class="pp-head"><span class="modal-section" style="margin:0">Positions · rank and share of starts</span>
       ${periods.length > 1 ? `<div class="seg">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}</div>
     <div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
-    <div class="page-note pp-note">Big number: his rank in that position (his recent stats scored as it, with up to 6 points off for a position he hasn't played much). Percentage: his share of starting minutes there${period === "12m" ? " over the last 12 months" : " since 2020/21"}${unplaced >= 1 ? `, with ${Math.round(unplaced)}% of starts having no recorded position` : ""}. Hollow: positions he hasn't started in.</div>
+    <div class="page-note pp-note">Big number: his rank in that position (his recent stats scored as it, with up to 6 points off for a position he hasn't played much). Percentage: his share of starting minutes there${period === "12m" ? " over the last 12 months" : " since 2020/21"}${unplaced >= 1 ? `, with ${Math.round(unplaced)}% of starts having no recorded position` : ""}. Grey: a position he could play (he has a rank there) but hasn't started in${period === "12m" ? " over the last 12 months" : ""}. Hollow: positions he has no rank in.</div>
   </div>`;
 }
 
