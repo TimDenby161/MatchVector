@@ -314,13 +314,18 @@ def keeper_rank(pct, club, share=None):
 OUT_CLUB_OFFSET = 12       # outfield rank = 100 x club / CLUB_RANK_MAX - this + OUT_STATS_WEIGHT x (pct - 50)
 OUT_STATS_WEIGHT = 0.3     # stats move an outfield player up to about +/-15 (keepers +/-10: noisier)
 OUT_FULL_SHARE = 0.7       # outfield players under this share of club minutes are scaled down, up to 20%
+ELITE_FROM = 90            # outfield stats above this percentile earn ELITE_WEIGHT more per percentile,
+ELITE_WEIGHT = 1.0         # up to +10: great players at clubs below the very top can reach the high 90s
 
 
 def outfield_rank(pct, club, share=None):
     """Outfield players, like keepers, start from club level - a regular for a strong club is
-    good evidence of quality - and their stats move them up or down. A player under
-    OUT_FULL_SHARE of his club's minutes (squad player) is scaled down by up to 20%."""
-    r = 100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + OUT_STATS_WEIGHT * (pct - 50)
+    good evidence of quality - and their stats move them up or down. Elite stats (above
+    ELITE_FROM) earn extra, so the club's level doesn't cap a great player (Messi at PSG, ~1040:
+    89 -> 95). A player under OUT_FULL_SHARE of his club's minutes (squad player) is scaled
+    down by up to 20%."""
+    r = (100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + OUT_STATS_WEIGHT * (pct - 50)
+         + ELITE_WEIGHT * max(0.0, pct - ELITE_FROM))
     if share is not None:
         r *= min(1.0, 0.8 + 0.2 * share / OUT_FULL_SHARE)
     return min(max(r, 0), 100)
@@ -328,6 +333,18 @@ def outfield_rank(pct, club, share=None):
 
 def final_rank(pct, club, pos, share=None):
     return keeper_rank(pct, club, share) if pos == "GK" else outfield_rank(pct, club, share)
+
+
+def stretched_pct(score, ref):
+    """Percentile of score in sorted ref, except the top decile, which is spread by how far the
+    score is above the 90th percentile (90 there, 100 at the 99.9th), so the best stand apart
+    instead of all sitting at ~99."""
+    n = len(ref)
+    p = 100 * bisect.bisect_left(ref, score) / n
+    if p < 90:
+        return p
+    lo, hi = ref[int(0.9 * n)], ref[min(int(0.999 * n), n - 1)]
+    return 90 + 10 * min(max((score - lo) / (hi - lo), 0), 1) if hi > lo else p
 
 
 def club_factor(club):
@@ -399,15 +416,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         v.sort()
 
     def pct(score, pos):
-        r = ref.get(pos)
-        if not r:
-            return 50.0
-        n = len(r)
-        p = 100 * bisect.bisect_left(r, score) / n
-        if p < 90:
-            return p
-        lo, hi = r[int(0.9 * n)], r[min(int(0.999 * n), n - 1)]
-        return 90 + 10 * min(max((score - lo) / (hi - lo), 0), 1) if hi > lo else p
+        return stretched_pct(score, ref[pos]) if ref.get(pos) else 50.0
     evidence = {k: (final_rank(pct(sc, pos), club, pos), mins, pos)
                 for k, (sc, mins, pos, club) in raw.items()}
 
@@ -669,7 +678,7 @@ def compute_player_ratings(conn):
         """(stat score, club rank) -> stat percentile scaled by the club's level."""
         score, club = s
         ref = cdf.get(pos) or pooled
-        return round(final_rank(100 * bisect.bisect_left(ref, score) / len(ref), club, pos), 1)
+        return round(final_rank(stretched_pct(score, ref), club, pos), 1)
     log.info("Player ratings: %d appearances, %d team-fixtures, regulars per position %s, %d retired",
              len(appearance_scores), len(team_rows), {p: len(v) for p, v in cdf.items()}, len(retired))
 
