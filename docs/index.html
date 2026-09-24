@@ -433,6 +433,19 @@
   .pitch .pos[aria-pressed="true"] { background: var(--series-blue); color: #fff; }
   .pitch .pos:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
   #age-filter[hidden] { display: none; }
+  /* Club and nationality filter: type-ahead inputs, picks shown as removable chips */
+  #who-filter { order: 0; margin-bottom: 10px; }
+  #who-filter[hidden] { display: none; }
+  .who-input { width: 100%; margin-bottom: 6px; }
+  .who-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .who-chips:empty { display: none; }
+  .who-chip { display: inline-flex; align-items: center; gap: 5px; appearance: none; font: 500 12px/1.2 inherit;
+    font-family: inherit; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--series-blue) 45%, var(--border));
+    background: color-mix(in srgb, var(--series-blue) 10%, transparent); color: var(--text-primary); }
+  .who-chip .x { color: var(--text-muted); font-size: 13px; line-height: 1; }
+  .who-chip:hover .x { color: var(--text-primary); }
+  .who-chip .kind { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
   #table-filters { order: 1; }
   #table-view { order: 2; margin-bottom: 10px; }
   #table-search { order: 3; }
@@ -463,6 +476,7 @@
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
     #pos-filter { order: 3; margin: 0 0 14px; }
+    #who-filter { order: 3; margin: 0 0 14px; }
     #table-filters { order: 4; margin: 0; }
     /* Side menu: plain rows, counts on the right, groups slide open */
     #table-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
@@ -569,6 +583,17 @@
           </div>
         </div>
         <div id="pos-filter" hidden></div>
+        <div id="who-filter" hidden>
+          <div class="pos-head"><span>Club &amp; nationality</span>
+            <button type="button" class="pos-clear" data-who-clear hidden>Clear</button></div>
+          <input type="search" id="club-input" class="table-search who-input" list="club-options"
+                 placeholder="Add a club" aria-label="Filter by club" autocomplete="off">
+          <datalist id="club-options"></datalist>
+          <input type="search" id="nat-input" class="table-search who-input" list="nat-options"
+                 placeholder="Add a nationality" aria-label="Filter by nationality" autocomplete="off">
+          <datalist id="nat-options"></datalist>
+          <div class="who-chips" id="who-chips"></div>
+        </div>
         <div class="filters-wrap" id="table-filters"></div>
         <div class="filter-row range-row" id="table-view">
           <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
@@ -1147,7 +1172,7 @@ function renderPlayers() {
   const q = state.tableSearch.trim().toLowerCase();
   const all = tableFilterIsWide();
   let rows = q ? state.players.list.filter((p) => p.name.toLowerCase().includes(q) || teamName(p.team).toLowerCase().includes(q))
-               : ids === null ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
+               : ids === null || state.clubs?.size ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
   rows = rows.filter(playerVisible);
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
   // (youngest first); blanks last
@@ -1263,8 +1288,88 @@ const PITCH_LINES = `<svg viewBox="0 0 68 88" preserveAspectRatio="none" aria-hi
   <circle cx="34" cy="44" r="7"/><rect x="17" y="3" width="34" height="12"/><rect x="26" y="3" width="16" height="5"/>
   <rect x="17" y="73" width="34" height="12"/><rect x="26" y="80" width="16" height="5"/></svg>`;
 function playerVisible(p) {
-  return inAgeRange(p) && (!state.positions?.size || state.positions.has(p.position));
+  return inAgeRange(p) && (!state.positions?.size || state.positions.has(p.position))
+    && (!state.clubs?.size || state.clubs.has(p.team))
+    && (!state.nats?.size || state.nats.has(p.nationality));
 }
+// ---- Club and nationality (Players view): pick one or more of each; they combine with the
+// other filters, and a club pick shows that club's players whatever league is selected
+function whoOptions() {          // {clubs: label -> team id, nats: sorted names}, built once
+  if (!state.whoCache && state.players) {
+    const league = new Map(), names = new Map();
+    for (const p of state.players.list) if (!league.has(p.team)) league.set(p.team, p.league);
+    for (const t of league.keys()) {
+      const n = teamName(t);
+      names.set(n, (names.get(n) || 0) + 1);
+    }
+    const clubs = new Map();
+    for (const [t, lg] of league) {
+      const n = teamName(t);
+      clubs.set(names.get(n) > 1 ? `${n} (${SHORT_NAMES[lg] || state.data.competitions[lg]?.name || lg})` : n, t);
+    }
+    const nats = [...new Set(state.players.list.map((p) => p.nationality).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    state.whoCache = { clubs: new Map([...clubs].sort((a, b) => a[0].localeCompare(b[0]))), nats };
+  }
+  return state.whoCache;
+}
+function renderWhoFilter() {
+  const box = $("#who-filter");
+  box.hidden = state.tableView !== "players" || !state.players;
+  if (box.hidden) return;
+  const { clubs, nats } = whoOptions();
+  if (!state.whoFilled) {
+    $("#club-options").innerHTML = [...clubs.keys()].map((n) => `<option value="${escapeHtml(n)}"></option>`).join("");
+    $("#nat-options").innerHTML = nats.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("");
+    state.whoFilled = true;
+  }
+  state.clubs ||= new Set();
+  state.nats ||= new Set();
+  const label = new Map([...clubs].map(([n, t]) => [t, n]));
+  $("#who-chips").innerHTML =
+    [...state.clubs].map((t) => `<button type="button" class="who-chip" data-club="${t}" title="Remove">
+       <span class="kind">Club</span>${escapeHtml(label.get(t) || teamName(t))}<span class="x" aria-hidden="true">×</span></button>`).join("")
+    + [...state.nats].map((n) => `<button type="button" class="who-chip" data-nat="${escapeHtml(n)}" title="Remove">
+       <span class="kind">Nat</span>${escapeHtml(n)}<span class="x" aria-hidden="true">×</span></button>`).join("");
+  box.querySelector("[data-who-clear]").hidden = !state.clubs.size && !state.nats.size;
+}
+function whoChanged() {
+  renderWhoFilter();
+  renderTable();
+  renderTableFilters();
+}
+function addWho(input) {         // called as the user types: add once the text matches an option
+  const v = input.value.trim();
+  if (!v) return;
+  const { clubs, nats } = whoOptions();
+  if (input.id === "club-input") {
+    const t = clubs.get(v) ?? [...clubs].find(([n]) => n.toLowerCase() === v.toLowerCase())?.[1];
+    if (t == null) return;
+    state.clubs.add(t);
+  } else {
+    const n = nats.find((x) => x.toLowerCase() === v.toLowerCase());
+    if (!n) return;
+    state.nats.add(n);
+  }
+  input.value = "";
+  whoChanged();
+}
+for (const id of ["#club-input", "#nat-input"]) {
+  // picking from the dropdown fires input with no typing inputType; typed text waits for Enter
+  // (so "Inter" isn't taken while typing "Inter Miami")
+  $(id).addEventListener("input", (e) => {
+    if (!e.inputType || e.inputType === "insertReplacementText") addWho(e.target);
+  });
+  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") addWho(e.target); });
+  $(id).addEventListener("change", (e) => addWho(e.target));
+}
+$("#who-filter").addEventListener("click", (e) => {
+  if (e.target.closest("[data-who-clear]")) { state.clubs = new Set(); state.nats = new Set(); return whoChanged(); }
+  const chip = e.target.closest(".who-chip");
+  if (!chip) return;
+  if (chip.dataset.club) state.clubs.delete(Number(chip.dataset.club));
+  else state.nats.delete(chip.dataset.nat);
+  whoChanged();
+});
 function renderPosFilter() {
   const box = $("#pos-filter");
   box.hidden = state.tableView !== "players" || !state.players;
@@ -1769,6 +1874,7 @@ $("#table-view").addEventListener("click", (e) => {
   state.tableView = btn.dataset.view;
   renderAgeFilter();
   renderPosFilter();
+  renderWhoFilter();
   document.querySelectorAll("#table-view [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
   $("#table-search").placeholder = state.tableView === "players" ? "Search players or clubs" : "Search clubs";
   renderTableFilters();
