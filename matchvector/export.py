@@ -290,6 +290,8 @@ def export_bets(conn, out_dir=OUT_DIR):
 PLAYER_SEASONS = list(range(2026, 2020, -1))     # season ranks shown, newest first
 
 
+POSITION_SHARE = 0.25      # a position counts for the filter at this share of his starting minutes
+
 LISTED = """p.current_rank is not null and (p.rank_minutes >= 450 or exists (
     select 1 from player_season_ranks r where r.player_id = p.player_id and r.season = any(%s)
       and r.minutes >= 1500))"""
@@ -319,6 +321,17 @@ def export_players(conn, out_dir=OUT_DIR):
         season_ranks[player][season] = float(rank)
         if minutes == 0:                 # a gap season filled from the age curve
             estimated[player].add(season)
+    # Positions he started in for POSITION_SHARE+ of his starting minutes over the last 12 months
+    # (the position filter includes him there too); minutes off the bench have no position
+    role_mins = defaultdict(dict)
+    for player, role, mins in conn.execute(
+            """select fp.player_id, fp.role, sum(fp.minutes) from fixture_players fp join fixtures f using (fixture_id)
+               where fp.player_id = any(%s) and fp.role is not null and fp.minutes > 0
+                 and f.status_short = any(%s) and f.kickoff > now() - interval '365 days'
+               group by 1, 2""", [[r[0] for r in players], list(config.FINISHED_STATUSES)]):
+        role_mins[player][role] = mins
+    pos_12m = {p: sorted((r for r, m in rm.items() if m >= POSITION_SHARE * sum(rm.values())), key=lambda r: -rm[r])
+               for p, rm in role_mins.items()}
     lineups = conn.execute(
         """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
                   p.name, pl.position, pl.player_rank
@@ -337,11 +350,12 @@ def export_players(conn, out_dir=OUT_DIR):
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     (out_dir / "players.json").write_text(json.dumps({
         "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age", "estimated",
-                   "nationality"],
+                   "nationality", "positions_12m"],
         "seasons": PLAYER_SEASONS,
         "players": [[r[0], r[1], r[2], float(r[3]), r[4], r[5], r[6],
                      [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7],
-                     [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]], r[8]] for r in players],
+                     [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]], r[8],
+                     pos_12m.get(r[0], [])] for r in players],
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))

@@ -1324,8 +1324,11 @@ const PITCH_LINES = `<svg viewBox="0 0 68 88" preserveAspectRatio="none" aria-hi
   <rect x="3" y="3" width="62" height="82" rx="1"/><line x1="3" y1="44" x2="65" y2="44"/>
   <circle cx="34" cy="44" r="7"/><rect x="17" y="3" width="34" height="12"/><rect x="26" y="3" width="16" height="5"/>
   <rect x="17" y="73" width="34" height="12"/><rect x="26" y="80" width="16" height="5"/></svg>`;
+// A player shows under a position if it's his main one, or he started there for 25%+ of his
+// starting minutes in the last 12 months (positions_12m)
+const playsAt = (p) => new Set([p.position, ...(p.positions_12m || [])]);
 function playerVisible(p) {
-  return inAgeRange(p) && (!state.positions?.size || state.positions.has(p.position))
+  return inAgeRange(p) && (!state.positions?.size || [...playsAt(p)].some((r) => state.positions.has(r)))
     && (!state.clubs?.size || state.clubs.has(p.team))
     && (!state.nats?.size || state.nats.has(p.nationality));
 }
@@ -1413,7 +1416,7 @@ function renderPosFilter() {
   if (box.hidden) return;
   const sel = state.positions || new Set();
   const n = {};
-  for (const p of state.players.list) n[p.position] = (n[p.position] || 0) + 1;
+  for (const p of state.players.list) for (const r of playsAt(p)) n[r] = (n[r] || 0) + 1;
   box.innerHTML = `<div class="pos-head"><span>Position</span>
       <button type="button" class="pos-clear" data-pos-clear${sel.size ? "" : " hidden"}>Clear</button></div>
     <div class="pitch">${PITCH_LINES}${PITCH_SPOTS.map(([pos, x, y]) =>
