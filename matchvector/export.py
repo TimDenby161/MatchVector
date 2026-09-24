@@ -262,7 +262,11 @@ def export_injuries(conn, out_dir=OUT_DIR):
     """Each club's injury list for the club page (docs/data/injuries.json): out and doubtful
     players for its next match that has a list, else its latest list from the last
     INJURY_LOOKBACK_DAYS (API-Football publishes a match's list only shortly before it), less
-    the one-match reasons (a ban already served). Small, so the match-day run refreshes it too."""
+    the one-match reasons (a ban already served). Small, so the match-day run refreshes it too.
+
+    missed: how many of the club's played matches in a row he has been on its list, back from its
+    latest (matches with no list for the club, e.g. cups, are skipped).
+    """
     teams = {}
     for team, fid, kickoff, upcoming, player, name, kind, reason in conn.execute(
             """with pick as (
@@ -280,9 +284,19 @@ def export_injuries(conn, out_dir=OUT_DIR):
         entry = teams.setdefault(str(team), {"fixture": fid, "kickoff": kickoff.isoformat(), "upcoming": upcoming,
                                              "players": []})
         entry["players"].append([player, html.unescape(name or ""), kind, reason])
+    listed = defaultdict(dict)           # team -> {fixture: (kickoff, {players on its list})}
+    for team, fid, kickoff, player in conn.execute(
+            """select i.team_id, i.fixture_id, f.kickoff, i.player_id from injuries i join fixtures f using (fixture_id)
+               where i.team_id = any(%s) and f.status_short = any(%s) and f.kickoff > now() - interval '365 days'""",
+            [[int(t) for t in teams], list(config.FINISHED_STATUSES)]):
+        listed[team].setdefault(fid, (kickoff, set()))[1].add(player)
+    for team, entry in teams.items():
+        lists = [ps for _, ps in sorted(listed[int(team)].values(), key=lambda x: x[0], reverse=True)]
+        for row in entry["players"]:
+            row.append(next((k for k, ps in enumerate(lists) if row[0] not in ps), len(lists)))
     (out_dir / "injuries.json").write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "fields": ["player", "name", "type", "reason"], "teams": teams,
+        "fields": ["player", "name", "type", "reason", "missed"], "teams": teams,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported injury lists for %d clubs", len(teams))
 

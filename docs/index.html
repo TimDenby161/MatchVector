@@ -710,6 +710,8 @@
   .ov-top .next-card { margin: 0; padding: 9px 10px; }
   .ov-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
+  .inj-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+  .inj-top .rel-chip { flex: none; min-width: 30px; }
   .inj-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inj-reason { font-size: 11px; color: var(--status-critical); }
   .inj-reason.doubt { color: var(--status-warning); }
@@ -2052,7 +2054,8 @@ function clubOverviewTab() {
     </div></div>` : ""}`;
 }
 
-// Injured (and suspended or doubtful) players, from the club's injury list: the next match's, or
+// Injured (and suspended or doubtful) players, with how many matches in a row he has missed and
+// his rank, from the club's injury list: the next match's, or
 // its latest one if the next match's isn't out yet (bans already served are left out of that)
 function injuredCard(id) {
   const inj = clubInjuries(id);
@@ -2062,8 +2065,9 @@ function injuredCard(id) {
   const when = inj.upcoming ? "Next match" : `Latest list · ${past ? `${past.home ? "v" : "@"} ${escapeHtml(clubOpp(past.opponent))}, ` : ""}${escapeHtml(fmtShortDate(inj.kickoff))}`;
   return `<div class="next-card inj-card">
     <div class="next-top"><span class="next-label">Injured Players</span><span>${when}</span></div>
-    ${inj.players.map(([pid, name, type, reason]) => `<div class="inj-row">
-      <span class="inj-name">${playerById(pid) ? playerLink(pid, name) : escapeHtml(name)}</span>
+    ${inj.players.map(([pid, name, type, reason, missed]) => `<div class="inj-row">
+      <div class="inj-top"><span class="inj-name" title="${escapeHtml(`${name}: missed his club's last ${missed} match${missed === 1 ? "" : "es"}`)}">${playerById(pid) ? playerLink(pid, name) : escapeHtml(name)}${missed ? ` – ${missed}` : ""}</span>
+        ${playerById(pid) ? rankChipSmall(playerById(pid).rank) : ""}</div>
       <span class="inj-reason${type === "Questionable" ? " doubt" : ""}">${escapeHtml(type === "Questionable" ? `Doubtful${reason ? ` · ${reason}` : ""}` : reason || "Out")}</span></div>`).join("")}
   </div>`;
 }
