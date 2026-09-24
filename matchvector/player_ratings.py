@@ -315,6 +315,19 @@ def _add_season(entry, row, rating):
     entry["broad"][row[5]] += mins
 
 
+def season_group(entry):
+    """The role group he started the most minutes in that season (starting roles summed by group:
+    30% LW + 30% RW + 40% ST is a winger, not a striker); only off the bench: his broad position."""
+    groups = Counter()
+    for role, mins in entry["roles"].items():
+        if mins > 0 and role_group(role):
+            groups[role_group(role)] += mins
+    if groups:
+        return groups.most_common(1)[0][0]
+    broad = +entry["broad"]
+    return FALLBACK.get(broad.most_common(1)[0][0]) if broad else None
+
+
 def _norms(apps, offsets):
     """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes in
     config.RATING_REFERENCE_LEAGUES."""
@@ -326,8 +339,7 @@ def _norms(apps, offsets):
     for entry in seasons.values():
         if entry["sums"]["minutes"] < 900:
             continue
-        pos = (role_group(entry["roles"].most_common(1)[0][0]) if entry["roles"]
-               else FALLBACK.get(entry["broad"].most_common(1)[0][0]))
+        pos = season_group(entry)
         m = metrics(entry["sums"])
         if pos in WEIGHTS and m:
             groups[pos].append(m)
@@ -513,8 +525,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         mins = e["sums"]["minutes"]
         if mins <= 0 or not e["club"][1]:
             continue
-        pos = (role_group(e["roles"].most_common(1)[0][0]) if +e["roles"]
-               else FALLBACK.get((+e["broad"]).most_common(1)[0][0]) if +e["broad"] else None)
+        pos = season_group(e)
         sc = _stat_score(e["sums"], pos, norms)
         if sc is not None:
             raw[(player, season)] = (sc, mins, pos, e["club"][0] / e["club"][1])

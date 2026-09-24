@@ -387,6 +387,7 @@
   .pos-share { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--series-blue) 12%, transparent); color: var(--text-primary); }
   .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
+  .rated-as { font-size: 11px; color: var(--text-muted); align-self: center; margin-left: 2px; }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
   .pos-period { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
   .pos-period-label { font-size: 12px; color: var(--text-secondary); width: 150px; flex-shrink: 0; }
@@ -1820,7 +1821,7 @@ function openTeam(teamId) {
 }
 
 // ------------------------------------------------------------------ player page
-const GROUP_OF = { GK: "GK", CB: "CB", LB: "FB", RB: "FB", LWB: "FB", RWB: "FB", DM: "DM", CM: "CM", LM: "CM", RM: "CM",
+const GROUP_OF = { GK: "GK", CB: "CB", LB: "FB", RB: "FB", LWB: "FB", RWB: "FB", DM: "DM", CM: "CM", LM: "W", RM: "W",   // as positions.py
                    AM: "AM", LW: "W", RW: "W", ST: "ST", G: "GK", D: "CB", M: "CM", F: "ST" };
 const GROUP_NAME = { GK: "goalkeepers", CB: "centre-backs", FB: "full-backs", DM: "defensive mids", CM: "central mids",
                      AM: "attacking mids", W: "wingers", ST: "strikers" };
@@ -1867,6 +1868,16 @@ function seasonChart(p, seasons) {
     <div class="chart-summary">Hollow points are estimated seasons (no minutes in the leagues with player data): his level on the age curve for his position.</div></div>`;
 }
 const POS_WORD = { G: "GK", D: "DEF", M: "MID", F: "FWD", SUB: "Sub" };
+const GROUP_SINGLE = { GK: "goalkeeper", CB: "centre-back", FB: "full-back", DM: "defensive mid", CM: "central mid",
+                       AM: "attacking mid", W: "winger", ST: "striker" };
+// The group a season is rated as: the role group with most starting minutes that season (as
+// the model does); starts without a line-up position only if there's nothing else
+function seasonGroup(list) {
+  const by = new Map();
+  for (const [r, m] of list || []) if (!POS_WORD[r] && GROUP_OF[r]) by.set(GROUP_OF[r], (by.get(GROUP_OF[r]) || 0) + m);
+  if (!by.size) for (const [r, m] of list || []) if (GROUP_OF[r]) by.set(GROUP_OF[r], (by.get(GROUP_OF[r]) || 0) + m);
+  return by.size ? [...by].sort((a, b) => b[1] - a[1])[0][0] : null;
+}
 // [[role, minutes], ...] -> "LB 84% · LWB 16%": shares of his starting minutes (minutes off the
 // bench have no position and aren't counted; positions under 3% grouped as "other")
 function positionShares(list) {
@@ -1901,7 +1912,7 @@ function renderPlayerPage(p) {
     const age = p.age != null ? p.age - (seasons[0] - y) : null;
     const sp = detail[String(y)] || [];
     return `<tr><td class="num" style="text-align:left">${seasonShort(y)}</td><td class="num">${age ?? "–"}</td>
-      <td>${sp.length ? spellHtml(sp) : `<span class="dim">${est ? "Estimated from his other seasons and age" : ""}</span>`}${posBySeason[String(y)] ? `<div class="pos-shares">${positionShares(posBySeason[String(y)])}</div>` : ""}</td>
+      <td>${sp.length ? spellHtml(sp) : `<span class="dim">${est ? "Estimated from his other seasons and age" : ""}</span>`}${posBySeason[String(y)] ? `<div class="pos-shares">${positionShares(posBySeason[String(y)])}${seasonGroup(posBySeason[String(y)]) ? `<span class="rated-as">rated as ${GROUP_SINGLE[seasonGroup(posBySeason[String(y)])]}</span>` : ""}</div>` : ""}</td>
       <td class="num">${est ? `<span class="est">${rankChipSmall(v)}</span>` : rankChipSmall(v)}</td></tr>`;
   }).join("");
   const now = detail.now || [];

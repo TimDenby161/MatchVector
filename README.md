@@ -80,7 +80,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 
 **Player rank**
 1. Take the player's last 20 appearances within 18 months.
-2. Work out his **role** from the line-ups. `matchvector/positions.py` turns each starter's grid position and the team's formation into a role: GK, LB, CB, RB, LWB, RWB, DM, CM, AM, LM, RM, LW, RW or ST. For example, 4-2-3-1 row 4 gives LW, AM and RW. His role is the one he's started in most over the window; players only seen as substitutes use their broad position. Roles are compared in groups, with left and right together: GK, CB, full-back, DM, CM, AM, winger and ST.
+2. Work out his **role** from the line-ups. `matchvector/positions.py` turns each starter's grid position and the team's formation into a role: GK, LB, CB, RB, LWB, RWB, DM, CM, AM, LM, RM, LW, RW or ST. For example, 4-2-3-1 row 4 gives LW, AM and RW. His role is the one he's started in most over the window; players only seen as substitutes use their broad position. A **season** rank uses the role group he started the most minutes in that season, with the roles summed by group. So 30% LW + 30% RW + 40% ST is rated as a winger, not a striker. Roles are compared in groups, with left and right together: GK, CB, full-back, DM, CM, AM, winger and ST.
 3. Work out his per-90 stats and ratios, with weights set for each role group. The weights lean on the stats that reflect lasting ability:
    - **Centre-backs:** duels won, passing volume and accuracy, tackles + interceptions and blocks. Minus times dribbled past, his team's xG conceded while he's on the pitch, and fouls and cards. Scoring isn't his job, so goals and shots on target are left out. His match rating has the goal bonus taken off: API-Football adds about 0.78 to a centre-back's rating when he scores (6.93 against 7.70). The same goes for full-backs (+0.82) and defensive mids (+0.79). The assist bonus (about +0.5) stays, because creating chances is part of those jobs. Each stat was checked on centre-backs with 1,500+ minutes in back-to-back seasons, by how well it repeats from one season to the next, overall and after a move to another club:
 
@@ -152,7 +152,7 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 - where he ranks among players in his position, among his nationality, and overall;
 - a chart of his season ranks, with estimated seasons hollow;
 - **positions played:** his share of minutes in each position, over the last 12 months, all time (our data from 2020/21) and each season as shares of his starting minutes (the role he started in, from the line-up and formation; minutes off the bench have no position and aren't counted);
-- a season-by-season table: club, club rank, minutes, rating, goals and assists;
+- a season-by-season table: club, club rank, minutes, rating, goals and assists, and which position group the season was rated as;
 - his last 20 appearances.
 
 Clicking a nationality opens a **nationality page** (`#/nation/<name>`) with:
