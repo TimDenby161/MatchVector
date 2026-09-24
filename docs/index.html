@@ -579,10 +579,6 @@
   .pp-spot .pp-rank { font-size: 19px; font-weight: 900; font-variant-numeric: tabular-nums; }
   .pp-spot .pp-pct { font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
   .pp-spot.main { background: rgba(255,255,255,0.24); border-width: 2.5px; }
-  /* a position he has a rank for but no starts in (0%): greyed out */
-  .pp-spot.unplayed { background: transparent; border: 1.5px dashed rgba(255,255,255,0.22); color: rgba(255,255,255,0.3); }
-  .pp-spot.unplayed .pp-pos { color: inherit; }
-  .pp-spot.unplayed .pp-rank { font-size: 15px; font-weight: 600; }
   .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .pp-spot.hollow .pp-pos { color: inherit; }
   .pp-section { margin-bottom: 16px; }
@@ -2183,9 +2179,12 @@ function positionPitch(p) {
     const g = GROUP_OF[r], rank = rankIn(g), pct = share(r);
     if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})">
       <span class="pp-pos">${r}</span></div>`;
-    return `<div class="pp-spot${pct ? ` rel-${rankTier(rank)}` : " unplayed"}${r === p.position ? " main" : ""}" style="left:${x}%;top:${y}%"
+    // a position he could play but hasn't started in: blank like the rest (his rank in the tooltip)
+    if (!pct) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · no starts here">
+      <span class="pp-pos">${r}</span></div>`;
+    return `<div class="pp-spot rel-${rankTier(rank)}${r === p.position ? " main" : ""}" style="left:${x}%;top:${y}%"
         title="${r} · ${GROUP_SINGLE[g]}: rank ${rank.toFixed(1)} · ${pct}% of his starting minutes">
-      <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span>${pct ? `<span class="pp-pct">${pct}%</span>` : ""}</div>`;
+      <span class="pp-pos">${r}</span><span class="pp-rank">${Math.round(rank)}</span><span class="pp-pct">${pct}%</span></div>`;
   }).join("");
   const periods = [["12m", "Last 12 months"], ["all", "Ever"]].filter(([k]) => pos[k]);
   return `<div class="club-section pp-section">${periods.length > 1 ? `<div class="seg pp-period">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}
