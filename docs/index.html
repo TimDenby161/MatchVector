@@ -1582,21 +1582,27 @@ function renderPlayers() {
       <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, seasons, groups)).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
-  // The rest of the rows go in afterwards in batches, so the first screen (and the age slider)
-  // responds at once instead of waiting for thousands of rows; a newer render cancels this one
-  const token = state.playerRenderToken = (state.playerRenderToken || 0) + 1;
+  // The rest of the rows go in BATCH_ROWS at a time as the bottom of the list scrolls into view
+  // (inside the box when it scrolls, else on the page), so thousands of rows are never built at
+  // once; a newer render drops the old observer
+  state.playerObserver?.disconnect();
+  if (rows.length <= FIRST_ROWS) return;
+  const box = wrap.querySelector(".table-scroll");
   const tbody = wrap.querySelector("tbody");
+  const sentinel = document.createElement("div");
+  box.appendChild(sentinel);
   let at = FIRST_ROWS;
-  const more = () => {
-    if (token !== state.playerRenderToken || at >= rows.length) return;
+  const observer = state.playerObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
     tbody.insertAdjacentHTML("beforeend", rows.slice(at, at + BATCH_ROWS).map((p, j) => playerRow(p, at + j, seasons, groups)).join(""));
     at += BATCH_ROWS;
-    setTimeout(more, 0);
-  };
-  setTimeout(more, 0);
+    if (at >= rows.length) { observer.disconnect(); sentinel.remove(); }
+    else { observer.unobserve(sentinel); observer.observe(sentinel); }   // re-check: still in view -> load again
+  }, { root: getComputedStyle(box).maxHeight === "none" ? null : box, rootMargin: "0px 0px 600px 0px" });
+  observer.observe(sentinel);
 }
 
-const FIRST_ROWS = 100, BATCH_ROWS = 300;
+const FIRST_ROWS = 100, BATCH_ROWS = 100;
 function playerRow(p, i, seasons, groups = selectedGroups()) {
   return `
         <tr${p.team ? ` data-team="${p.team}"` : ""} data-player="${p.id}">
