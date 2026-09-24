@@ -721,6 +721,7 @@
   .inj-missed { flex: none; }
   .inj-reason { font-size: 11px; color: var(--status-critical); }
   .inj-reason.doubt { color: var(--status-warning); }
+  .inj-reason.susp { color: var(--series-orange); }
   .ov-top .next-top { flex-direction: column; gap: 2px; font-size: 10.5px; }
   .ov-top .next-opp { font-size: 13px; gap: 6px; }
   .ov-top .next-opp .club-logo { width: 18px; height: 18px; }
@@ -2066,6 +2067,7 @@ function clubOverviewTab() {
     </div></div>` : ""}`;
 }
 
+const BAN_REASONS = new Set(["Red Card", "Yellow Cards", "Suspended"]);
 // Injured (and suspended or doubtful) players, with how many matches in a row he has missed and
 // his rank, from the club's injury list: the next match's, or
 // its latest one if the next match's isn't out yet (bans already served are left out of that)
@@ -2076,11 +2078,12 @@ function injuredCard(id) {
   const past = state.club.data?.rows?.find((m) => m.date === day);
   const when = inj.upcoming ? "Next match" : `Latest list · ${past ? `${past.home ? "v" : "@"} ${escapeHtml(clubOpp(past.opponent))}, ` : ""}${escapeHtml(fmtShortDate(inj.kickoff))}`;
   return `<div class="next-card inj-card">
-    <div class="next-top"><span class="next-label">Injured Players</span><span>${when}</span></div>
+    <div class="next-top"><span class="next-label">Injured &amp; Suspended</span><span>${when}</span></div>
     ${inj.players.map(([pid, name, type, reason, missed]) => `<div class="inj-row">
       <div class="inj-top"><span class="inj-name" title="${escapeHtml(`${name}: missed his club's last ${missed} match${missed === 1 ? "" : "es"}`)}"><span class="inj-surname">${playerById(pid) ? playerLink(pid, shortName(name)) : escapeHtml(shortName(name))}</span>${missed ? `<span class="inj-missed">&nbsp;– ${missed}</span>` : ""}</span>
         ${playerById(pid) ? rankChipSmall(playerById(pid).rank) : ""}</div>
-      <span class="inj-reason${type === "Questionable" ? " doubt" : ""}">${escapeHtml(type === "Questionable" ? `Doubtful${reason ? ` · ${reason}` : ""}` : reason || "Out")}</span></div>`).join("")}
+      <span class="inj-reason${type === "Questionable" ? " doubt" : type === "Suspended" || BAN_REASONS.has(reason) ? " susp" : ""}">${escapeHtml(type === "Questionable" ? `Doubtful${reason ? ` · ${reason}` : ""}`
+        : type === "Suspended" || BAN_REASONS.has(reason) ? (reason === "Suspended" ? reason : `Suspended · ${reason}`) : reason || "Out")}</span></div>`).join("")}
   </div>`;
 }
 

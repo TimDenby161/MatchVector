@@ -262,7 +262,9 @@ def export_injuries(conn, out_dir=OUT_DIR):
     """Each club's injury list for the club page (docs/data/injuries.json): out and doubtful
     players for its next match that has a list, else its latest list from the last
     INJURY_LOOKBACK_DAYS (API-Football publishes a match's list only shortly before it), less
-    the one-match reasons (a ban already served). Small, so the match-day run refreshes it too.
+    the one-match reasons (a ban already served). Until the next match's list is out, players
+    sent off in the club's latest match are added as suspended. Small, so the match-day run
+    refreshes it too.
 
     missed: how many of the club's played matches in a row he has been on its list, back from its
     latest (matches with no list for the club, e.g. cups, are skipped).
@@ -284,6 +286,22 @@ def export_injuries(conn, out_dir=OUT_DIR):
         entry = teams.setdefault(str(team), {"fixture": fid, "kickoff": kickoff.isoformat(), "upcoming": upcoming,
                                              "players": []})
         entry["players"].append([player, html.unescape(name or ""), kind, reason])
+    for team, fid, kickoff, player, name in conn.execute(
+            """with last as (
+                   select distinct on (fp.team_id) fp.team_id, fp.fixture_id, f.kickoff
+                   from fixture_players fp join fixtures f using (fixture_id)
+                   where f.status_short = any(%s) and f.kickoff > now() - %s * interval '1 day'
+                   order by fp.team_id, f.kickoff desc)
+               select last.team_id, last.fixture_id, last.kickoff, fp.player_id, p.name
+               from last join fixture_players fp using (team_id, fixture_id) left join players p using (player_id)
+               where fp.red_cards > 0""", [list(config.FINISHED_STATUSES), INJURY_LOOKBACK_DAYS]):
+        entry = teams.get(str(team))
+        if entry and entry["upcoming"]:      # the next match's list is out, with any bans on it
+            continue
+        entry = entry or teams.setdefault(str(team), {"fixture": fid, "kickoff": kickoff.isoformat(),
+                                                      "upcoming": False, "players": []})
+        if all(row[0] != player for row in entry["players"]):
+            entry["players"].append([player, html.unescape(name or ""), "Suspended", "Red card"])
     listed = defaultdict(dict)           # team -> {fixture: (kickoff, {players on its list})}
     for team, fid, kickoff, player in conn.execute(
             """select i.team_id, i.fixture_id, f.kickoff, i.player_id from injuries i join fixtures f using (fixture_id)
