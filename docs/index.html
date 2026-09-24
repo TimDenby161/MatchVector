@@ -308,6 +308,10 @@
   /* Pl, Rating, Trend and Form: one width, centred */
   table.leaderboard.clubs th:nth-child(n+4), table.leaderboard.clubs td:nth-child(n+4) { width: 68px; text-align: center; }
   table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
+  /* player rows and header the same height as the club table's: same padding, photo the badge's
+     size, and the + in the heading adds no height */
+  table.leaderboard.players td { padding-top: 5px; padding-bottom: 5px; }
+  .pl-cell .player-photo { width: 24px; height: 24px; }
   table.leaderboard tr.row-hl td { background: color-mix(in srgb, var(--series-blue) 14%, transparent); }
   table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 2px 6px; font-size: 12px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
@@ -336,7 +340,7 @@
   table.season-table .est .rel-chip, table.leaderboard.players .est .rel-chip { background: transparent; box-shadow: inset 0 0 0 1px currentColor; font-style: italic; opacity: .8; }
   /* Years toggle: past seasons left of Ability, projected ones (age curve) right of it, fainter */
   .now-head { display: inline-flex; align-items: center; gap: 6px; }
-  .years-btn { font: inherit; font-size: 15px; font-weight: 700; line-height: 1; width: 24px; height: 24px; padding: 0;
+  .years-btn { font: inherit; font-size: 13px; font-weight: 700; line-height: 1; width: 18px; height: 18px; padding: 0; margin: -3px 0;
     display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--series-blue); cursor: pointer; }
   .years-btn:hover { border-color: var(--series-blue); }
   table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now,
@@ -357,6 +361,7 @@
     .pl-cell { gap: 5px; }
     .pl-cell .pl-badge { width: 16px; height: 16px; margin-right: 0; }
     .pl-cell .player-photo { width: 28px; height: 28px; }
+    .pl-cell { min-height: 30px; }                   /* the club rows' two lines of text */
   }
   .player-photo { width: 32px; height: 32px; flex: none; border-radius: 50%; object-fit: cover; background: var(--chip-bg); }
   .table-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border);
@@ -879,7 +884,8 @@
       #table-filters .league-list, #table-filters .caret, #table-filters .filter-chip { transition: none; }
     }
     table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
-    table.leaderboard.clubs th { padding-top: 4px; padding-bottom: 4px; }
+    table.leaderboard.clubs th, table.leaderboard.players th { padding-top: 4px; padding-bottom: 4px; }
+    .pl-cell .player-photo { margin: -2px 0; }      /* 24px, over the row's 20px badge line */
     body[data-tab="table"] main { padding-top: 8px; }
     .club-logo { width: 20px; height: 20px; }
   }
@@ -895,7 +901,7 @@
     table.leaderboard th:nth-child(n+3), table.leaderboard td:nth-child(n+3) { width: 46px; }
     table.leaderboard th:first-child, table.leaderboard td:first-child { width: 28px; }
     table.leaderboard.clubs { font-size: 11.5px; }
-    table.leaderboard.clubs th { font-size: 10px; }
+    table.leaderboard.clubs th, table.leaderboard.players th { font-size: 10px; }
     table.leaderboard.clubs th:first-child, table.leaderboard.clubs td:first-child { width: 28px; padding-left: 6px; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 24px; padding-left: 0; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(n+4), table.leaderboard.clubs td:nth-child(n+4) { width: 42px; padding-left: 1px; padding-right: 1px; }
