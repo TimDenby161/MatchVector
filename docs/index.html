@@ -1573,9 +1573,9 @@ function renderTable() {
         <th data-tip="Club name, with its country and league. Click a club to open its page.">Club</th>
         ${th("played", "Pl", "Played: matches counted in the Elo rating since 2020, including cups and European games.")}
         ${th("reliability", "Rel", "Reliability, 0 to 100: how far to trust the Elo rating. Lower for clubs with few matches, or whose rating has been swinging a lot.")}
-        ${th("lt", "LT Elo", "Long-term Elo rating (LT ALGO): a smoothed rating, weighted mostly to the average over the last 100 matches. Slow to move, and the better guide for matches months away.")}
-        ${th("form", "Form", "Elo change over the last 6 matches. Green is rising, red is falling.")}
-        ${th("current", "Elo", "Current Elo rating, after the latest match. 100 points is worth a goal a game. It rises when a club does better than expected against that opponent, and falls when it does worse.")}
+        ${th("lt", "Rating", "Rating: the long-term Elo rating (LT ALGO), a smoothed rating weighted mostly to the average over the last 100 matches. Slow to move, and the better guide for matches months away.")}
+        ${th("form", "Trend", "Trend: Elo change over the last 6 matches. Green is rising, red is falling.")}
+        ${th("current", "Form", "Form: the current Elo rating, after the latest match. 100 points is worth a goal a game. It rises when a club does better than expected against that opponent, and falls when it does worse.")}
       </tr></thead>
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
@@ -1957,7 +1957,7 @@ function renderClubPage() {
         ${r ? `<div class="pl-hero-club pl-hero-nat"><span class="pl-meta">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</span>
           <span class="dim-sep">·</span><span class="pl-meta">${r.played} matches</span></div>` : ""}
       </div>
-      ${r ? `<div class="pl-hero-rank rel-${tier}" title="Long-term Elo rating (LT ALGO): its long-term level, from every match since 2020">
+      ${r ? `<div class="pl-hero-rank rel-${tier}" title="Rating: the long-term Elo rating (LT ALGO), its long-term level, from every match since 2020">
         <span class="val">${Math.round(r.lt)}</span></div>` : ""}
     </div>
     <div class="page-tabs" role="tablist">${CLUB_TABS.map(([k, label]) =>
@@ -1989,8 +1989,8 @@ function clubOverviewTab() {
       <div class="form-strip">${form.map(({ m, move }) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span><span class="form-res">${moveHtml(move)}</span></div>`).join("")}</div></div>` : ""}
     ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact">
-      ${tile("LT", Math.round(r.lt))}${tile("Now", Math.round(r.current))}
-      ${tile("Form", formHtml(r.form) || "–")}${tile("Reliability", `<span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span>`)}
+      ${tile("Rating", Math.round(r.lt))}${tile("Form", Math.round(r.current))}
+      ${tile("Trend", formHtml(r.form) || "–")}${tile("Reliability", `<span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span>`)}
     </div></div>` : ""}
     ${ga ? `<div class="club-section"><div class="modal-section">Goals per game · last 12 months</div><div class="team-stats compact">
       ${tile("Home", ga[0].toFixed(2), `conceded ${ga[1].toFixed(2)}`)}${tile("Away", ga[2].toFixed(2), `conceded ${ga[3].toFixed(2)}`)}
@@ -2429,8 +2429,8 @@ function openTeam(teamId) {
 
   const stat = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
   $("#team-modal-body").innerHTML = (r ? `<div class="team-stats">
-      ${stat("LT Elo", Math.round(r.lt))}${stat("Elo", Math.round(r.current))}${stat("Reliability", Math.round(r.reliability))}
-      ${stat("Form", formHtml(r.form) || "–")}${stat("Played", r.played)}
+      ${stat("Rating", Math.round(r.lt))}${stat("Form", Math.round(r.current))}${stat("Reliability", Math.round(r.reliability))}
+      ${stat("Trend", formHtml(r.form) || "–")}${stat("Played", r.played)}
     </div>` : "") +
     xiBlock(teamId) +
     (upcoming.length ? `<div class="modal-section">Next matches</div>${upcoming.map((m) => row(m, false)).join("")}` : "") +
