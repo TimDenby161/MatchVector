@@ -117,22 +117,20 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 
 **Season ranks follow the age curve.** Every player follows the typical age curve through all his seasons, and only moves off it where he has the minutes to (`season_model` in `matchvector/player_ratings.py`):
 1. **Evidence for each season he played:** his clubs' average LT ALGO over his matches that season, moved by his stat score. The score is the same as above, as a percentile among player-seasons with 900+ minutes in the same role group. It goes through the same club-first formula as above, with no smoothing across seasons and no markdown for squad players; his minutes do that job below.
-2. **The age curve depends on position.** Each player uses the curve for the role group he's played most minutes in. It's in rank points, measured from how evidence changes from one season to the next, for players with 1,500+ minutes in the first season and 900+ in the next. The lower bar for the next season keeps players who lost their place, so decline isn't understated.
-   - **Up to 24:** the average change at each age. For outfield players that's +3.4 a year at 18, +1.6 at 21, and flat by 23. Keepers are measured separately and keep improving a little into their late 20s.
-   - **From 25:** a straight-line fit in age for each role group, so decline speeds up at its own rate. There are too few old players at each age to read the curve off directly. Outfield groups' lines lean towards the all-outfield line, weighted as 200 season pairs.
+2. **The age curve depends on position.** Each player uses the curve for the role group he's played most minutes in. It's in rank points, measured from how evidence changes from one season to the next, for players with 1,500+ minutes in the first season and 900+ in the next. The lower bar for the next season keeps players who lost their place, so decline isn't understated. Seasons chosen for their minutes tend to be good ones, so the next season is worse on average at every age (regression to the mean, about −0.7 a year). That's measured and taken off, otherwise it looks like players decline from 23.
+   - **Growth to 24**, measured: +4.1 a year at 18, +2.4 at 21, +1.1 at 24. Keepers gain about +1 a year from 22 to 24.
+   - **A flat prime until 31**, or **33 for keepers.** This is set, not measured: the data is too noisy to place it.
+   - **Then decline that speeds up every year:** the yearly change is β × years past the start of the decline, with β fitted for each role group. Groups with less data lean towards the all-outfield β, weighted as 200 season pairs.
 
-     | Change per year | at 30 | at 35 | at 39 |
+     | Role group | β | Curve at 35 | at 40 |
      |---|---|---|---|
-     | Striker | −1.6 | −3.2 | −4.5 |
-     | Attacking mid | −1.3 | −2.6 | −3.6 |
-     | Central mid | −1.5 | −2.4 | −3.1 |
-     | Full-back | −1.5 | −1.5 | −1.4 |
-     | Winger | −0.6 | −1.3 | −1.7 |
-     | Centre-back | −0.4 | −1.1 | −1.6 |
-     | Defensive mid | −0.4 | −0.8 | −1.0 |
-     | Keeper | +0.1 | −0.8 | −1.6 |
+     | Striker | −0.33 | −2.0 | −12.0 |
+     | Centre-back, full-back, CM, AM | −0.23 to −0.24 | about −1.4 | about −8.5 |
+     | Winger | −0.15 | −0.9 | −5.3 |
+     | Defensive mid | −0.10 | −0.6 | −3.7 |
+     | Keeper (from 33) | −0.29 | −0.3 | −6.2 |
 
-     From 33 to 39 Giroud's curve drops 20 points, against 7 for Neuer from 34 to 40.
+     Kane (32) is still on the flat part of his curve. Giroud's curve is −9 at 39, and Neuer's is −6 at 40.
    - **Below 18** there are too few regulars to measure, so it's set by hand: +4 a year at 17, and 2 more for each year younger.
 3. **His level on the curve** is the average of (evidence − curve) over all his seasons, weighted by minutes. When rating one season, the others count 0.7 ^ years apart. A starting level of 55 (his rank at peak age) is added in, weighted as 450 minutes, so a player with little data anywhere sits below an average regular.
 4. **Season rank** = level + curve for that season, plus the season's own difference from it, kept in proportion minutes ÷ (minutes + 1,500). A full season (3,000 minutes) keeps two thirds of its difference. A thin one stays on his curve: an injury year, the first weeks of this season, or a teenager's debut. Rodri's 24/25 (80 minutes, injured) is 93.6, where the old model gave 79. Tah's weak 22/23 (evidence 68) is 72, between his curve (79) and the season.

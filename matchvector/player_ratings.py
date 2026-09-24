@@ -26,15 +26,16 @@ and only leaves it where he has the minutes to (season_model)
                minutes), moved by his stat score that season (percentile among 900+ minute
                seasons in his role group; the top decile spread up to the best on record):
                final_rank(pct, club), i.e. 100 x club / CLUB_RANK_MAX - offset + weight x (pct - 50)
-    curve    = the typical age curve for his role group (the one he's played most minutes in), in
-               rank points, from how evidence changes between seasons (ANCHOR_MINUTES+ in the first,
-               CURVE_NEXT_MINUTES+ in the next, so players losing their place still count). Up to 24
-               it's the average change at each age (outfield pooled, keepers separately); from
-               CURVE_FIT_FROM it's a straight-line fit in age per group, so decline speeds up at a
-               rate of its own: strikers lose ~1.6 a year at 30 and ~4.5 at 39, keepers ~0 and
-               ~1.6. Outfield groups' fits lean on the pooled one (CURVE_PRIOR_PAIRS). Below 18
-               it's set by hand: YOUNG_STEP_17 a year at 17, YOUNG_STEP_EXTRA more each year
-               younger. 0 at the peak, so a player's level is his rank at peak age
+    curve    = the age curve for his role group (the one he's played most minutes in), in rank
+               points, from how evidence changes between seasons (ANCHOR_MINUTES+ in the first,
+               CURVE_NEXT_MINUTES+ in the next). Growth to CURVE_GROWTH_TO is measured, then a flat
+               prime until DECLINE_FROM (31 outfield, 33 keepers), then decline that speeds up
+               every year: beta x years past DECLINE_FROM, beta fitted per group (strikers
+               ~-0.33, keepers ~-0.29 but from 33, defensive mids ~-0.10). The regression to the
+               mean in the measured changes (seasons picked for minutes tend to be good ones) is
+               taken off. Below 18 it's set by hand: YOUNG_STEP_17 a year at 17,
+               YOUNG_STEP_EXTRA more each year younger. 0 at the peak, so a player's level is
+               his rank at peak age
     level    = where he sits on the curve: the minutes-weighted average of (evidence - curve)
                over all his seasons, each weighted LEVEL_DECAY ^ years apart, plus PRIOR_LEVEL
                weighted as PRIOR_MINUTES, so a player with little data anywhere sits low
@@ -84,9 +85,10 @@ ANCHOR_MINUTES = 1500      # a season with this many minutes measures the age cu
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
 CURVE_MIN_PAIRS = 30       # an age needs this many season pairs to measure the curve there
 CURVE_NEXT_MINUTES = 900   # ... and the season after needs this many (so players losing their place count)
-CURVE_FIT_FROM = 25        # from this age the curve is a straight-line fit per role group
-CURVE_FIT_TO = 38          # oldest age used in that fit
-CURVE_PRIOR_PAIRS = 200    # an outfield group's fit leans on the pooled outfield fit, weighted as this many pairs
+CURVE_GROWTH_TO = 24       # the curve's growth is measured up to this age
+DECLINE_FROM = {"GK": 33, "OUT": 31}   # flat prime until this age, then decline that speeds up
+CURVE_FIT_TO = 38          # oldest age used to fit the decline
+CURVE_PRIOR_PAIRS = 200    # an outfield group's decline leans on the pooled outfield one, weighted as this many pairs
 YOUNG_STEP_17 = 4.0        # age curve below the measured ages (too few regulars): yearly gain at 17,
 YOUNG_STEP_EXTRA = 2.0     # plus this for each year younger, in rank points
 PRIOR_MINUTES = 450        # a player's level starts as PRIOR_LEVEL, weighted as this many minutes
@@ -409,12 +411,16 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     evidence = {k: (final_rank(pct(sc, pos), club, pos), mins, pos)
                 for k, (sc, mins, pos, club) in raw.items()}
 
-    # 2. Age curve (rank points), per role group: how evidence changes from one season to the
-    #    next (seasons with ANCHOR_MINUTES+, and CURVE_NEXT_MINUTES+ the season after, so players
-    #    who lose their place still count). Up to CURVE_FIT_FROM - 1 it's the average change at
-    #    each age (outfield pooled, keepers separately); from CURVE_FIT_FROM a straight line in age
-    #    per group, so decline speeds up at a rate of its own (strikers fast, keepers slowly).
-    #    Outfield groups' lines lean towards the pooled outfield line, weighted CURVE_PRIOR_PAIRS
+    # 2. Age curve (rank points), per role group, from how evidence changes from one season to
+    #    the next (ANCHOR_MINUTES+ in the first, CURVE_NEXT_MINUTES+ in the next, so players
+    #    losing their place still count). Seasons picked for their minutes tend to be good ones,
+    #    so the next is worse on average at every age (regression to the mean): measured as the
+    #    constant in the decline fit and taken off everything. The shape:
+    #    - growth to CURVE_GROWTH_TO: average change at each age (outfield pooled, keepers apart)
+    #    - a flat prime until DECLINE_FROM (31 outfield, 33 keepers)
+    #    - then decline that speeds up every year: change = beta x (age - DECLINE_FROM), beta
+    #      fitted per group (strikers fastest); outfield groups lean on the pooled outfield
+    #      beta, weighted as CURVE_PRIOR_PAIRS pairs past DECLINE_FROM
     def age(player, season):             # age at the start of the season (1 July)
         b = born.get(player)
         return None if b is None else season - b.year - ((b.month, b.day) > (7, 1))
@@ -425,48 +431,57 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         a = age(player, season)
         if a is None or mins < ANCHOR_MINUTES or not nxt or nxt[1] < CURVE_NEXT_MINUTES:
             continue
-        young["GK" if pos == "GK" else "OUT"][min(max(a, 17), CURVE_FIT_FROM - 1)].append(nxt[0] - ev)
-        if CURVE_FIT_FROM - 1 <= a <= CURVE_FIT_TO:
+        if a <= CURVE_GROWTH_TO:
+            young["GK" if pos == "GK" else "OUT"][max(a, 17)].append(nxt[0] - ev)
+        elif a <= CURVE_FIT_TO:
             old[pos].append((a, nxt[0] - ev))
             if pos != "GK":
                 old["OUT"].append((a, nxt[0] - ev))
+
+    def hinge(pairs, start, const=None):  # change = const + beta x max(0, age - start)
+        xs = [max(0, a - start) for a, _ in pairs]
+        ys = [d for _, d in pairs]
+        if const is None:
+            mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+            beta = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / (sum((x - mx) ** 2 for x in xs) or 1)
+            return my - beta * mx, beta
+        return const, sum(x * (y - const) for x, y in zip(xs, ys)) / (sum(x * x for x in xs) or 1)
+    bias, beta = {}, {}
+    for kind in ("OUT", "GK"):
+        bias[kind], beta[kind] = hinge(old[kind], DECLINE_FROM[kind])
+    for g, pairs in old.items():
+        if g in ("OUT", "GK"):
+            continue
+        n = sum(1 for a, _ in pairs if a > DECLINE_FROM["OUT"])
+        _, b = hinge(pairs, DECLINE_FROM["OUT"], bias["OUT"])
+        beta[g] = (b * n + beta["OUT"] * CURVE_PRIOR_PAIRS) / (n + CURVE_PRIOR_PAIRS)
     growth = {}
     for kind, by_age in young.items():
-        # smoothed over neighbouring ages: one age's average is noisy
+        # smoothed over neighbouring ages (one age's average is noisy), less the bias, never below 0
         ages = {a for a in by_age if len(by_age[a]) >= CURVE_MIN_PAIRS}
-        growth[kind] = {a: sum(x for b in (a - 1, a, a + 1) if b in ages for x in by_age[b])
-                           / sum(len(by_age[b]) for b in (a - 1, a, a + 1) if b in ages) for a in ages}
-
-    def line(pairs):                     # least-squares change = alpha + beta x (age - 30)
-        n = len(pairs)
-        mx = sum(a - 30 for a, _ in pairs) / n
-        my = sum(d for _, d in pairs) / n
-        sxx = sum((a - 30 - mx) ** 2 for a, _ in pairs) or 1
-        beta = sum((a - 30 - mx) * (d - my) for a, d in pairs) / sxx
-        return my - beta * mx, beta, n
-    lines = {"OUT": line(old["OUT"])[:2]}
-    for g, pairs in old.items():
-        if g == "OUT":
-            continue
-        al, be, n = line(pairs)
-        k = 0 if g == "GK" else CURVE_PRIOR_PAIRS
-        lines[g] = ((al * n + lines["OUT"][0] * k) / (n + k), (be * n + lines["OUT"][1] * k) / (n + k))
-    log.info("Age curve, growth to %d: %s; yearly change from %d = alpha + beta x (age - 30): %s",
-             CURVE_FIT_FROM - 1, {k: {a: round(v, 1) for a, v in sorted(c.items())} for k, c in growth.items()},
-             CURVE_FIT_FROM, {g: (round(al, 2), round(be, 3)) for g, (al, be) in lines.items()})
+        growth[kind] = {a: max(0.0, sum(x for b in (a - 1, a, a + 1) if b in ages for x in by_age[b])
+                               / sum(len(by_age[b]) for b in (a - 1, a, a + 1) if b in ages) - bias[kind])
+                        for a in ages}
+    log.info("Age curve: growth to %d %s; regression to the mean %s; decline after %s: "
+             "beta x years past it %s", CURVE_GROWTH_TO,
+             {k: {a: round(v, 1) for a, v in sorted(c.items())} for k, c in growth.items()},
+             {k: round(v, 2) for k, v in bias.items()}, DECLINE_FROM,
+             {g: round(v, 3) for g, v in beta.items()})
 
     def step(a, g):                      # typical change from age a to a + 1
-        c = growth["GK" if g == "GK" else "OUT"] or growth["OUT"]
-        if a >= CURVE_FIT_FROM:
-            al, be = lines.get(g, lines["OUT"])
-            return al + be * (min(a, 40) - 30)
+        kind = "GK" if g == "GK" else "OUT"
+        c = growth[kind] or growth["OUT"]
+        if a > CURVE_GROWTH_TO:          # flat prime, then decline
+            return beta.get(g, beta["OUT"]) * max(0, min(a, 40) - DECLINE_FROM[kind])
         if a < 18:                       # too few regulars this young to measure: teenagers
             return max(c[min(c)], YOUNG_STEP_17 + YOUNG_STEP_EXTRA * (17 - a))   # develop fast
+        if not c:
+            return 0.0
         return c.get(min(max(a, min(c)), max(c)), 0.0)
 
     # curve position by age, 0 at the peak, so a player's level is his rank at peak age
     table = {}
-    for g in lines:
+    for g in beta:
         cum, t = 0.0, {}
         for a in range(14, 46):
             t[a] = cum
