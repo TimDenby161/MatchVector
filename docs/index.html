@@ -585,7 +585,6 @@
   .pp-spot.unplayed .pp-rank { font-weight: 700; }
   .pp-spot.hollow { min-width: 38px; padding: 5px 7px; background: transparent; border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .pp-spot.hollow .pp-pos { color: inherit; }
-  .pp-note { max-width: 520px; }
   .pp-section { margin-bottom: 16px; }
   #age-filter[hidden] { display: none; }
   /* Club and nationality filter: type-ahead inputs, picks shown as removable chips */
@@ -2165,7 +2164,6 @@ function positionPitch(p) {
   const mins = {};
   for (const [r, m] of rows) mins[r] = (mins[r] || 0) + m;
   const share = (r) => total ? Math.round(100 * (mins[r] || 0) / total) : 0;
-  const unplaced = total ? 100 * rows.filter(([r]) => POS_WORD[r]).reduce((a, [, m]) => a + m, 0) / total : 0;
   const spots = PITCH_SPOTS.map(([r, x, y]) => {
     const g = GROUP_OF[r], rank = rankIn(g), pct = share(r);
     if (rank == null) return `<div class="pp-spot hollow" style="left:${x}%;top:${y}%" title="${r}: no rank (he hasn't started as a ${GROUP_SINGLE[g]})">
@@ -2178,7 +2176,6 @@ function positionPitch(p) {
   return `<div class="club-section pp-section"><div class="pp-head"><span class="modal-section" style="margin:0">Positions · rank and share of starts</span>
       ${periods.length > 1 ? `<div class="seg">${periods.map(([k, l]) => `<button type="button" data-pitch="${k}" aria-pressed="${k === period}">${l}</button>`).join("")}</div>` : ""}</div>
     <div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
-    <div class="page-note pp-note">Big number: his rank in that position (his recent stats scored as it, with up to 6 points off for a position he hasn't played much). Percentage: his share of starting minutes there${period === "12m" ? " over the last 12 months" : " since 2020/21"}${unplaced >= 1 ? `, with ${Math.round(unplaced)}% of starts having no recorded position` : ""}. Grey: a position he could play (he has a rank there) but hasn't started in${period === "12m" ? " over the last 12 months" : ""}. Hollow: positions he has no rank in.</div>
   </div>`;
 }
 
