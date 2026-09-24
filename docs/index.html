@@ -305,6 +305,7 @@
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
   table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
+  table.leaderboard tr.row-hl td { background: color-mix(in srgb, var(--series-blue) 14%, transparent); }
   table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 2px 6px; font-size: 12px; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
@@ -2069,7 +2070,7 @@ function renderClubPage() {
       <div class="pl-hero-main">
         <h2>${escapeHtml(teamName(id))}</h2>
         ${comp ? `<div class="pl-hero-club">${flagImg(country)}<span>${countryLink(comp.country)}<span class="dim-sep"> · </span><span class="pl-league">${leagueLink(r.league)}</span></span></div>` : ""}
-        ${r ? `<div class="pl-hero-club pl-hero-nat"><span class="pl-meta">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</span>
+        ${r ? `<div class="pl-hero-club pl-hero-nat"><a class="pl-meta nat-link" href="#" data-rank-team="${id}" title="Open the Rankings at this club">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</a>
           <span class="dim-sep">·</span><span class="pl-meta">${r.played} matches</span></div>` : ""}
       </div>
       ${r ? `<div class="pl-hero-rank rel-${tier}" title="Rating: the long-term Elo rating (LT ALGO), its long-term level, from every match since 2020">
@@ -3020,6 +3021,25 @@ $("#club-body").addEventListener("click", (e) => {
   if (state.tableView !== "clubs") $('#table-view [data-view="clubs"]').click();
   else { renderTableFilters(); renderTable(); }
   window.scrollTo(0, 0);
+});
+// "#3 of 2,341 clubs" on a club page opens the Rankings tab by Rating (the order that place
+// counts in), scrolled to the club; a club outside this season's leagues is searched for instead
+$("#club-body").addEventListener("click", (e) => {
+  const a = e.target.closest("[data-rank-team]");
+  if (!a) return;
+  e.preventDefault();
+  const team = Number(a.dataset.rankTeam);
+  history.pushState(null, "", location.pathname + location.search);
+  showTab("table");
+  state.tableFilter = "all";
+  state.tableSort = "lt";
+  state.tableSearch = state.rankByTeam.get(team)?.in_league ? "" : teamName(team);
+  $("#table-search").value = state.tableSearch;
+  if (state.tableView !== "clubs") $('#table-view [data-view="clubs"]').click();
+  else { renderTableFilters(); renderTable(); }
+  window.scrollTo(0, 0);
+  const tr = document.querySelector(`#table-wrap tr[data-team="${team}"]`);
+  if (tr) { tr.classList.add("row-hl"); tr.scrollIntoView({ block: "center" }); }
 });
 $("#club-body").addEventListener("click", (e) => {
   const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pitch]");
