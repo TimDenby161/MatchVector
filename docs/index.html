@@ -326,9 +326,9 @@
   /* a season estimated from the age curve (no minutes in covered leagues): outlined, not filled */
   table.season-table .est .rel-chip, table.leaderboard.players .est .rel-chip { background: transparent; box-shadow: inset 0 0 0 1px currentColor; font-style: italic; opacity: .8; }
   /* Years toggle: past seasons left of Ability, projected ones (age curve) right of it, fainter */
-  table.leaderboard.players th.col-years, table.leaderboard.players td.col-years { width: 64px; padding-left: 6px; padding-right: 8px; text-align: right; }
-  .years-btn { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .02em; text-transform: none; white-space: nowrap;
-    padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--series-blue); cursor: pointer; }
+  table.leaderboard.players th.col-years, table.leaderboard.players td.col-years { width: 36px; padding-left: 4px; padding-right: 8px; text-align: right; }
+  .years-btn { font: inherit; font-size: 15px; font-weight: 700; line-height: 1; width: 24px; height: 24px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); color: var(--series-blue); cursor: pointer; }
   .years-btn:hover { border-color: var(--series-blue); }
   table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now { border-right: 1px solid var(--gridline); }
   table.leaderboard.players th.col-future { font-style: italic; }
@@ -1650,7 +1650,7 @@ function renderPlayers() {
         ${shown.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, i === 0 ? "Ability" : `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `${i === 0 ? "Ability: how good he is now. " : ""}Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
         ${open ? future.map((y, j) => th(`f${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Projected for ${seasonName(y)}: his Ability moved along the typical age curve for his position, from his age now to his age that season (young players rise, from 31 (33 for keepers) they decline, faster each year). A guide, not a forecast of his form.`, ` col-season col-future col-f${j}`)).join("") : ""}
         ${groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). Only positions he has started in get a number. With several positions picked, his best of them.`, " col-posrank") : ""}
-        <th class="col-years">${future.length || seasons.length > 1 ? `<button type="button" class="years-btn" data-years aria-expanded="${open}">${open ? "− Years" : "+ Years"}</button>` : ""}</th>
+        <th class="col-years">${future.length || seasons.length > 1 ? `<button type="button" class="years-btn" data-years aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} other seasons" title="${open ? "Hide" : "Show"} past and projected seasons">${open ? "−" : "+"}</button>` : ""}</th>
       </tr></thead>
       <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, shown, groups, open ? future : [])).join("")}</tbody>
     </table></div>`;
