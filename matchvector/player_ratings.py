@@ -293,6 +293,19 @@ def _norms(apps, offsets):
     return norms
 
 
+SOFT_FROM = 88             # ranks above this bend smoothly towards 100 instead of piling up at a hard
+                           # cap: SOFT_FROM + (100 - SOFT_FROM) x (1 - exp(-(r - SOFT_FROM) / (100 - SOFT_FROM)))
+
+
+def soft_ceiling(r):
+    """Squeeze ranks above SOFT_FROM so the best spread out below 100 (Van Dijk's seasons were
+    all ~99 against the hard cap; now 94-96) instead of being clipped. Order is kept."""
+    if r <= SOFT_FROM:
+        return max(r, 0)
+    room = 100 - SOFT_FROM
+    return SOFT_FROM + room * (1 - math.exp(-(r - SOFT_FROM) / room))
+
+
 GK_CLUB_OFFSET = 10        # keeper rank = 100 x club / CLUB_RANK_MAX - this + GK_RATING_WEIGHT x (pct - 50)
 GK_RATING_WEIGHT = 0.2
 GK_FULL_SHARE = 0.8        # keepers playing less than this share of their club's minutes are scaled down, up to 20% (backups)
@@ -308,7 +321,7 @@ def keeper_rank(pct, club, share=None):
     r = 100 * min(club / CLUB_RANK_MAX, 1) - GK_CLUB_OFFSET + GK_RATING_WEIGHT * (pct - 50)
     if share is not None:
         r *= min(1.0, 0.8 + 0.2 * share / GK_FULL_SHARE)
-    return min(max(r, 0), 100)
+    return soft_ceiling(r)
 
 
 OUT_CLUB_OFFSET = 12       # outfield rank = 100 x club / CLUB_RANK_MAX - this + OUT_STATS_WEIGHT x (pct - 50)
@@ -322,13 +335,13 @@ def outfield_rank(pct, club, share=None):
     """Outfield players, like keepers, start from club level - a regular for a strong club is
     good evidence of quality - and their stats move them up or down. Elite stats (above
     ELITE_FROM) earn extra, so the club's level doesn't cap a great player (Messi at PSG, ~1040:
-    89 -> 95). A player under OUT_FULL_SHARE of his club's minutes (squad player) is scaled
+    87 -> 92.5 with the soft ceiling). A player under OUT_FULL_SHARE of his club's minutes (squad player) is scaled
     down by up to 20%."""
     r = (100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + OUT_STATS_WEIGHT * (pct - 50)
          + ELITE_WEIGHT * max(0.0, pct - ELITE_FROM))
     if share is not None:
         r *= min(1.0, 0.8 + 0.2 * share / OUT_FULL_SHARE)
-    return min(max(r, 0), 100)
+    return soft_ceiling(r)
 
 
 def final_rank(pct, club, pos, share=None):

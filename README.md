@@ -101,7 +101,16 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 4. Compare each stat with other players in the same role group.
 5. **Mark down players with few minutes:** pull them towards a below-average level (−0.5, weighted as 900 minutes), not towards the average.
 6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
-7. **Club level first, stats adjust it** (all players): rank = 100 × club rank ÷ 1200 − 12, plus 0.3 × (stats percentile − 50). Club level sets the base, because being a regular for a strong club is good evidence of quality, and stats move a player by up to about ±15 (keepers ±10, since their stats are noisier). **Elite seasons get extra:** an outfield player earns 1 more point for each percentile above the 90th, up to +10, so a club's level doesn't cap a great player. Messi's 22/23 at PSG (LT about 1040) goes from 87 to 95, and Mbappé and Kane reach 97–98. Everyone below the 90th percentile is unchanged. The club rank is the clubs' **LT ALGO going into each match** he played for them (weighted by his minutes), rather than their rank on the day, so one hot or cold run doesn't swing a whole squad. It's stored as `team_rank_history.lt_before`.
+7. **Club level first, stats adjust it** (all players): rank = 100 × club rank ÷ 1200 − 12, plus 0.3 × (stats percentile − 50). Club level sets the base, because being a regular for a strong club is good evidence of quality, and stats move a player by up to about ±15 (keepers ±10, since their stats are noisier). **Elite seasons get extra:** an outfield player earns 1 more point for each percentile above the 90th, up to +10, so a club's level doesn't cap a great player. Everyone below the 90th percentile is unchanged. **The top of the scale is a soft ceiling rather than a hard cap at 100:** above 88, a rank r becomes 88 + 12 × (1 − e^(−(r − 88) / 12)). So the best still spread out below 100 instead of piling up against it, in the same order. Without it, Van Dijk read about 99 in every season and six players had a current rank of exactly 100. With it:
+
+| Player | Season ranks |
+|---|---|
+| Van Dijk | 94–96 |
+| Davies | 92–95 |
+| Messi at PSG (LT about 1040), 22/23 | 92.5, up from 87 before the elite bonus |
+| Kane | up to 95.6 |
+
+The same ceiling applies to keepers. The club rank is the clubs' **LT ALGO going into each match** he played for them (weighted by his minutes), rather than their rank on the day, so one hot or cold run doesn't swing a whole squad. It's stored as `team_rank_history.lt_before`.
 
 **Where it's stored**
 - `fixture_player_ranks` holds each player's rank going into every match. It's a separate table, cleared and refilled on each run, so the 700,000-row `fixture_players` table isn't rewritten every night.
