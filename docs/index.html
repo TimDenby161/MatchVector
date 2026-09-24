@@ -2091,10 +2091,17 @@ function depthPitch(teamId) {
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
   // only the positions in the formations the club has used (all of them if none are known)
   const used = new Set(clubFormationRows().filter((m) => m.formation).flatMap((m) => formationRoles(m.formation)));
-  const spots = PITCH_SPOTS.filter(([r]) => !used.size || used.has(r)).map(([r, x, y]) => {
-    const ps = squad.filter((p) => canPlay(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
+  // one box per position; DM and CM share one central-midfield box over both lines (the line-up
+  // grid can't tell a holder from a box-to-box midfielder in a pair), his best rank of the two
+  const boxes = PITCH_SPOTS.filter(([r]) => r !== "DM" && r !== "CM").map(([r, x, y]) =>
+    ({ label: r, roles: [r], row: y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1, col: x < 35 ? 3 : x < 65 ? 2 : 1 }));
+  boxes.push({ label: "CM", roles: ["DM", "CM"], row: "3 / span 2", col: 2 });
+  const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
+    const ps = squad.filter((p) => roles.some((x) => canPlay(p).has(x)))
+      .map((p) => ({ p, rank: Math.max(...roles.map((x) => rankAt(p, x) ?? -1)) }))
+      .map((d) => ({ ...d, rank: d.rank >= 0 ? d.rank : d.p.rank }))
       .sort((a, b) => b.rank - a.rank);
-    const cell = `grid-row:${y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1};grid-column:${x < 35 ? 3 : x < 65 ? 2 : 1}`;
+    const cell = `grid-row:${row};grid-column:${col}`;
     if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${r}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
       <span class="dp-pos">${r}</span>
