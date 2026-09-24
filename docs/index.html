@@ -539,21 +539,22 @@
   .rank-move { font-size: 11px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
   /* Club overview pitch: who can play in each position */
-  .pitch.dp-pitch { max-width: 420px; }
-  .dp-spot { position: absolute; transform: translate(-50%, -50%); width: 30%; padding: 3px 5px 4px; border-radius: 8px;
+  .pitch.dp-pitch { max-width: 420px; overflow: visible; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(6, auto); align-content: space-between; align-items: center; gap: 10px 6px; padding: 14px 10px; }
+  .dp-spot { position: relative; padding: 3px 5px 4px; border-radius: 8px;
     background: rgba(255,255,255,0.12); color: #f2f2f0; line-height: 1.2; }
-  .dp-spot.empty { width: auto; min-width: 38px; text-align: center; padding: 5px 7px; background: transparent;
+  .dp-spot.empty { justify-self: center; min-width: 38px; text-align: center; padding: 5px 7px; background: transparent;
     border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .dp-pos { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: rgba(255,255,255,0.7); }
   .dp-spot.empty .dp-pos { color: inherit; }
-  .dp-more { font-weight: 600; color: rgba(255,255,255,0.5); }
   a.dp-row { display: flex; justify-content: space-between; gap: 4px; font-size: 11px; font-weight: 600; color: #fff; text-decoration: none; }
   a.dp-row:hover .dp-name { text-decoration: underline; }
   .dp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .dp-rank { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; }
   .dp-rank.t4 { color: #3ecf5a; } .dp-rank.t3 { color: #f0c43a; } .dp-rank.t2 { color: #f08a5a; } .dp-rank.t1 { color: #f07878; }
   @media (max-width: 480px) {
-    .dp-spot { width: 31%; padding: 2px 4px 3px; }
+    .pitch.dp-pitch { gap: 8px 4px; padding: 12px 6px; }
+    .dp-spot { padding: 2px 4px 3px; }
     a.dp-row { font-size: 10px; }
   }
   /* Club page: predicted XI on the pitch, squad list, end-of-season ranks */
@@ -2016,7 +2017,8 @@ function clubXiTab() {
 // Overview pitch: in each position, the squad's players who can play there (their main position,
 // or 2+ full matches' worth of starting minutes there over the last 12 months; until the
 // position minutes have loaded, the 25% rule of the position filter), best first by their rank in
-// that position. The top 3 are shown; the rest are counted.
+// that position, all of them. Laid out as a grid of lines so long lists push the pitch taller
+// instead of overlapping.
 const DEPTH_MINUTES = 180;
 function canPlay(p) {
   const rows = state.playerSeasons?.positions?.[String(p.id)]?.["12m"];
@@ -2030,11 +2032,11 @@ function depthPitch(teamId) {
   const spots = PITCH_SPOTS.map(([r, x, y]) => {
     const ps = squad.filter((p) => canPlay(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
       .sort((a, b) => b.rank - a.rank);
-    if (!ps.length) return `<div class="dp-spot empty" style="left:${x}%;top:${y}%"><span class="dp-pos">${r}</span></div>`;
-    const more = ps.length - 3;
-    return `<div class="dp-spot" style="left:${x}%;top:${y}%" title="${escapeHtml(`${r}: ${ps.map(({ p, rank }) => `${p.name} ${Math.round(rank)}`).join(", ")}`)}">
-      <span class="dp-pos">${r}${more > 0 ? `<span class="dp-more"> +${more}</span>` : ""}</span>
-      ${ps.slice(0, 3).map(({ p, rank }) => `<a class="dp-row" href="#/player/${p.id}"><span class="dp-name">${escapeHtml(shortName(p.name))}</span>
+    const cell = `grid-row:${y < 20 ? 1 : y < 35 ? 2 : y < 50 ? 3 : y < 65 ? 4 : y < 80 ? 5 : 6};grid-column:${x < 35 ? 1 : x < 65 ? 2 : 3}`;
+    if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${r}</span></div>`;
+    return `<div class="dp-spot" style="${cell}">
+      <span class="dp-pos">${r}</span>
+      ${ps.map(({ p, rank }) => `<a class="dp-row" href="#/player/${p.id}"><span class="dp-name">${escapeHtml(shortName(p.name))}</span>
         <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`).join("")}
     </div>`;
   }).join("");
