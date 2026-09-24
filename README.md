@@ -43,6 +43,11 @@ API-Football only serves **odds** from about 14 days before kickoff, so you can'
 
 A normal night uses about 350–500 API calls and takes a few minutes. If one competition fails, the others still run, and the exit code is non-zero.
 
+**Query cache.** The nightly job keeps a local copy of the big historical query results (every player appearance, finished fixture with xG, rank history and injury list) in `.cache/`, so it doesn't download them from Supabase every night. See `matchvector/cache.py`.
+- Each run, the database sends one fingerprint (row count and a hash) per week of matches, and only weeks whose fingerprint changed are downloaded again. New results, corrected scores, deleted rows and old matches added by a league backfill are all picked up.
+- In GitHub Actions the folder is kept between runs with `actions/cache` (about 75 MB). Without it, for example on a new machine, the first run downloads everything once.
+- A night's database egress fell from about 350 MB to about 30 MB.
+
 The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/nightly.yml) runs this command every day at 03:00 UTC. You can also start it by hand: open the **Actions** tab, choose **Nightly sync**, then **Run workflow**. It needs two repository secrets, under **Settings → Secrets and variables → Actions**:
 
 - `API_FOOTBALL_KEY`
@@ -204,7 +209,7 @@ The goal-market probabilities come from the same Poisson grid, calibrated toward
 
 **Closing line value.** `odds.first_odd` keeps the opening price. `odds.odd` is never updated after kickoff, so it holds the closing price. Each bet records `clv` = odds taken × the fair closing probability − 1. Consistently positive CLV is the early sign of a real edge. Profit needs thousands of bets before it means much.
 
-**Match-day job.** `.github/workflows/matchday.yml` runs `python -m matchvector matchday` every 30 minutes. For matches starting within 3 hours, it refreshes odds, which captures the closing price, and injury lists. It then re-projects, places the late bets, refreshes recent results and settles bets. It commits `docs/data/bets.json` only when bets change. The site's **Bets** tab shows the results.
+**Match-day job.** `.github/workflows/matchday.yml` runs `python -m matchvector matchday` every 30 minutes. For matches starting within 3 hours, it refreshes odds, which captures the closing price, and injury lists. It then re-projects those matches (downloading only their teams' and competitions' results), places the late bets, refreshes recent results and settles bets. It commits `docs/data/bets.json` only when bets change. The site's **Bets** tab shows the results.
 
 A line-up adjustment (the strength of the starting XI against normal) was backtested and didn't help (test log loss 1.0058 against 1.0057), so line-ups aren't used in the projections.
 

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config
+from .cache import rank_history
 
 log = logging.getLogger(__name__)
 
@@ -417,11 +418,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
            union select away_team_id from fixtures where status_short in ('NS','TBD') and kickoff > now()""",
         [now - timedelta(days=CLUB_ACTIVE_DAYS)])}
     history = {}
-    for team, kickoff, rank_after, rank_before, opp, is_home, hg, ag, league in conn.execute(
-            """select h.team_id, h.kickoff, h.rank_after, h.rank_before, h.opponent_id, h.is_home,
-                      f.home_goals, f.away_goals, f.league_id
-               from team_rank_history h join fixtures f using (fixture_id)
-               where h.team_id = any(%s) order by h.team_id, h.match_no""", [list(active)]):
+    club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
+    for _, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league in club_rows:
         rows = history.setdefault(team, {"start": round(rank_before), "matches": []})["matches"]
         gf, ga = (hg, ag) if is_home else (ag, hg)
         rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 1 if is_home else 0, gf, ga, league])

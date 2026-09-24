@@ -75,6 +75,7 @@ from collections import Counter, defaultdict, deque
 from datetime import timedelta
 
 from . import config
+from .cache import WEEK, cached_rows, rank_history
 from .positions import FALLBACK, group as role_group
 
 log = logging.getLogger(__name__)
@@ -226,27 +227,51 @@ def _rating_offsets(conn):
                         group by f.league_id, fp.position) t""")
 
 
-RATING = "(fp.rating - coalesce(o.off, 0))"      # league-adjusted match rating
-OFFSET_JOIN = "left join rating_offsets o on o.league_id = f.league_id and o.position = fp.position"
+def _appearances(conn):
+    """Every appearance, from the local cache (cache.py), in fixture order:
+    (fixture_id, team, player, minutes, started, position, role, rating, season, league_id,
+    status, *STATS[3:]), rating not yet league-adjusted (see _adjusted)."""
+    fcols = ", ".join(f"fp.{c}" for c in STATS[3:])
+    return cached_rows(conn, "appearances", f"""
+        select {WEEK.format('f.kickoff')} as part, fp.fixture_id, fp.team_id, fp.player_id,
+               fp.minutes, fp.started, fp.position, fp.role, fp.rating::float8 as rating, f.season,
+               f.league_id, f.status_short, {fcols}
+        from fixture_players fp join fixtures f using (fixture_id)""",
+        order_by="fixture_id, team_id, player_id")
 
 
-def _norms(conn):
-    """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes."""
-    cols = ", ".join(f"sum(coalesce(fp.{c}, 0))" for c in STATS[3:])
-    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter()})
+def _offsets(conn):
+    """{(league_id, position): rating offset} (see _rating_offsets)."""
     _rating_offsets(conn)
-    for row in conn.execute(
-            f"""select fp.player_id, f.season, fp.role, fp.position, sum(fp.minutes),
-                       sum(case when fp.rating is not null then {RATING} * fp.minutes else 0 end),
-                       sum(case when fp.rating is not null then fp.minutes else 0 end), {cols}
-                from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}
-                group by fp.player_id, f.season, fp.role, fp.position"""):
-        entry = seasons[(row[0], row[1])]
-        for k, v in zip(STATS, row[4:]):
-            entry["sums"][k] += float(v)
-        if row[2]:
-            entry["roles"][row[2]] += float(row[4])
-        entry["broad"][row[3]] += float(row[4])
+    return {(lg, pos): off for lg, pos, off in conn.execute(
+        "select league_id, position, off from rating_offsets")}
+
+
+def _adjusted(row, offsets):
+    """League-adjusted match rating of an appearance row, or None if unrated."""
+    return None if row[7] is None else row[7] - offsets.get((row[9], row[5]), 0.0)
+
+
+def _add_season(entry, row, rating):
+    """Add one appearance row to a player-season's running sums, roles and positions."""
+    mins = row[3] or 0
+    sums = entry["sums"]
+    sums["minutes"] += mins
+    if rating is not None:
+        sums["rating_mins"] += rating * mins
+        sums["rated_mins"] += mins
+    for k, v in zip(STATS[3:], row[11:]):
+        sums[k] += v or 0
+    if row[6]:
+        entry["roles"][row[6]] += mins
+    entry["broad"][row[5]] += mins
+
+
+def _norms(apps, offsets):
+    """{position: {metric: (mean, sd)}} from player-seasons with 900+ minutes."""
+    seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter()})
+    for row in apps:
+        _add_season(seasons[(row[2], row[8])], row, _adjusted(row, offsets))
     groups = defaultdict(list)
     for entry in seasons.values():
         if entry["sums"]["minutes"] < 900:
@@ -319,10 +344,9 @@ def _stat_score(sums, pos, norms):
                for k, w in WEIGHTS[pos].items() if m[k] is not None)
 
 
-def _season_ranks(conn, norms):
+def _season_ranks(conn, norms, apps, offsets, team_rank):
     """[(player, season, rank, minutes, gap-season club or None)] from each season's own matches
-    (see module docstring)."""
-    cols = ", ".join(f"sum(coalesce(fp.{c}, 0))" for c in STATS[3:])
+    (see module docstring). team_rank: {(fixture, team): LT ALGO going into the match}."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
                                    "club": [0.0, 0.0], "games": 0})
     team_games = {(t, y): n for t, y, n in conn.execute(
@@ -334,27 +358,16 @@ def _season_ranks(conn, norms):
                where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
            group by 1, 2""", {"l": config.INJURY_MODEL_LEAGUES})}
     born = dict(conn.execute("select player_id, birth_date from players where birth_date is not null"))
-    _rating_offsets(conn)
-    for row in conn.execute(
-            f"""select fp.player_id, f.season, fp.team_id, fp.role, fp.position, sum(fp.minutes),
-                       sum(case when fp.rating is not null then {RATING} * fp.minutes else 0 end),
-                       sum(case when fp.rating is not null then fp.minutes else 0 end), {cols},
-                       sum(h.lt_before * fp.minutes),
-                       sum(case when h.lt_before is not null then fp.minutes else 0 end)
-                from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}
-                left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
-                where f.status_short in ('FT', 'AET', 'PEN')
-                group by 1, 2, 3, 4, 5"""):
-        e = seasons[(row[0], row[1])]
-        for k, v in zip(STATS, row[5:5 + len(STATS)]):
-            e["sums"][k] += float(v)
-        mins = float(row[5])
-        if row[3]:
-            e["roles"][row[3]] += mins
-        e["broad"][row[4]] += mins
-        e["club"][0] += float(row[-2] or 0)
-        e["club"][1] += float(row[-1] or 0)
-        e["games"] = max(e["games"], team_games.get((row[2], row[1]), 0))
+    for row in apps:
+        if row[10] not in ("FT", "AET", "PEN"):
+            continue
+        e = seasons[(row[2], row[8])]
+        _add_season(e, row, _adjusted(row, offsets))
+        club = team_rank.get((row[0], row[1]))
+        if club is not None:
+            e["club"][0] += club * (row[3] or 0)
+            e["club"][1] += row[3] or 0
+        e["games"] = max(e["games"], team_games.get((row[1], row[8]), 0))
     # Raw season scores, then the age curve from well-measured consecutive seasons
     raw = {}
     for (player, season), e in seasons.items():
@@ -541,9 +554,10 @@ def _season_ranks(conn, norms):
 
 
 def compute_player_ratings(conn):
-    norms = _norms(conn)
-    team_rank = {(f, t): r for f, t, r in conn.execute(
-        "select fixture_id, team_id, lt_before from team_rank_history")}
+    appearances = _appearances(conn)
+    offsets = _offsets(conn)
+    norms = _norms(appearances, offsets)
+    team_rank = {(r[0], r[1]): r[8] for r in rank_history(conn)}
     ranks = list(team_rank.values())
     tr_mean = sum(ranks) / len(ranks)
 
@@ -553,17 +567,15 @@ def compute_player_ratings(conn):
              and (status_short in ('FT', 'AET', 'PEN') or (status_short in ('NS', 'TBD') and kickoff > now()))
            order by kickoff, fixture_id""", [config.INJURY_MODEL_LEAGUES]).fetchall()
     apps = defaultdict(list)
-    cols = ", ".join(STATS[3:])
-    _rating_offsets(conn)
-    fcols = ", ".join(f"fp.{c}" for c in STATS[3:])
-    for r in conn.execute(f"""select fp.fixture_id, fp.team_id, fp.player_id, fp.minutes, fp.started, fp.position,
-                                     fp.role, {RATING}, {fcols}
-                              from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}"""):
+    for r in appearances:
         apps[r[0]].append({"team": r[1], "player": r[2], "minutes": r[3], "started": r[4],
-                           "position": r[5], "role": r[6], "rating": float(r[7]) if r[7] is not None else None,
-                           "stats": r[8:]})
+                           "position": r[5], "role": r[6], "rating": _adjusted(r, offsets),
+                           "stats": r[11:]})
     injured = defaultdict(set)
-    for fid, team, player in conn.execute("select fixture_id, team_id, player_id from injuries"):
+    for fid, team, player in cached_rows(conn, "injuries", f"""
+            select {WEEK.format('f.kickoff')} as part, i.fixture_id, i.team_id, i.player_id
+            from injuries i join fixtures f using (fixture_id)""",
+            order_by="fixture_id, team_id, player_id"):
         injured[(fid, team)].add(player)
 
     windows = defaultdict(Window)
@@ -662,7 +674,7 @@ def compute_player_ratings(conn):
         if s is not None:
             current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
 
-    season_rows = _season_ranks(conn, norms)
+    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank)
     _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows)
 
 

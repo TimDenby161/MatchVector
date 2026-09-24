@@ -46,6 +46,6 @@ def run_matchday(api, conn):
     if injury_fixtures:
         sync_injuries_fixtures(api, conn, injury_fixtures)
     if upcoming:
-        predictions.update_predictions(conn)
+        predictions.update_predictions(conn, [f for f, _ in upcoming])
         betting.place_late(conn)
     betting.settle_bets(conn)

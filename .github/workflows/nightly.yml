@@ -30,6 +30,15 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # Local copy of big historical query results (matchvector/cache.py): only weeks that
+      # changed since the last run are downloaded from the database
+      - name: Restore query cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache
+          key: db-cache-${{ github.run_id }}
+          restore-keys: db-cache-
+
       - name: Sync API-Football into Supabase
         run: python -m matchvector nightly
 
@@ -49,3 +58,10 @@ jobs:
             git pull --rebase
             git push
           fi
+
+      - name: Save query cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: db-cache-${{ github.run_id }}-${{ github.run_attempt }}

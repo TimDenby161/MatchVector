@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from . import config
+from .cache import finished_fixtures
 
 log = logging.getLogger(__name__)
 
@@ -145,16 +146,9 @@ def update_rankings(conn):
                     ", ".join(r[0] for r in missing))
 
     # Oldest first; fixture_id breaks ties between matches with the same kickoff.
-    fixtures = conn.execute(
-        """
-        select f.fixture_id, f.kickoff, f.league_id, l.type, f.home_team_id, f.away_team_id,
-               f.home_goals, f.away_goals, l.country
-        from fixtures f join leagues l using (league_id)
-        where f.status_short = any(%s) and f.home_goals is not null and f.away_goals is not null
-        order by f.kickoff, f.fixture_id
-        """,
-        [list(config.FINISHED_STATUSES)],
-    ).fetchall()
+    rows = finished_fixtures(conn)
+    fixtures = [r[:9] for r in rows]
+    xg = {r[0]: (r[9], r[10]) for r in rows}
 
     first_league, first_comp = {}, {}
     for _, _, league_id, ltype, home, away, _, _, _ in fixtures:
@@ -167,23 +161,23 @@ def update_rankings(conn):
         league_id = first_league.get(team, first_comp.get(team))
         return float(levels.get(league_id, DEFAULT_STARTING_RANK))
 
-    vol_changes = _replay(conn, fixtures, starting_rank)
-    _rebuild_summary(conn, fixtures, first_league, first_comp, vol_changes)
+    replayed = _replay(conn, fixtures, xg, starting_rank)
+    _rebuild_summary(conn, fixtures, first_league, first_comp, *replayed)
     conn.commit()
 
 
-def _replay(conn, fixtures, starting_rank):
-    """Rebuild team_rank_history. Returns {team: rank changes in K_FACTOR units} for the
-    volatility: matches with xG move ranks by K_FACTOR_XG, so their changes are scaled back,
-    and volatility measures how surprising a team's results are rather than the step size."""
+def _replay(conn, fixtures, xg, starting_rank):
+    """Rebuild team_rank_history. xg: {fixture_id: (home xG, away xG)}.
+
+    Returns ({team: history}, {team: last kickoff}, {team: rank changes in K_FACTOR units}).
+    The last is for the volatility: matches with xG move ranks by K_FACTOR_XG, so their changes
+    are scaled back, and volatility measures how surprising a team's results are rather than
+    the step size."""
     conn.execute("truncate team_rank_history")
-    xg = {(fid, is_home): float(v) for fid, is_home, v in conn.execute(
-        "select fixture_id, is_home, expected_goals from fixture_team_stats "
-        "where expected_goals is not null")}
-    matches = [Match(f[0], f[4], f[5], f[6], f[7], xg.get((f[0], True)), xg.get((f[0], False)))
-               for f in fixtures]
+    matches = [Match(f[0], f[4], f[5], f[6], f[7], *xg[f[0]]) for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
-    rows, _ = run(matches, starting_rank)
+    rows, history = run(matches, starting_rank)
+    last_match = {}
 
     match_no = {}
     recent = {}    # last 101 history values per team, for LT ALGO going into each match
@@ -203,6 +197,7 @@ def _replay(conn, fixtures, starting_rank):
             hist.append(before + delta)
             del hist[:-101]            # LT ALGO only looks at the last 100 values
             vol_changes.setdefault(team, []).append(delta * scale)
+            last_match[team] = kickoffs[m.key]
             buf.write("\t".join(map(str, (
                 m.key, team, match_no[team], kickoffs[m.key].isoformat(),
                 "t" if is_home else "f", opp, before, before + delta, exp_diff, act_diff, delta,
@@ -214,20 +209,12 @@ def _replay(conn, fixtures, starting_rank):
                       "lt_before) from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: replayed %d fixtures", len(rows))
-    return vol_changes
+    return history, last_match, vol_changes
 
 
-def _rebuild_summary(conn, fixtures, first_league, first_comp, vol_changes):
-    """Recreate team_rankings (the Ranking tab) from the full history."""
-    history, last_match = {}, {}
-    for team, rank_before, rank_after, kickoff in conn.execute(
-            "select team_id, rank_before, rank_after, kickoff from team_rank_history "
-            "order by team_id, match_no"):
-        if team not in history:
-            history[team] = [rank_before]          # starting rank
-        history[team].append(rank_after)
-        last_match[team] = kickoff
-
+def _rebuild_summary(conn, fixtures, first_league, first_comp, history, last_match, vol_changes):
+    """Recreate team_rankings (the Ranking tab) from the replayed history
+    ({team: [starting rank, rank after each match]})."""
     latest_league = {}
     for _, _, league_id, ltype, home, away, _, _, _ in fixtures:
         if ltype == "League":

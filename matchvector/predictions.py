@@ -32,8 +32,9 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from . import config
+from .cache import finished_fixtures, rank_history
 from .injuries import BETA as INJURY_BETA, missing_strengths
-from .ranking import DEFAULT_STARTING_RANK, HOME_ADVANTAGE_POINTS, summarise
+from .ranking import DEFAULT_STARTING_RANK, HOME_ADVANTAGE_POINTS
 
 log = logging.getLogger(__name__)
 
@@ -126,25 +127,28 @@ def predict_match(h_rank, a_rank, home_records, away_records, lg_home, lg_away, 
             *goal_markets(home_xg, away_xg))
 
 
-def _load_xg(conn, since=None):
-    """{(fixture_id, is_home): expected goals} from the match statistics."""
-    sql = """select s.fixture_id, s.is_home, s.expected_goals from fixture_team_stats s
-             join fixtures f using (fixture_id) where s.expected_goals is not null"""
-    params = []
-    if since is not None:
-        sql += " and f.kickoff >= %s"
-        params = [since]
-    return {(fid, is_home): float(v) for fid, is_home, v in conn.execute(sql, params)}
-
-
-def _form(fixture_id, home_goals, away_goals, xg):
+def _form(home_goals, away_goals, home_xg, away_xg):
     """(home, away) form values for one match: xG when recorded, otherwise goals."""
-    return (xg.get((fixture_id, True), home_goals), xg.get((fixture_id, False), away_goals))
+    return (home_goals if home_xg is None else home_xg, away_goals if away_xg is None else away_xg)
 
 
-def update_predictions(conn):
+def update_predictions(conn, fixture_ids=None):
+    """Project every upcoming fixture, or only those in fixture_ids (the match-day job, which
+    then downloads only the involved teams' and competitions' results)."""
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=365)
+    upcoming = conn.execute(
+        """select fixture_id, kickoff, league_id, home_team_id, away_team_id from fixtures
+           where status_short = any(%s) and kickoff >= %s
+             and (%s::int[] is null or fixture_id = any(%s::int[])) order by kickoff""",
+        [list(UPCOMING_STATUSES), now - timedelta(hours=3), fixture_ids, fixture_ids]).fetchall()
+    if not upcoming:
+        log.info("Predictions: no upcoming fixtures to project")
+        return
+    teams = leagues = None
+    if fixture_ids is not None:
+        teams = list({t for f in upcoming for t in f[3:5]})
+        leagues = list({f[2] for f in upcoming})
 
     ranks = {t: (cur, lt, rel) for t, cur, lt, rel in conn.execute(
         "select team_id, current_rank, lt_algo, reliability from team_rankings")}
@@ -153,23 +157,23 @@ def update_predictions(conn):
 
     # Last 12 months of results: per-team home/away records (xG where available) and
     # per-competition average goals
-    xg = _load_xg(conn, since)
     home_rec, away_rec = defaultdict(list), defaultdict(list)
     comp_goals = defaultdict(list)
-    for fid, league_id, home, away, hg, ag in conn.execute(
-            """select fixture_id, league_id, home_team_id, away_team_id, home_goals, away_goals
-               from fixtures
-               where status_short = any(%s) and home_goals is not null and kickoff >= %s""",
-            [list(config.FINISHED_STATUSES), since]):
-        hf, af = _form(fid, hg, ag, xg)
+    for league_id, home, away, hg, ag, hx, ax in conn.execute(
+            """select f.league_id, f.home_team_id, f.away_team_id, f.home_goals, f.away_goals,
+                      hx.expected_goals::float8, ax.expected_goals::float8
+               from fixtures f
+               left join fixture_team_stats hx on hx.fixture_id = f.fixture_id and hx.is_home
+               left join fixture_team_stats ax on ax.fixture_id = f.fixture_id and not ax.is_home
+               where f.status_short = any(%s) and f.home_goals is not null and f.kickoff >= %s
+                 and (%s::int[] is null or f.league_id = any(%s::int[])
+                      or f.home_team_id = any(%s::int[]) or f.away_team_id = any(%s::int[]))""",
+            [list(config.FINISHED_STATUSES), since, leagues, leagues, teams, teams]):
+        hf, af = _form(hg, ag, hx, ax)
         home_rec[home].append((hf, af))
         away_rec[away].append((af, hf))
         comp_goals[league_id].append((hg, ag))
 
-    upcoming = conn.execute(
-        """select fixture_id, kickoff, league_id, home_team_id, away_team_id from fixtures
-           where status_short = any(%s) and kickoff >= %s order by kickoff""",
-        [list(UPCOMING_STATUSES), now - timedelta(hours=3)]).fetchall()
     missing = missing_strengths(conn, [f[0] for f in upcoming])
 
     rows = []
@@ -225,26 +229,21 @@ def backfill_predictions(conn):
     from the 12 months before kickoff, so it's what the current model would have said at the
     time. Live snapshots (source='live', made the night before) are never overwritten.
     """
-    have = {r[0] for r in conn.execute("select fixture_id from fixture_predictions")}
-    # Match rank going into each fixture: Now and LT ALGO as they stood before it
-    history, ranks_before = {}, {}
-    for fid, team, is_home, before, after in conn.execute(
-            """select fixture_id, team_id, is_home, rank_before, rank_after from team_rank_history
-               order by team_id, match_no"""):
-        hist = history.setdefault(team, [before])
-        s = summarise(hist)
-        ranks_before[(fid, is_home)] = match_rank(before, s["lt_algo"] if s else before)
-        hist.append(after)
-
-    fixtures = conn.execute(
-        """select fixture_id, kickoff, league_id, home_team_id, away_team_id, home_goals, away_goals
-           from fixtures where status_short = any(%s) and home_goals is not null
-           order by kickoff, fixture_id""", [list(config.FINISHED_STATUSES)]).fetchall()
+    targets = {r[0] for r in conn.execute(
+        """select f.fixture_id from fixtures f
+           where f.status_short = any(%s) and f.home_goals is not null and f.kickoff >= %s
+             and not exists (select 1 from fixture_predictions p where p.fixture_id = f.fixture_id)""",
+        [list(config.FINISHED_STATUSES), BACKFILL_FROM])}
+    if not targets:
+        log.info("Backfilled predictions for 0 finished fixtures (none missing)")
+        return
+    # Match rank going into each fixture: Now and LT ALGO (lt_before) as they stood before it
+    ranks_before = {(fid, is_home): match_rank(before, lt)
+                    for fid, _, _, _, is_home, _, before, _, lt, *_ in rank_history(conn)}
+    fixtures = finished_fixtures(conn)
 
     window = timedelta(days=365)
-    xg = _load_xg(conn)
-    missing = missing_strengths(conn, [f[0] for f in fixtures
-                                       if f[1] >= BACKFILL_FROM and f[0] not in have])
+    missing = missing_strengths(conn, targets)
     home_rec, away_rec, comp = defaultdict(deque), defaultdict(deque), defaultdict(deque)
 
     def trim(dq, now):
@@ -252,11 +251,10 @@ def backfill_predictions(conn):
             dq.popleft()
 
     rows = []
-    for fid, kickoff, league_id, home, away, hg, ag in fixtures:
+    for fid, kickoff, league_id, _, home, away, hg, ag, _, hx, ax in fixtures:
         for dq in (home_rec[home], away_rec[away], comp[league_id]):
             trim(dq, kickoff)
-        if kickoff >= BACKFILL_FROM and fid not in have \
-                and (fid, True) in ranks_before and (fid, False) in ranks_before:
+        if fid in targets and (fid, True) in ranks_before and (fid, False) in ranks_before:
             games = comp[league_id]
             lg_home = sum(g[1] for g in games) / len(games) if games else DEFAULT_HOME_GOALS
             lg_away = sum(g[2] for g in games) / len(games) if games else DEFAULT_AWAY_GOALS
@@ -267,7 +265,7 @@ def backfill_predictions(conn):
                                         [r[1:] for r in away_rec[away]], lg_home, lg_away,
                                         league_id, h_miss or 0.0, a_miss or 0.0),
                          h_miss, a_miss))
-        hf, af = _form(fid, hg, ag, xg)
+        hf, af = _form(hg, ag, hx, ax)
         home_rec[home].append((kickoff, hf, af))
         away_rec[away].append((kickoff, af, hf))
         comp[league_id].append((kickoff, hg, ag))
