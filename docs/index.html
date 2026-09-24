@@ -794,7 +794,6 @@
   .who-chip:hover .x { color: var(--text-primary); }
   .who-chip .kind { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
   #table-filters { order: 1; }
-  #table-view { order: 2; margin-bottom: 10px; }
   #table-search { order: 3; }
   /* Age range: two range inputs over one track; only the thumbs take the pointer */
   .age-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;
@@ -819,7 +818,6 @@
     body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
     #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
     #table-side .side-stick { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; padding-right: 4px; }
-    #table-view { order: 1; margin-bottom: 8px; }
     #table-search { order: 2; margin-bottom: 12px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
     #pos-filter { order: 3; margin: 0 0 14px; }
@@ -901,7 +899,6 @@
   @media (max-width: 759px) {
     .side-stick { flex-direction: row; flex-wrap: wrap; align-items: flex-start; column-gap: 8px; }
     .side-stick > * { flex: 0 0 100%; min-width: 0; }
-    #table-view { order: 0; margin-bottom: 8px; }
     #table-search { order: 1; flex: 1 1 0; margin-bottom: 8px; }
     #more-filters { order: 2; flex: none; display: inline-flex; align-items: center; gap: 5px;
       height: 40px; padding: 0 12px; border-radius: 8px; font-size: 13px; margin-bottom: 8px; }
@@ -929,10 +926,11 @@
   <div class="app-bar">
     <button type="button" class="menu-btn" id="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="main-menu">&#9776;</button>
     <h1><span class="brand-mark" aria-hidden="true"></span><span>FootCorner</span></h1>
-    <span class="app-title" id="app-title">Rankings</span>
+    <span class="app-title" id="app-title">Clubs</span>
   </div>
   <nav class="tabs" id="main-menu" role="tablist" aria-orientation="vertical">
-    <button role="tab" data-tab="table" aria-selected="true">Rankings</button>
+    <button role="tab" data-tab="table" data-view="clubs" aria-selected="true">Clubs</button>
+    <button role="tab" data-tab="table" data-view="players" aria-selected="false">Players</button>
     <button role="tab" data-tab="matches" aria-selected="false">Matches</button>
     <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
     <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
@@ -979,10 +977,6 @@
           <div class="who-chips" id="who-chips"></div>
         </div>
         <div class="filters-wrap" id="table-filters"></div>
-        <div class="filter-row range-row" id="table-view">
-          <button type="button" class="filter-chip" data-view="clubs" aria-pressed="true">Clubs</button>
-          <button type="button" class="filter-chip" data-view="players" aria-pressed="false">Players</button>
-        </div>
         <input type="search" id="table-search" class="table-search" placeholder="Search clubs" aria-label="Search">
         <button type="button" class="filter-chip" id="more-filters" aria-expanded="false" aria-controls="table-side" hidden>Filters</button>
       </div>
@@ -3031,7 +3025,7 @@ $("#club-body").addEventListener("click", (e) => {
   state.tableFilter = a.dataset.league;
   state.tableSearch = "";
   $("#table-search").value = "";
-  if (state.tableView !== "clubs") $('#table-view [data-view="clubs"]').click();
+  if (state.tableView !== "clubs") setTableView("clubs");
   else { renderTableFilters(); renderTable(); }
   window.scrollTo(0, 0);
 });
@@ -3048,7 +3042,7 @@ $("#club-body").addEventListener("click", (e) => {
   state.tableSort = "lt";
   state.tableSearch = state.rankByTeam.get(team)?.in_league ? "" : teamName(team);
   $("#table-search").value = state.tableSearch;
-  if (state.tableView !== "clubs") $('#table-view [data-view="clubs"]').click();
+  if (state.tableView !== "clubs") setTableView("clubs");
   else { renderTableFilters(); renderTable(); }
   window.scrollTo(0, 0);
   const tr = document.querySelector(`#table-wrap tr[data-team="${team}"]`);
@@ -3356,13 +3350,22 @@ function openCountryPage(country) {
 function showTab(tab) {
   state.tab = tab;
   document.body.dataset.tab = tab;
-  document.querySelectorAll("nav.tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   document.querySelectorAll(".panel").forEach((p) => p.dataset.active = String(p.dataset.tab === tab));
-  $("#app-title").textContent = document.querySelector(`nav.tabs button[data-tab="${tab}"]`)?.textContent || "";
+  syncMenu();
+}
+function syncMenu() {
+  let title = "";
+  document.querySelectorAll("nav.tabs button").forEach((b) => {
+    const on = b.dataset.tab === state.tab && (!b.dataset.view || b.dataset.view === state.tableView);
+    b.setAttribute("aria-selected", String(on));
+    if (on) title = b.textContent;
+  });
+  $("#app-title").textContent = title;
 }
 document.querySelectorAll("nav.tabs button").forEach((btn) => btn.addEventListener("click", () => {
   if (location.hash.startsWith("#/")) history.pushState(null, "", location.pathname + location.search);
   showTab(btn.dataset.tab);
+  if (btn.dataset.view && btn.dataset.view !== state.tableView) setTableView(btn.dataset.view);
   setMenu(false);
 }));
 // Phones: the menu slides in from the left behind the menu button
@@ -3472,18 +3475,17 @@ for (const id of ["#age-min", "#age-max"]) {
   $(id).addEventListener("change", (e) => onAgeInput(e, true));
 }
 
-$("#table-view").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-view]");
-  if (!btn) return;
-  state.tableView = btn.dataset.view;
+// Clubs or Players, picked from the menu
+function setTableView(view) {
+  state.tableView = view;
   renderAgeFilter();
   renderPosFilter();
   renderWhoFilter();
-  document.querySelectorAll("#table-view [data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-  $("#table-search").placeholder = state.tableView === "players" ? "Search players or clubs" : "Search clubs";
+  syncMenu();
+  $("#table-search").placeholder = view === "players" ? "Search players or clubs" : "Search clubs";
   renderTableFilters();
   renderTable();
-});
+}
 
 $("#matches-list").addEventListener("click", (e) => {
   if (e.target.closest("a")) return;
