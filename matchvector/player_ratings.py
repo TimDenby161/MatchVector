@@ -329,23 +329,31 @@ OUT_STATS_WEIGHT = 0.3     # stats move an outfield player up to about +/-15 (ke
 OUT_FULL_SHARE = 0.7       # outfield players under this share of club minutes are scaled down, up to 20%
 ELITE_FROM = 90            # outfield stats above this percentile earn ELITE_WEIGHT more per percentile,
 ELITE_WEIGHT = 1.0         # up to +10: great players at clubs below the very top can reach the high 90s
+# Positions aren't worth the same: a 97th-percentile full-back isn't a 94th-percentile striker.
+# How far stats move each role group (x the stats part), and a flat offset per group. Set by
+# judgement, not measured: results can't separate position value (XI ratings added nothing on
+# top of club rank). With these Haaland (94-96) is above Davies (89-90), Kane above Alexander-Arnold.
+POSITION_STATS = {"ST": 1.0, "W": 1.0, "AM": 1.0, "CM": 0.85, "DM": 0.85, "CB": 0.7, "FB": 0.7}
+POSITION_OFFSET = {"ST": 2, "W": 1, "AM": 1, "CM": 0, "DM": -1, "CB": -2, "FB": -3}
 
 
-def outfield_rank(pct, club, share=None):
+def outfield_rank(pct, club, share=None, pos=None):
     """Outfield players, like keepers, start from club level - a regular for a strong club is
     good evidence of quality - and their stats move them up or down. Elite stats (above
     ELITE_FROM) earn extra, so the club's level doesn't cap a great player (Messi at PSG, ~1040:
     87 -> 92.5 with the soft ceiling). A player under OUT_FULL_SHARE of his club's minutes (squad player) is scaled
-    down by up to 20%."""
-    r = (100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + OUT_STATS_WEIGHT * (pct - 50)
-         + ELITE_WEIGHT * max(0.0, pct - ELITE_FROM))
+    down by up to 20%. pos (role group) weights the stats and adds its offset (POSITION_STATS,
+    POSITION_OFFSET)."""
+    stats = OUT_STATS_WEIGHT * (pct - 50) + ELITE_WEIGHT * max(0.0, pct - ELITE_FROM)
+    r = (100 * min(club / CLUB_RANK_MAX, 1) - OUT_CLUB_OFFSET + POSITION_STATS.get(pos, 1.0) * stats
+         + POSITION_OFFSET.get(pos, 0))
     if share is not None:
         r *= min(1.0, 0.8 + 0.2 * share / OUT_FULL_SHARE)
     return soft_ceiling(r)
 
 
 def final_rank(pct, club, pos, share=None):
-    return keeper_rank(pct, club, share) if pos == "GK" else outfield_rank(pct, club, share)
+    return keeper_rank(pct, club, share) if pos == "GK" else outfield_rank(pct, club, share, pos)
 
 
 def stretched_pct(score, ref):

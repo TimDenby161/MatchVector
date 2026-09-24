@@ -110,7 +110,20 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 | Messi at PSG (LT about 1040), 22/23 | 92.5, up from 87 before the elite bonus |
 | Kane | up to 95.6 |
 
-The same ceiling applies to keepers. The club rank is the clubs' **LT ALGO going into each match** he played for them (weighted by his minutes), rather than their rank on the day, so one hot or cold run doesn't swing a whole squad. It's stored as `team_rank_history.lt_before`.
+The same ceiling applies to keepers.
+
+**Positions aren't worth the same.** Stats are compared within a role group, so without an adjustment a 97th-percentile full-back counted for more than a 94th-percentile striker. That put Davies above Haaland and Alexander-Arnold above Kane. So each role group's stats part is scaled, and a flat offset is added:
+
+| Role group | Stats × | Offset |
+|---|---|---|
+| Striker | 1.0 | +2 |
+| Winger, attacking mid | 1.0 | +1 |
+| Central mid | 0.85 | 0 |
+| Defensive mid | 0.85 | −1 |
+| Centre-back | 0.7 | −2 |
+| Full-back | 0.7 | −3 |
+
+These are set by judgement. The results data can't measure position value, because the XI ratings added nothing on top of the club ranks. The settings are `POSITION_STATS` and `POSITION_OFFSET` in `matchvector/player_ratings.py`. The club rank is the clubs' **LT ALGO going into each match** he played for them (weighted by his minutes), rather than their rank on the day, so one hot or cold run doesn't swing a whole squad. It's stored as `team_rank_history.lt_before`.
 
 **Where it's stored**
 - `fixture_player_ranks` holds each player's rank going into every match. It's a separate table, cleared and refilled on each run, so the 700,000-row `fixture_players` table isn't rewritten every night.
