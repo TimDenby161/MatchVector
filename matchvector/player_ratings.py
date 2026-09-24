@@ -865,6 +865,29 @@ def retired_players(conn, apps):
             if p in last and checked > last[p] and (age or 0) >= RETIRED_AGE}
 
 
+# XI line for the per-line averages: the role he started in (positions.role), else his broad
+# API position. LM/RM count as midfield here, although they're rated with the wingers.
+LINES = ("GK", "DEF", "MID", "FWD")
+LINE_OF_ROLE = {"GK": "GK", "CB": "DEF", "LB": "DEF", "RB": "DEF", "LWB": "DEF", "RWB": "DEF",
+                "DM": "MID", "CM": "MID", "AM": "MID", "LM": "MID", "RM": "MID",
+                "LW": "FWD", "RW": "FWD", "ST": "FWD"}
+LINE_OF_BROAD = {"G": "GK", "D": "DEF", "M": "MID", "F": "FWD"}
+
+
+def line_of(role, broad=None):
+    return LINE_OF_ROLE.get(role) or LINE_OF_BROAD.get(broad)
+
+
+def _mean(xs):
+    xs = list(xs)
+    return sum(xs) / len(xs) if xs else None
+
+
+def _by_line(ranked):
+    """[(rank, line)] -> mean rank per line, in LINES order (None for a line with nobody)."""
+    return [_mean(r for r, l in ranked if l == line) for line in LINES]
+
+
 def compute_player_ratings(conn):
     appearances = _appearances(conn)
     retired = retired_players(conn, appearances)
@@ -916,7 +939,7 @@ def compute_player_ratings(conn):
     # One replay collects raw scores; ranks are scaled afterwards by the spread among regulars
     sample = defaultdict(list) # position -> raw scores of players with a full window of minutes
     appearance_scores = []     # (fixture, player, (stat score, club rank), position)
-    team_rows = []             # (fixture, team, predicted XI [(player, pos, raw)], actual XI [(raw, pos)], upcoming)
+    team_rows = []             # (fixture, team, predicted XI [(player, pos, raw, role)], actual XI [(raw, pos, line)], upcoming)
     for fid, kickoff, home, away, upcoming, _season in fixtures:
         for team in (home, away):
             # predicted XI from recent matches, excluding the injury list
@@ -943,7 +966,7 @@ def compute_player_ratings(conn):
                     if mins >= SHRINK_MINUTES and fixture_league.get(fid) in REFERENCE:
                         sample[pos].append(s[0])
                     if a["started"]:
-                        actual.append((s, pos))
+                        actual.append((s, pos, line_of(a["role"], a["position"])))
             team_rows.append((fid, team, [(p, pos, s, windows[p].label()) for p, pos, s, _ in predicted],
                               actual, upcoming))
         # after the match: update windows and team history
@@ -971,13 +994,14 @@ def compute_player_ratings(conn):
     team_out, lineups = [], []
     xi_hist = defaultdict(lambda: deque(maxlen=PREDICT_MATCHES))
     for fid, team, predicted, actual, upcoming in team_rows:
-        pred = [to_rank(s, pos) for _, pos, s, _ in predicted]
-        act = [to_rank(s, pos) for s, pos in actual]
-        recent = sum(xi_hist[team]) / len(xi_hist[team]) if xi_hist[team] else None
-        team_out.append((fid, team, sum(pred) / len(pred) if pred else None, len(pred), recent,
-                         sum(act) / len(act) if act else None))
-        if act:
-            xi_hist[team].append(sum(act) / len(act))
+        pred = [(to_rank(s, pos), line_of(label)) for _, pos, s, label in predicted]
+        act = [(to_rank(s, pos), line) for s, pos, line in actual]
+        recent = _mean(xi_hist[team])
+        act_xi = _mean(r for r, _ in act)
+        team_out.append((fid, team, _mean(r for r, _ in pred), len(pred), recent, act_xi,
+                         *_by_line(act), *_by_line(pred)))
+        if act_xi is not None:
+            xi_hist[team].append(act_xi)
         if upcoming:
             lineups.extend((fid, team, p, label, to_rank(s, pos)) for p, pos, s, label in predicted)
 
@@ -1015,7 +1039,8 @@ def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_
             buf.write("\t".join(r"\N" if v is None else str(round(v, 2) if isinstance(v, float) else v)
                                 for v in row) + "\n")
         with cur.copy("copy fixture_team_ratings (fixture_id, team_id, predicted_xi_rating, predicted_xi_size, "
-                      "recent_xi_rating, actual_xi_rating) from stdin") as cp:
+                      "recent_xi_rating, actual_xi_rating, actual_gk, actual_def, actual_mid, actual_fwd, "
+                      "predicted_gk, predicted_def, predicted_mid, predicted_fwd) from stdin") as cp:
             cp.write(buf.getvalue())
         cur.execute("truncate predicted_lineups")
         cur.executemany("insert into predicted_lineups (fixture_id, team_id, player_id, position, player_rank) "

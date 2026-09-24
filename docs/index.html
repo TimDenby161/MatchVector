@@ -339,12 +339,15 @@
   .years-btn:hover { border-color: var(--series-blue); }
   table.leaderboard.players.years td.col-now, table.leaderboard.players.years th.col-now,
   table.leaderboard.players.years td.col-posrank, table.leaderboard.players.years th.col-posrank { border-right: 1px solid var(--gridline); }
+  /* expanded years: the table keeps room for the player's name (at least ~220px) and swipes
+     sideways when the window is narrower than that, instead of squeezing the Player column */
+  .table-scroll:has(table.players.years) { overflow-x: auto; }
+  table.leaderboard.players.years { min-width: 860px; }
   table.leaderboard.players th.col-future { font-style: italic; }
   table.leaderboard.players th.col-f0, table.leaderboard.players td.col-f0 { padding-left: 8px; }
   table.leaderboard.players td.col-future .rel-chip { opacity: .7; }
   @media (max-width: 480px) {
     /* expanded years on a phone: every column, and the table swipes sideways */
-    .table-scroll:has(table.players.years) { overflow-x: auto; }
     table.leaderboard.players.years { width: max-content; min-width: 100%; }
     table.leaderboard.players.years td:nth-child(2) { max-width: 150px; }
     table.leaderboard.players th.col-s2, table.leaderboard.players td.col-s2 { padding-left: 8px; width: 42px; }
@@ -834,6 +837,8 @@
   @media (min-width: 1160px) {
     section[data-tab="table"] { position: relative; }
     body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
+    /* players with the years open: the page widens to fit them (up to 1130px) before it swipes */
+    body[data-tab="table"] main:has(table.players.years) { max-width: 1130px; }
     #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
     #table-side .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
     #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
@@ -1452,6 +1457,10 @@ function onChipClick(kind, e) {
 }
 
 // ------------------------------------------------------------------ matches
+// Average XI rank by line [GK, DEF, MID, FWD] as "GK 70 · DEF 71 · MID 74 · FWD 73"
+const linesText = (l) => ["GK", "DEF", "MID", "FWD"].map((k, i) => `${k} ${l[i] == null ? "–" : Math.round(l[i])}`).join(" · ");
+const SIDES_NOTE = "Attack and Defence average to Form: 200 points of attack over the other side's defence is about one goal. Home and Away are Form plus or minus the club's own home edge.";
+
 function rankChip(rank) {
   return Number.isFinite(rank) ? `<span class="club-score" title="Elo rating">${Math.round(rank).toLocaleString()}</span>` : "";
 }
@@ -1533,7 +1542,7 @@ function matchCard(m) {
       </div>
       ${probBar(m)}
       ${m.p_over25 != null && !(FINISHED.has(m.status) && m.hg != null) ? `<div class="market-line">Over 2.5 goals <b>${Math.round(m.p_over25 * 100)}%</b> · Both teams score <b>${Math.round(m.p_btts * 100)}%</b></div>` : ""}
-      ${m.home_xi != null && m.away_xi != null ? `<div class="market-line" title="Average player rank (0-100) of the ${FINISHED.has(m.status) ? "starting" : "predicted"} XI; brackets = average of each side's last 5 starting XIs">${FINISHED.has(m.status) ? "Starting" : "Predicted"} XI rating <b>${Math.round(m.home_xi)}</b>${m.home_recent_xi != null ? ` (${Math.round(m.home_recent_xi)})` : ""} · <b>${Math.round(m.away_xi)}</b>${m.away_recent_xi != null ? ` (${Math.round(m.away_recent_xi)})` : ""}</div>` : ""}
+      ${m.home_xi != null && m.away_xi != null ? `<div class="market-line" title="Average player rank (0-100) of the ${FINISHED.has(m.status) ? "starting" : "predicted"} XI; brackets = average of each side's last 5 starting XIs${m.home_lines && m.away_lines ? `. By line: ${escapeHtml(teamName(m.home))} ${linesText(m.home_lines)}; ${escapeHtml(teamName(m.away))} ${linesText(m.away_lines)}` : ""}">${FINISHED.has(m.status) ? "Starting" : "Predicted"} XI rating <b>${Math.round(m.home_xi)}</b>${m.home_recent_xi != null ? ` (${Math.round(m.home_recent_xi)})` : ""} · <b>${Math.round(m.away_xi)}</b>${m.away_recent_xi != null ? ` (${Math.round(m.away_recent_xi)})` : ""}</div>` : ""}
       ${m.home_missing != null || m.away_missing != null ? `<div class="market-line" title="Players listed injured, suspended or doubtful, weighted by their share of their team's recent minutes (1.0 = one ever-present player)">Missing players <b>${(m.home_missing ?? 0).toFixed(1)}</b> · <b>${(m.away_missing ?? 0).toFixed(1)}</b></div>` : ""}
       ${m.m_home != null ? `<div class="market-line" title="Average bookmaker odds, margin removed">Bookmakers <b>${Math.round(m.m_home * 100)}%</b> · <b>${Math.round(m.m_draw * 100)}%</b> · <b>${Math.round(m.m_away * 100)}%</b></div>` : ""}
       ${detail}
@@ -2275,7 +2284,10 @@ function clubOverviewTab() {
     ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact" style="grid-template-columns:repeat(3,minmax(0,1fr))">
       ${tile("Rating", Math.round(r.lt))}${tile("Form", Math.round(r.current))}
       ${tile("Trend", formHtml(r.form) || "–")}
-    </div></div>` : ""}
+    </div>${r.attack != null ? `<div class="team-stats compact" style="margin-top:8px">
+      ${tile("Attack", Math.round(r.attack))}${tile("Defence", Math.round(r.defence))}
+      ${tile("Home", Math.round(r.home))}${tile("Away", Math.round(r.away))}
+    </div><div class="page-note">${SIDES_NOTE}</div>` : ""}</div>` : ""}
     ${ga ? `<div class="club-section"><div class="modal-section">Goals per game · last 12 months</div><div class="team-stats compact">
       ${tile("Home", ga[0].toFixed(2), `conceded ${ga[1].toFixed(2)}`)}${tile("Away", ga[2].toFixed(2), `conceded ${ga[3].toFixed(2)}`)}
     </div></div>` : ""}`;
@@ -2496,7 +2508,7 @@ function clubMatchesTab() {
         <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, clubOpp(m.opponent))}</span></div>
       <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
       <div class="mr-rating rank-move">${moveHtml(move)}</div>
-      <div class="mr-sub"><span>${escapeHtml(compLabel(m.league))}</span><span class="mr-rank">Elo ${m.rank.toFixed(1)}</span></div>
+      <div class="mr-sub"><span>${escapeHtml(compLabel(m.league))}${m.xi_lines ? ` · XI ${linesText(m.xi_lines)}` : ""}</span><span class="mr-rank"${m.attack != null ? ` title="Attack ${Math.round(m.attack)} · Defence ${Math.round(m.defence)} after the match"` : ""}>Elo ${m.rank.toFixed(1)}</span></div>
     </div>`;
   if (!upcoming.length && !results.length) return `<div class="empty-state">No matches for this club yet.</div>`;
   return `
@@ -2796,6 +2808,7 @@ function openTeam(teamId) {
   $("#team-modal-body").innerHTML = (r ? `<div class="team-stats">
       ${stat("Rating", Math.round(r.lt))}${stat("Form", Math.round(r.current))}
       ${stat("Trend", formHtml(r.form) || "–")}${stat("Played", r.played)}
+      ${r.attack != null ? `${stat("Attack", Math.round(r.attack))}${stat("Defence", Math.round(r.defence))}${stat("Home", Math.round(r.home))}${stat("Away", Math.round(r.away))}` : ""}
     </div>` : "") +
     xiBlock(teamId) +
     (upcoming.length ? `<div class="modal-section">Next matches</div>${upcoming.map((m) => row(m, false)).join("")}` : "") +

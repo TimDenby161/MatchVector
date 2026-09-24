@@ -1,1 +1,1 @@
-{"id":28343,"start":430,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-09-05",426.1,7692,0,0,2,45,null]],"goal_averages":[0.0,0.0,0.0,2.0],"coach":null,"colors":null,"teams":{"7692":"Alvechurch"}}
+{"id":28343,"start":430,"fields":["date","rank","opponent","home","gf","ga","league","formation","attack","defence","xi_lines"],"matches":[["2026-09-05",426.1,7692,0,0,2,45,null,425.2,426.9,null]],"goal_averages":[0.0,0.0,0.0,2.0],"coach":null,"colors":null,"teams":{"7692":"Alvechurch"}}

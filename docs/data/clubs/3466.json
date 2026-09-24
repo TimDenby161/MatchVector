@@ -1,1 +1,1 @@
-{"id":3466,"start":450,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-08-29",433.2,8830,1,0,2,47,null]],"goal_averages":[0.0,2.0,0.0,0.0],"coach":null,"colors":null,"teams":{"8830":"Horley Town"}}
+{"id":3466,"start":450,"fields":["date","rank","opponent","home","gf","ga","league","formation","attack","defence","xi_lines"],"matches":[["2026-08-29",433.2,8830,1,0,2,47,null,432.3,434.1,null]],"goal_averages":[0.0,2.0,0.0,0.0],"coach":null,"colors":null,"teams":{"8830":"Horley Town"}}

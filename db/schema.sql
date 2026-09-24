@@ -407,6 +407,16 @@ create table if not exists fixture_team_ratings (
     actual_xi_rating     numeric(5,2),   -- average rank of the XI that started (finished matches)
     primary key (fixture_id, team_id)
 );
+-- The same averages by line (GK, DEF, MID, FWD), for the XI that started and the predicted XI.
+-- A starter's line is the role he started in (LM/RM count as MID, LW/RW as FWD).
+alter table fixture_team_ratings add column if not exists actual_gk  numeric(5,2);
+alter table fixture_team_ratings add column if not exists actual_def numeric(5,2);
+alter table fixture_team_ratings add column if not exists actual_mid numeric(5,2);
+alter table fixture_team_ratings add column if not exists actual_fwd numeric(5,2);
+alter table fixture_team_ratings add column if not exists predicted_gk  numeric(5,2);
+alter table fixture_team_ratings add column if not exists predicted_def numeric(5,2);
+alter table fixture_team_ratings add column if not exists predicted_mid numeric(5,2);
+alter table fixture_team_ratings add column if not exists predicted_fwd numeric(5,2);
 -- Predicted XI for upcoming fixtures (rebuilt nightly)
 create table if not exists predicted_lineups (
     fixture_id   int not null,
@@ -441,6 +451,12 @@ create table if not exists team_rank_history (
 create index if not exists team_rank_history_team_idx on team_rank_history (team_id, match_no);
 -- LT ALGO going into the match: the club level used by the player ranks
 alter table team_rank_history add column if not exists lt_before double precision;
+-- Attack / defence and home / away after the match (ranking.side_ratings): attack and defence
+-- average to rank_after; home and away are rank_after plus / minus the club's own home edge
+alter table team_rank_history add column if not exists attack_after double precision;
+alter table team_rank_history add column if not exists defence_after double precision;
+alter table team_rank_history add column if not exists home_after double precision;
+alter table team_rank_history add column if not exists away_after double precision;
 
 create table if not exists team_rankings (
     team_id        int primary key,
@@ -460,6 +476,10 @@ create table if not exists team_rankings (
 );
 alter table team_rankings add column if not exists rank_volatility double precision;
 alter table team_rankings add column if not exists reliability double precision;
+alter table team_rankings add column if not exists attack double precision;       -- now, as above
+alter table team_rankings add column if not exists defence double precision;
+alter table team_rankings add column if not exists home_rating double precision;
+alter table team_rankings add column if not exists away_rating double precision;
 
 -- Projected score and win/draw/loss chances for upcoming fixtures (see
 -- matchvector/predictions.py). Rebuilt nightly after the rankings.

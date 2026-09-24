@@ -35,6 +35,20 @@ Reliability (0-100, not in the sheet):
                        (a match with xG counts its change x K_FACTOR / K_FACTOR_XG)
     stability_factor = min(1, (10.5 / rank_volatility) ** 3)   (1 if under 10 games)
     reliability      = 100 * games_factor * stability_factor
+
+Attack / defence and home / away (side_ratings, alongside the rank; they don't change it):
+    attack  = rank + 2s,  defence = rank - 2s   (rank = their average; same scale as the rank)
+    s is how much of a club's strength is scoring rather than stopping goals. Expected goals:
+        home = base_home + ((home attack - away defence)/2 + HOME_ADVANTAGE_POINTS/2) / 100
+        away = base_away + ((away attack - home defence)/2 - HOME_ADVANTAGE_POINTS/2) / 100
+    i.e. 200 points of attack over the opponent's defence is one more goal
+    (base: the competition's running average, shrunk to 1.45 / 1.15 over LEAGUE_GOALS_PRIOR games),
+    so two attack-minded sides mean more goals. After the match both sides'
+    s += ATTACK_K * (actual total goals - expected total) / 2, with goals capped at GOAL_CAP a side
+    and blended with xG like the rank. Backtest, 2024/25 onwards: total-goals error 1.4205 -> 1.4083.
+    home = rank + e,  away = rank - e: e is a club's own home edge on top of HOME_ADVANTAGE_POINTS.
+    Both sides' e += HOME_EDGE_K * (result - exp_diff), so a club doing better at home than away
+    builds a positive edge. Backtest: goal-difference error 1.3220 -> 1.3205 (small).
 """
 import io
 import logging
@@ -54,6 +68,10 @@ MAX_GOAL_DIFF = 3            # a 7-0 counts as 3-0
 GOALS_WEIGHT = 0.3           # in matches with xG: 30% capped goal difference, 70% xG difference
 K_FACTOR_XG = 10             # K for matches with xG (less noisy, so ranks can move further)
 DEFAULT_STARTING_RANK = 650
+ATTACK_K = 0.75              # attack/defence split learning rate (0.5-1 scored about the same)
+GOAL_CAP = 5                 # goals a side counted for the split
+LEAGUE_GOALS_PRIOR = 50      # games of the 1.45 / 1.15 prior in a competition's goal averages
+HOME_EDGE_K = 0.2            # club home edge learning rate (0.1-0.3 scored about the same)
 # One-off curtain-raisers count for less than a league or cup match: their rank change is
 # scaled by this. Sides rest players and treat them as pre-season, so a result says less.
 # 1/3 is World Football Elo's friendly-to-World-Cup ratio (K 20 against 60). Too few of
@@ -81,6 +99,7 @@ class Match:
     home_xg: float = None
     away_xg: float = None
     weight: float = 1.0  # COMPETITION_WEIGHT of its competition
+    league: int = None
 
 
 def actual_diff(m):
@@ -113,6 +132,34 @@ def run(matches, starting_rank):
         history[m.away].append(current[m.away])
         rows.append((m, h, a, exp_diff, act_diff, change))
     return rows, history
+
+
+def side_ratings(rows):
+    """Attack/defence split (s) and home edge (e) after each match of run()'s rows (see the
+    module docstring). Returns [(s_home, s_away, e_home, e_away) after each match]."""
+    s, e, goals = {}, {}, {}
+    out = []
+    capped = lambda g, x: min(g, GOAL_CAP) if x is None else         GOALS_WEIGHT * min(g, GOAL_CAP) + (1 - GOALS_WEIGHT) * x
+    for m, h, a, exp_diff, _, _ in rows:
+        sh, sa = s.get(m.home, 0.0), s.get(m.away, 0.0)
+        gh, ga, n = goals.get(m.league, (0.0, 0.0, 0))
+        base_h = (gh + 1.45 * LEAGUE_GOALS_PRIOR) / (n + LEAGUE_GOALS_PRIOR)
+        base_a = (ga + 1.15 * LEAGUE_GOALS_PRIOR) / (n + LEAGUE_GOALS_PRIOR)
+        mu_h = max(0.1, base_h + ((h - a) / 2 + sh + sa + HOME_ADVANTAGE_POINTS / 2) / 100)
+        mu_a = max(0.1, base_a + ((a - h) / 2 + sh + sa - HOME_ADVANTAGE_POINTS / 2) / 100)
+        yh, ya = capped(m.home_goals, m.home_xg), capped(m.away_goals, m.away_xg)
+        step = ATTACK_K * ((yh + ya) - (mu_h + mu_a)) / 2 * m.weight
+        s[m.home], s[m.away] = sh + step, sa + step
+        edge = HOME_EDGE_K * (actual_diff(m)[0] - exp_diff - (e.get(m.home, 0.0) + e.get(m.away, 0.0)) / 100) * m.weight
+        e[m.home], e[m.away] = e.get(m.home, 0.0) + edge, e.get(m.away, 0.0) + edge
+        goals[m.league] = (gh + yh, ga + ya, n + 1)
+        out.append((s[m.home], s[m.away], e[m.home], e[m.away]))
+    return out
+
+
+def sides_of(rank, s, e):
+    """(attack, defence, home, away) for a rank, its split s and home edge e."""
+    return rank + 2 * s, rank - 2 * s, rank + e, rank - e
 
 
 def summarise(history, changes=None):
@@ -182,25 +229,27 @@ def _replay(conn, fixtures, xg, starting_rank):
 
     Returns ({team: history}, {team: last kickoff}, {team: rank changes in K_FACTOR units}).
     The last is for the volatility: matches with xG move ranks by K_FACTOR_XG, and weighted
-    competitions by less, so their changes are scaled back, and volatility measures how surprising a team's results are rather than
-    the step size."""
+    competitions by less, so their changes are scaled back, and volatility measures how
+    surprising a team's results are rather than the step size. Also returns
+    {team: (split s, home edge e) after its latest match} (side_ratings)."""
     conn.execute("truncate team_rank_history")
-    matches = [Match(f[0], f[4], f[5], f[6], f[7], *xg[f[0]], COMPETITION_WEIGHT.get(f[2], 1.0))
+    matches = [Match(f[0], f[4], f[5], f[6], f[7], *xg[f[0]], COMPETITION_WEIGHT.get(f[2], 1.0), f[2])
                for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, history = run(matches, starting_rank)
-    last_match = {}
+    sides = side_ratings(rows)
+    last_match, split = {}, {}
 
     match_no = {}
     recent = {}    # last 101 history values per team, for LT ALGO going into each match
     vol_changes = {}
 
     buf = io.StringIO()
-    for m, h, a, exp_diff, act_diff, change in rows:
+    for (m, h, a, exp_diff, act_diff, change), (sh, sa, eh, ea) in zip(rows, sides):
         scale = K_FACTOR / (actual_diff(m)[1] * m.weight)
-        for team, opp, is_home, before, delta in (
-            (m.home, m.away, True, h, change),
-            (m.away, m.home, False, a, -change),
+        for team, opp, is_home, before, delta, s_t, e_t in (
+            (m.home, m.away, True, h, change, sh, eh),
+            (m.away, m.home, False, a, -change, sa, ea),
         ):
             match_no[team] = match_no.get(team, 0) + 1
             hist = recent.setdefault(team, [before])
@@ -210,21 +259,22 @@ def _replay(conn, fixtures, xg, starting_rank):
             del hist[:-101]            # LT ALGO only looks at the last 100 values
             vol_changes.setdefault(team, []).append(delta * scale)
             last_match[team] = kickoffs[m.key]
+            split[team] = (s_t, e_t)
             buf.write("\t".join(map(str, (
                 m.key, team, match_no[team], kickoffs[m.key].isoformat(),
                 "t" if is_home else "f", opp, before, before + delta, exp_diff, act_diff, delta,
-                lt_before,
+                lt_before, *sides_of(before + delta, s_t, e_t),
             ))) + "\n")
     with conn.cursor() as cur:
         with cur.copy("copy team_rank_history (fixture_id, team_id, match_no, kickoff, is_home, "
                       "opponent_id, rank_before, rank_after, exp_diff, act_diff, rank_change, "
-                      "lt_before) from stdin") as cp:
+                      "lt_before, attack_after, defence_after, home_after, away_after) from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: replayed %d fixtures", len(rows))
-    return history, last_match, vol_changes
+    return history, last_match, vol_changes, split
 
 
-def _rebuild_summary(conn, fixtures, first_league, first_comp, history, last_match, vol_changes):
+def _rebuild_summary(conn, fixtures, first_league, first_comp, history, last_match, vol_changes, split):
     """Recreate team_rankings (the Ranking tab) from the replayed history
     ({team: [starting rank, rank after each match]})."""
     latest_league = {}
@@ -257,11 +307,13 @@ def _rebuild_summary(conn, fixtures, first_league, first_comp, history, last_mat
             last_match[team].isoformat(), s["current_rank"], s["st_algo"], s["rank_30"],
             s["rank_100"], s["lt_algo"], avg(g["hg"]), avg(g["ha"]), avg(g["ag"]), avg(g["aa"]),
             r"\N" if s["rank_volatility"] is None else s["rank_volatility"], s["reliability"],
+            *sides_of(s["current_rank"], *split[team]),
         ))) + "\n")
     with conn.cursor() as cur:
         cur.execute("truncate team_rankings")
         with cur.copy("copy team_rankings (team_id, league_id, starting_rank, played, last_match, "
                       "current_rank, st_algo, rank_30, rank_100, lt_algo, hg, ha, ag, aa, "
-                      "rank_volatility, reliability) from stdin") as cp:
+                      "rank_volatility, reliability, attack, defence, home_rating, away_rating) "
+                      "from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: summary rebuilt for %d teams", len(history))

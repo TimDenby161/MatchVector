@@ -41,6 +41,12 @@ def _r(x, n=2):
     return None if x is None else round(float(x), n)
 
 
+def _xi_lines(vals):
+    """[GK, DEF, MID, FWD] average ranks rounded, or None when no line has anyone."""
+    vals = [_r(v, 1) for v in vals]
+    return vals if any(v is not None for v in vals) else None
+
+
 def export_site_data(conn, out_dir=OUT_DIR):
     now = datetime.now(timezone.utc)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -62,7 +68,11 @@ def export_site_data(conn, out_dir=OUT_DIR):
                       p.rating_margin, p.rating_clean_sheets, p.rating_shape, p.rating_goals,
                       p.home_missing, p.away_missing, p.p_over25, p.p_btts,
                       coalesce(rh.actual_xi_rating, rh.predicted_xi_rating), rh.recent_xi_rating,
-                      coalesce(ra.actual_xi_rating, ra.predicted_xi_rating), ra.recent_xi_rating
+                      coalesce(ra.actual_xi_rating, ra.predicted_xi_rating), ra.recent_xi_rating,
+                      coalesce(rh.actual_gk, rh.predicted_gk), coalesce(rh.actual_def, rh.predicted_def),
+                      coalesce(rh.actual_mid, rh.predicted_mid), coalesce(rh.actual_fwd, rh.predicted_fwd),
+                      coalesce(ra.actual_gk, ra.predicted_gk), coalesce(ra.actual_def, ra.predicted_def),
+                      coalesce(ra.actual_mid, ra.predicted_mid), coalesce(ra.actual_fwd, ra.predicted_fwd)
                from fixtures f left join fixture_predictions p using (fixture_id)
                left join fixture_team_ratings rh on rh.fixture_id = f.fixture_id and rh.team_id = f.home_team_id
                left join fixture_team_ratings ra on ra.fixture_id = f.fixture_id and ra.team_id = f.away_team_id
@@ -71,7 +81,8 @@ def export_site_data(conn, out_dir=OUT_DIR):
             [now - timedelta(days=PAST_DAYS), now + timedelta(days=FUTURE_DAYS)]):
         (fid, kickoff, lid, rnd, home, away, status, hg, ag, ph, pa_, p_h, p_d, p_a,
          hxg, axg, likely, hr, ar, source, *ratings, h_miss, a_miss, p_over, p_btts,
-         h_xi, h_recent, a_xi, a_recent) = row
+         h_xi, h_recent, a_xi, a_recent) = row[:-8]
+        lines = row[-8:]            # home then away XI average by line (GK, DEF, MID, FWD)
         team_ids.update((home, away))
         matches.append([
             fid, kickoff.isoformat(), lid, rnd, home, away, status, hg, ag, ph, pa_,
@@ -80,6 +91,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
             *[_r(x, 3) for x in market.get(fid, (None, None, None))],
             _r(h_miss), _r(a_miss), _r(p_over, 3), _r(p_btts, 3),
             _r(h_xi, 1), _r(h_recent, 1), _r(a_xi, 1), _r(a_recent, 1),
+            _xi_lines(lines[:4]), _xi_lines(lines[4:]),
         ])
 
     # Form: total rank change over each team's last FORM_GAMES games
@@ -104,13 +116,15 @@ def export_site_data(conn, out_dir=OUT_DIR):
            order by team_id, kickoff desc""").fetchall())
 
     rankings = []
-    for team, lid, cur, st, lt, rel, played, last in conn.execute(
+    for team, lid, cur, st, lt, rel, played, last, att, dfn, home_r, away_r in conn.execute(
             """select team_id, league_id, current_rank, st_algo, lt_algo, reliability, played,
-                      last_match from team_rankings order by lt_algo desc"""):
+                      last_match, attack, defence, home_rating, away_rating
+               from team_rankings order by lt_algo desc"""):
         team_ids.add(team)
         rankings.append([team, current_league.get(team, lid), _r(cur, 1), _r(st, 1), _r(lt, 1), _r(rel, 0),
                          played, last.isoformat() if last else None, _r(form.get(team), 1),
-                         1 if team in current_league else 0])
+                         1 if team in current_league else 0,
+                         _r(att, 1), _r(dfn, 1), _r(home_r, 1), _r(away_r, 1)])
 
     teams = {t: n for t, n in conn.execute(
         "select team_id, name from teams where team_id = any(%s)", [list(team_ids)])}
@@ -123,7 +137,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
                    "likely", "home_rank", "away_rank", "source", "rating", "r_winner",
                    "r_margin", "r_clean_sheets", "r_shape", "r_goals", "m_home", "m_draw", "m_away",
                    "home_missing", "away_missing", "p_over25", "p_btts",
-                   "home_xi", "home_recent_xi", "away_xi", "away_recent_xi"],
+                   "home_xi", "home_recent_xi", "away_xi", "away_recent_xi", "home_lines", "away_lines"],
         "matches": matches,
         "competitions": competitions,
         "teams": teams,
@@ -131,7 +145,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     (out_dir / "rankings.json").write_text(json.dumps({
         "generated_at": generated,
         "fields": ["team", "league", "current", "st", "lt", "reliability", "played", "last_match",
-                   "form", "in_league"],
+                   "form", "in_league", "attack", "defence", "home", "away"],
         "rankings": rankings,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d matches and %d rankings to %s", len(matches), len(rankings), out_dir)
@@ -705,7 +719,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
     """One small file per active club for its club page: docs/data/clubs/<team_id>.json.
 
     history: every match since 2020 as [date, rank after, opponent, home (1, 0 away, 2 neutral), goals for, against,
-    competition, formation (null where the line-up isn't known)]; plus 12-month home/away goal
+    competition, formation (null where the line-up isn't known), attack and defence after,
+    starting XI average rank by line [GK, DEF, MID, FWD] (null outside the line-up leagues)]; plus 12-month home/away goal
     averages, the current manager and the home kit colours. Loaded only when the page opens.
     """
     now = datetime.now(timezone.utc)
@@ -721,15 +736,20 @@ def export_clubs(conn, out_dir=OUT_DIR):
     coaches = {t: {"id": c, "name": n, "photo": p, "since": s.isoformat() if s else None}
                for t, c, n, p, s in conn.execute("select team_id, coach_id, name, photo, since from team_coaches")}
     colors = {t: [s, n] for t, s, n in conn.execute("select team_id, shirt, number from team_colors")}
+    xi_lines = {(f, t): _xi_lines(rest) for f, t, *rest in cached_rows(conn, "xi_lines", f"""
+            select {WEEK.format('f.kickoff')} as part, r.fixture_id, r.team_id,
+                   r.actual_gk::float8, r.actual_def::float8, r.actual_mid::float8, r.actual_fwd::float8
+            from fixture_team_ratings r join fixtures f using (fixture_id) where r.actual_xi_rating is not null""",
+            order_by="fixture_id, team_id")}
     neutral = {f for (f,) in conn.execute(NEUTRAL_SQL, [list(config.FINISHED_STATUSES)])}
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
-    for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league in club_rows:
+    for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn in club_rows:
         rows = history.setdefault(team, {"start": round(rank_before), "matches": []})["matches"]
         gf, ga = (hg, ag) if is_home else (ag, hg)
         rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 2 if fid in neutral else 1 if is_home else 0,
                      gf, ga, league,
-                     formations.get((fid, team))])
+                     formations.get((fid, team)), _r(att, 1), _r(dfn, 1), xi_lines.get((fid, team))])
     stats = {t: [_r(x) for x in rest] for t, *rest in conn.execute(
         "select team_id, hg, ha, ag, aa from team_rankings where team_id = any(%s)", [list(active)])}
     club_dir = out_dir / "clubs"
@@ -742,7 +762,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
         h = history.get(team, {"start": None, "matches": []})
         opponents = {m[2] for m in h["matches"]}
         payload = {"id": team, "start": h["start"],
-                   "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation"],
+                   "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation",
+                              "attack", "defence", "xi_lines"],
                    "matches": h["matches"], "goal_averages": stats.get(team), "coach": coaches.get(team),
                    "colors": colors.get(team), "teams": {o: names.get(o) for o in opponents}}
         (club_dir / f"{team}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")

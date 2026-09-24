@@ -1,1 +1,1 @@
-{"id":28341,"start":430,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-09-05",416.9,7762,0,0,3,45,null]],"goal_averages":[0.0,0.0,0.0,3.0],"coach":null,"colors":null,"teams":{"7762":"Yate Town"}}
+{"id":28341,"start":430,"fields":["date","rank","opponent","home","gf","ga","league","formation","attack","defence","xi_lines"],"matches":[["2026-09-05",416.9,7762,0,0,3,45,null,416.7,417.0,null]],"goal_averages":[0.0,0.0,0.0,3.0],"coach":null,"colors":null,"teams":{"7762":"Yate Town"}}

@@ -1,1 +1,1 @@
-{"id":20079,"start":730,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-09-22",738.8,1832,0,1,0,46,null]],"goal_averages":[0.0,0.0,1.0,0.0],"coach":null,"colors":null,"teams":{"1832":"Bromley"}}
+{"id":20079,"start":730,"fields":["date","rank","opponent","home","gf","ga","league","formation","attack","defence","xi_lines"],"matches":[["2026-09-22",738.8,1832,0,1,0,46,null,737.0,740.5,null]],"goal_averages":[0.0,0.0,1.0,0.0],"coach":null,"colors":null,"teams":{"1832":"Bromley"}}
