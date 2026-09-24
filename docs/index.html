@@ -2650,7 +2650,7 @@ function renderPlayerPage() {
       <div class="pl-hero-main">
         <h2>${escapeHtml(p.name)}</h2>
         <div class="pl-hero-club">${p.team ? `<img class="club-logo" src="${teamLogo(p.team)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
-          <span>${playerClub(p)}${league ? `<span class="dim-sep"> · </span><span class="pl-league">${escapeHtml(league)}</span>` : ""}</span></div>
+          <span>${playerClub(p)}${league ? `<span class="dim-sep"> · </span><a class="pl-league team-link" href="#" data-league="${p.league}" title="Open the ${escapeHtml(league)} table">${escapeHtml(league)}</a>` : ""}</span></div>
         <div class="pl-hero-club pl-hero-nat">${p.nationality ? `${flagImg(p.nationality)}<span>${natLink(p.nationality)}</span><span class="dim-sep">·</span>` : ""}
           <span class="pl-meta">${escapeHtml(p.position || "")}</span>${p.age != null ? `<span class="dim-sep">·</span>
           <span class="pl-meta"${born ? ` title="Born ${escapeHtml(parseDateInput(born).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }))}"` : ""}>${p.age}</span>` : ""}</div>
@@ -2953,6 +2953,20 @@ function playerCareerTab() {
     </div>
     ${now.length ? `<div class="club-section"><div class="modal-section">His current rank is built on · last 20 appearances</div><div class="season-now">${spellHtml(now)}</div></div>` : ""}`;
 }
+// A league name on a page opens the Rankings tab on that league's club table
+$("#club-body").addEventListener("click", (e) => {
+  const a = e.target.closest("[data-league]");
+  if (!a) return;
+  e.preventDefault();
+  history.pushState(null, "", location.pathname + location.search);
+  showTab("table");
+  state.tableFilter = a.dataset.league;
+  state.tableSearch = "";
+  $("#table-search").value = "";
+  if (state.tableView !== "clubs") $('#table-view [data-view="clubs"]').click();
+  else { renderTableFilters(); renderTable(); }
+  window.scrollTo(0, 0);
+});
 $("#club-body").addEventListener("click", (e) => {
   const b = e.target.closest("[data-ptab], [data-pseason], [data-per90], [data-pitch]");
   if (!b || !state.player) return;
