@@ -20,42 +20,36 @@ Player rank
     rank     = stat pct x sqrt(min(club / CLUB_RANK_MAX, 1)): even a perfect player is capped by his
                club's level, e.g. at a 966 club he can reach at most 100 x sqrt(966 / 1200) = 90
 
-Season rank (player_season_ranks), from that season's own matches
-    score    = the same stat score from his season totals, blended with
-               - his previous season's score, weighted PRIOR_SEASON_MINUTES x (1 - club games /
-                 FULL_SEASON_GAMES): early in a season it leans on last season, and by the end it
-                 stands on its own (no previous season: an average regular, 0)
-               - for the rest of the weight (SHRINK_MINUTES x club games / FULL_SEASON_GAMES): an
-                 estimate of where he'd be with more data - his nearest season with ANCHOR_MINUTES+
-                 walked through the typical age curve (average season-to-season change in score by
-                 age, measured from players with ANCHOR_MINUTES+ in both seasons). So a 15-year-old's
-                 debut season sits a normal amount below his first full season. With no such
-                 season anywhere, MINUTES_PRIOR, so a thin season is marked down
-    gaps     = any season from FILL_FROM_SEASON to now with no minutes in these leagues (a year in
-               a league without player data, before his debut here, or after he left) gets the
-               age-curve estimate alone, from his nearest well-measured season (or nearest season
-               at all if none is).
-               His club that season comes from player_career_teams (only clubs we have league
-               fixtures for that season, so its level is its real average rank then); failing
-               that, club level from the seasons either side. Stored with minutes = 0 so the site
-               can show it as an estimate
-    pct      = percentile among player-seasons with 900+ minutes in the same role group, except
-               the top decile, which is spread by how far the score is above the 90th percentile
-               (90 at the 90th percentile score, 100 at the 99.9th), so the best seasons stand
-               apart instead of all sitting at ~99
-    rank     = club level first, stats adjust it: 100 x club / CLUB_RANK_MAX - OUT_CLUB_OFFSET
-               + OUT_STATS_WEIGHT x (pct - 50) (outfield_rank; keepers: keeper_rank, smaller stats
-               weight). club = his clubs' average rank over his matches, smoothed over this and
-               earlier seasons; squad players (low share of club minutes) scaled down up to 20%
-    keeper club level is smoothed over this and earlier seasons (0.5 ^ years apart), so a move
-               to a bigger club lifts him gradually
-    smoothing = every season with 900+ minutes is blended with his other such seasons, weighted
-               OUTFIELD_SMOOTH (0.25) ^ years apart for outfield players, since seasons repeat only
-               ~0.55 (Tah's poor 22/23: 51 -> 63)
-    keepers  = a keeper's season score is blended with his other seasons, weighted 1 for the
-               season itself and 0.5 ^ years apart for the rest: a keeper's season rating repeats
-               only ~0.28 from one season to the next (outfield ~0.55), so one season says little
-               (Donnarumma went 7.08 / 7.43 / 6.87 / 7.03 -> ranks 85 / 88 / 42 / 62)
+Season rank (player_season_ranks): every player follows the age curve through all his seasons,
+and only leaves it where he has the minutes to (season_model)
+    evidence = for each season he played: his clubs' LT ALGO over his matches (weighted by his
+               minutes), moved by his stat score that season (percentile among 900+ minute
+               seasons in his role group; the top decile spread up to the best on record):
+               final_rank(pct, club), i.e. 100 x club / CLUB_RANK_MAX - offset + weight x (pct - 50)
+    curve    = the typical age curve for his role group (the one he's played most minutes in), in
+               rank points, from how evidence changes between seasons (ANCHOR_MINUTES+ in the first,
+               CURVE_NEXT_MINUTES+ in the next, so players losing their place still count). Up to 24
+               it's the average change at each age (outfield pooled, keepers separately); from
+               CURVE_FIT_FROM it's a straight-line fit in age per group, so decline speeds up at a
+               rate of its own: strikers lose ~1.6 a year at 30 and ~4.5 at 39, keepers ~0 and
+               ~1.6. Outfield groups' fits lean on the pooled one (CURVE_PRIOR_PAIRS). Below 18
+               it's set by hand: YOUNG_STEP_17 a year at 17, YOUNG_STEP_EXTRA more each year
+               younger. 0 at the peak, so a player's level is his rank at peak age
+    level    = where he sits on the curve: the minutes-weighted average of (evidence - curve)
+               over all his seasons, each weighted LEVEL_DECAY ^ years apart, plus PRIOR_LEVEL
+               weighted as PRIOR_MINUTES, so a player with little data anywhere sits low
+    rank     = level + curve for that season, plus the season's own difference from it, kept in
+               proportion minutes / (minutes + DEVIATION_MINUTES): a thin season (an injury year,
+               the start of this season, a teenager's debut) stays on his curve, and a full season
+               moves off it most of the way
+    gaps     = every season from FILL_FROM_SEASON to now with no minutes in these leagues gets
+               level + curve (stored with minutes = 0, shown as an estimate). His club that season
+               comes from player_career_teams; one we have fixtures for but no player data (a
+               lower league) adds its level as a little evidence (GAP_CLUB_MINUTES)
+    retired  = players a current-club check (/players/squads) finds in no squad since their last
+               season, aged RETIRED_AGE+,
+               (retired_players, ingest.check_retired) get no current rank, so they leave the
+               players list, and no estimated seasons after their last one
 
 Match ratings everywhere are league-adjusted: each rating minus (that league's average rating
 for the position - the average across all leagues), so a 7.0 is compared within its league.
@@ -86,15 +80,20 @@ SHRINK_MINUTES = 900
 CLUB_RANK_MAX = 1200       # club rank treated as the top of the scale (rank is scaled by club / this)
 MINUTES_PRIOR = -0.5       # score a player with no minutes is pulled toward (below an average regular)
 PREDICT_MATCHES = 5
-FULL_SEASON_GAMES = 34     # a full league season, for scaling the minutes pull on season ranks
-PRIOR_SEASON_MINUTES = 1350  # weight of last season's score at the start of a season (15 full games)
-ANCHOR_MINUTES = 1500      # a season with this many minutes is measured well enough to estimate others from
+ANCHOR_MINUTES = 1500      # a season with this many minutes measures the age curve
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
-GK_SMOOTH = 0.5            # season blend weight per year apart: keepers
-OUTFIELD_SMOOTH = 0.25     # ... outfield players
-YOUNG_STEP_17 = 0.15       # age curve below 18 (not measurable: too few regulars): yearly gain at 17,
-YOUNG_STEP_EXTRA = 0.05    # plus this for each year younger (16: 0.20, 15: 0.25, 14: 0.30); set so
-                           # Lamine Yamal is ~63 at 14 and 78 at 15 going back from his first full season
+CURVE_MIN_PAIRS = 30       # an age needs this many season pairs to measure the curve there
+CURVE_NEXT_MINUTES = 900   # ... and the season after needs this many (so players losing their place count)
+CURVE_FIT_FROM = 25        # from this age the curve is a straight-line fit per role group
+CURVE_FIT_TO = 38          # oldest age used in that fit
+CURVE_PRIOR_PAIRS = 200    # an outfield group's fit leans on the pooled outfield fit, weighted as this many pairs
+YOUNG_STEP_17 = 4.0        # age curve below the measured ages (too few regulars): yearly gain at 17,
+YOUNG_STEP_EXTRA = 2.0     # plus this for each year younger, in rank points
+PRIOR_MINUTES = 450        # a player's level starts as PRIOR_LEVEL, weighted as this many minutes
+PRIOR_LEVEL = {"GK": 55.0, "OUT": 55.0}   # rank at peak age of a player we know nothing about
+LEVEL_DECAY = 0.7          # a season's weight in his level for another season, per year apart
+DEVIATION_MINUTES = 1500   # a season keeps minutes / (minutes + this) of its difference from the curve
+GAP_CLUB_MINUTES = 450     # weight of a gap season's club level (a lower league we have no player data for)
 
 STATS = ("minutes", "rating_mins", "rated_mins", "goals", "assists", "shots_on", "key_passes",
          "passes", "passes_accurate", "tackles", "interceptions", "blocks", "duels", "duels_won",
@@ -344,20 +343,29 @@ def _stat_score(sums, pos, norms):
                for k, w in WEIGHTS[pos].items() if m[k] is not None)
 
 
-def _season_ranks(conn, norms, apps, offsets, team_rank):
-    """[(player, season, rank, minutes, gap-season club or None)] from each season's own matches
-    (see module docstring). team_rank: {(fixture, team): LT ALGO going into the match}."""
+def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
+    """[(player, season, rank, minutes, gap-season club or None)] (see module docstring).
+    team_rank: {(fixture, team): LT ALGO going into the match}."""
+    q = lambda sql, p=None: conn.execute(sql, p).fetchall()
+    return season_model(
+        norms, apps, offsets, team_rank,
+        born=q("select player_id, birth_date from players where birth_date is not null"),
+        team_level=q("""select h.team_id, f.season, avg(h.lt_before), count(*) from team_rank_history h
+                        join fixtures f using (fixture_id) group by 1, 2"""),
+        careers=q("select player_id, season, team_id from player_career_teams where season > 0"),
+        covered=q("select distinct fp.team_id, f.season from fixture_players fp join fixtures f using (fixture_id)"),
+        retired=retired)
+
+
+def season_model(norms, apps, offsets, team_rank, born, team_level, careers, covered, retired=None,
+                 detail=None):
+    """Season ranks: every player follows the age curve through all his seasons, from a level
+    of his own, and only leaves it where he has the minutes to (see module docstring). Query
+    results come in as rows so this can be run offline. retired: {player: last season}, no
+    estimates after it (retired_players). detail: a dict to fill with the
+    workings per (player, season): (evidence, weight, level, curve), for checking."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(STATS, 0.0), "roles": Counter(), "broad": Counter(),
-                                   "club": [0.0, 0.0], "games": 0})
-    team_games = {(t, y): n for t, y, n in conn.execute(
-        """select team_id, season, count(*) from (
-               select home_team_id as team_id, season from fixtures
-               where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')
-               union all
-               select away_team_id, season from fixtures
-               where league_id = any(%(l)s) and status_short in ('FT', 'AET', 'PEN')) g
-           group by 1, 2""", {"l": config.INJURY_MODEL_LEAGUES})}
-    born = dict(conn.execute("select player_id, birth_date from players where birth_date is not null"))
+                                   "club": [0.0, 0.0]})
     for row in apps:
         if row[10] not in ("FT", "AET", "PEN"):
             continue
@@ -367,194 +375,191 @@ def _season_ranks(conn, norms, apps, offsets, team_rank):
         if club is not None:
             e["club"][0] += club * (row[3] or 0)
             e["club"][1] += row[3] or 0
-        e["games"] = max(e["games"], team_games.get((row[1], row[8]), 0))
-    # Raw season scores, then the age curve from well-measured consecutive seasons
-    raw = {}
+    born = dict(born)
+
+    # 1. Each season's evidence: his clubs' LT ALGO over his matches, moved by his stat score
+    #    that season (percentile among 900+ minute seasons in his role group)
+    raw = {}                   # (player, season) -> (stat score, minutes, role group, club)
     for (player, season), e in seasons.items():
         mins = e["sums"]["minutes"]
-        if mins <= 0:
+        if mins <= 0 or not e["club"][1]:
             continue
         pos = (role_group(e["roles"].most_common(1)[0][0]) if +e["roles"]
                else FALLBACK.get((+e["broad"]).most_common(1)[0][0]) if +e["broad"] else None)
         sc = _stat_score(e["sums"], pos, norms)
         if sc is not None:
-            raw[(player, season)] = (sc, mins, pos)
-
-    def age(player, season):             # age at the start of the season (1 July)
-        b = born.get(player)
-        return None if b is None else season - b.year - ((b.month, b.day) > (7, 1))
-    steps = defaultdict(list)
-    for (player, season), (sc, mins, _) in raw.items():
-        nxt = raw.get((player, season + 1))
-        a = age(player, season)
-        if a is not None and mins >= ANCHOR_MINUTES and nxt and nxt[1] >= ANCHOR_MINUTES:
-            steps[min(max(a, 18), 36)].append(nxt[0] - sc)
-    curve = {a: sum(v) / len(v) for a, v in steps.items() if len(v) >= 30}
-
-    def step(a):                         # typical change in score from age a to a + 1
-        if a is None or not curve:
-            return 0.0
-        if a < 18:                       # too few regulars this young to measure: teenagers
-            return YOUNG_STEP_17 + YOUNG_STEP_EXTRA * (17 - a)   # develop fast, faster the younger
-        a = min(max(a, min(curve)), max(curve))
-        return curve.get(a, 0.0)
-    anchors = defaultdict(list)
-    for (player, season), (sc, mins, _) in raw.items():
-        if mins >= ANCHOR_MINUTES:
-            anchors[player].append(season)
-
-    seasons_of = defaultdict(list)
-    for (player, season) in raw:
-        seasons_of[player].append(season)
-
-    def estimate(player, season, any_season=False):
-        """Score from his nearest well-measured season, moved through the age curve. With
-        any_season, fall back to his nearest season with any minutes if none is well measured."""
-        near = [y for y in anchors.get(player, []) if y != season]
-        thin = False
-        if not near and any_season:
-            near = [y for y in seasons_of.get(player, []) if y != season]
-            thin = True
-        if not near:
-            return None
-        y = min(near, key=lambda x: (abs(x - season), x < season))   # nearest; ties: the later one
-        # a thin season's raw stats are noise (a 3-minute cameo): use its final, minutes-shrunk score
-        est = final.get((player, y), raw[(player, y)][0]) if thin else raw[(player, y)][0]
-        for t in range(season, y):       # anchor later: take off the growth between
-            est -= step(age(player, t))
-        for t in range(y, season):       # anchor earlier: add it on
-            est += step(age(player, t))
-        return est
-
-    scored = []
+            raw[(player, season)] = (sc, mins, pos, e["club"][0] / e["club"][1])
     ref = defaultdict(list)
-    season_games = {k: e["games"] for k, e in seasons.items()}
-    final = {}                 # (player, season) -> blended score, for the next season's prior
-    for (player, season), e in sorted(seasons.items(), key=lambda kv: kv[0][1]):
-        if (player, season) not in raw:
-            continue
-        s, mins, pos = raw[(player, season)]
-        done = min(e["games"] / FULL_SEASON_GAMES, 1)
-        prev = final.get((player, season - 1), final.get((player, season - 2), 0.0))
-        w_prev = PRIOR_SEASON_MINUTES * (1 - done)
-        w_low = SHRINK_MINUTES * done
-        est = estimate(player, season)
-        low = MINUTES_PRIOR if est is None else est
-        s = (s * mins + prev * w_prev + low * w_low) / (mins + w_prev + w_low)
-        final[(player, season)] = s
-        club = e["club"][0] / e["club"][1] if e["club"][1] else None
-        scored.append((player, season, s, pos, club, int(mins)))
-
-    # Blend each season with his other seasons, weight SMOOTH ^ years apart: keepers 0.5 (season
-    # ratings repeat ~0.3), outfield 0.25 (~0.55), so one-off dips and spikes are softened
-    # Only seasons with 900+ minutes take part: thinner ones are mostly the age-curve estimate
-    # already, and smoothing would undo it (a 15-year-old's cameo pulled up to his later level)
-    career = defaultdict(dict)
-    for p, y, sc, pos, _, mins in scored:
-        if mins >= 900:
-            career[p][y] = sc
-    for i, (player, season, sc, pos, club, mins) in enumerate(scored):
-        if mins < 900:
-            continue
-        smooth = GK_SMOOTH if pos == "GK" else OUTFIELD_SMOOTH
-        w = {y: smooth ** abs(y - season) for y in career[player]}
-        scored[i] = (player, season, sum(career[player][y] * w[y] for y in w) / sum(w.values()), pos, club, mins)
-    for player, season, sc, pos, club, mins in scored:
+    for sc, mins, pos, _ in raw.values():
         if mins >= 900:
             ref[pos].append(sc)
     for v in ref.values():
         v.sort()
 
-    def pct(score, ref):
-        n = len(ref)
-        p = 100 * bisect.bisect_left(ref, score) / n
+    def pct(score, pos):
+        r = ref.get(pos)
+        if not r:
+            return 50.0
+        n = len(r)
+        p = 100 * bisect.bisect_left(r, score) / n
         if p < 90:
             return p
-        lo, hi = ref[int(0.9 * n)], ref[min(int(0.999 * n), n - 1)]
+        lo, hi = r[int(0.9 * n)], r[min(int(0.999 * n), n - 1)]
         return 90 + 10 * min(max((score - lo) / (hi - lo), 0), 1) if hi > lo else p
+    evidence = {k: (final_rank(pct(sc, pos), club, pos), mins, pos)
+                for k, (sc, mins, pos, club) in raw.items()}
 
-    log.info("Age curve (score change per year by age): %s",
-             {a: round(v, 3) for a, v in sorted(curve.items())})
-    # Gaps inside a player's span of seasons: estimate from the age curve (minutes = 0)
-    team_level = {(t, y): (float(r), n) for t, y, r, n in conn.execute(
-        """select h.team_id, f.season, avg(h.lt_before), count(*) from team_rank_history h
-           join fixtures f using (fixture_id) group by 1, 2""")}
-    careers = defaultdict(list)
-    for p, y, t in conn.execute("select player_id, season, team_id from player_career_teams where season > 0"):
-        careers[(p, y)].append(t)
-    gap_team = {}
-    gap_share = {}             # estimated seasons at a club we have player data for: he didn't play
-    covered = {(t, y) for t, y in conn.execute(
-        "select distinct fp.team_id, f.season from fixture_players fp join fixtures f using (fixture_id)")}
-    by_player = defaultdict(dict)
-    for player, season, s, pos, club, mins in scored:
-        by_player[player][season] = (pos, club)
-    last_season = max(y for _, y in raw)
+    # 2. Age curve (rank points), per role group: how evidence changes from one season to the
+    #    next (seasons with ANCHOR_MINUTES+, and CURVE_NEXT_MINUTES+ the season after, so players
+    #    who lose their place still count). Up to CURVE_FIT_FROM - 1 it's the average change at
+    #    each age (outfield pooled, keepers separately); from CURVE_FIT_FROM a straight line in age
+    #    per group, so decline speeds up at a rate of its own (strikers fast, keepers slowly).
+    #    Outfield groups' lines lean towards the pooled outfield line, weighted CURVE_PRIOR_PAIRS
+    def age(player, season):             # age at the start of the season (1 July)
+        b = born.get(player)
+        return None if b is None else season - b.year - ((b.month, b.day) > (7, 1))
+    young = {"GK": defaultdict(list), "OUT": defaultdict(list)}
+    old = defaultdict(list)              # group -> [(age, change)]
+    for (player, season), (ev, mins, pos) in evidence.items():
+        nxt = evidence.get((player, season + 1))
+        a = age(player, season)
+        if a is None or mins < ANCHOR_MINUTES or not nxt or nxt[1] < CURVE_NEXT_MINUTES:
+            continue
+        young["GK" if pos == "GK" else "OUT"][min(max(a, 17), CURVE_FIT_FROM - 1)].append(nxt[0] - ev)
+        if CURVE_FIT_FROM - 1 <= a <= CURVE_FIT_TO:
+            old[pos].append((a, nxt[0] - ev))
+            if pos != "GK":
+                old["OUT"].append((a, nxt[0] - ev))
+    growth = {}
+    for kind, by_age in young.items():
+        # smoothed over neighbouring ages: one age's average is noisy
+        ages = {a for a in by_age if len(by_age[a]) >= CURVE_MIN_PAIRS}
+        growth[kind] = {a: sum(x for b in (a - 1, a, a + 1) if b in ages for x in by_age[b])
+                           / sum(len(by_age[b]) for b in (a - 1, a, a + 1) if b in ages) for a in ages}
+
+    def line(pairs):                     # least-squares change = alpha + beta x (age - 30)
+        n = len(pairs)
+        mx = sum(a - 30 for a, _ in pairs) / n
+        my = sum(d for _, d in pairs) / n
+        sxx = sum((a - 30 - mx) ** 2 for a, _ in pairs) or 1
+        beta = sum((a - 30 - mx) * (d - my) for a, d in pairs) / sxx
+        return my - beta * mx, beta, n
+    lines = {"OUT": line(old["OUT"])[:2]}
+    for g, pairs in old.items():
+        if g == "OUT":
+            continue
+        al, be, n = line(pairs)
+        k = 0 if g == "GK" else CURVE_PRIOR_PAIRS
+        lines[g] = ((al * n + lines["OUT"][0] * k) / (n + k), (be * n + lines["OUT"][1] * k) / (n + k))
+    log.info("Age curve, growth to %d: %s; yearly change from %d = alpha + beta x (age - 30): %s",
+             CURVE_FIT_FROM - 1, {k: {a: round(v, 1) for a, v in sorted(c.items())} for k, c in growth.items()},
+             CURVE_FIT_FROM, {g: (round(al, 2), round(be, 3)) for g, (al, be) in lines.items()})
+
+    def step(a, g):                      # typical change from age a to a + 1
+        c = growth["GK" if g == "GK" else "OUT"] or growth["OUT"]
+        if a >= CURVE_FIT_FROM:
+            al, be = lines.get(g, lines["OUT"])
+            return al + be * (min(a, 40) - 30)
+        if a < 18:                       # too few regulars this young to measure: teenagers
+            return max(c[min(c)], YOUNG_STEP_17 + YOUNG_STEP_EXTRA * (17 - a))   # develop fast
+        return c.get(min(max(a, min(c)), max(c)), 0.0)
+
+    # curve position by age, 0 at the peak, so a player's level is his rank at peak age
+    table = {}
+    for g in lines:
+        cum, t = 0.0, {}
+        for a in range(14, 46):
+            t[a] = cum
+            cum += step(a, g)
+        top = max(t.values())
+        table[g] = {a: v - top for a, v in t.items()}
+
+    def curve(player, season, g):
+        a = age(player, season)
+        return 0.0 if a is None else table.get(g, table["OUT"])[min(max(a, 14), 45)]
+
+    # 3. Seasons to rate: every season with minutes, and every season from FILL_FROM_SEASON to
+    #    now (estimated) for anyone with at least one. A gap season at a club we have fixtures
+    #    for but no player data (a lower league) takes the club's level as a little evidence
+    team_level = {(t, y): (float(r), n) for t, y, r, n in team_level}
+    career = defaultdict(list)
+    for p, y, t in careers:
+        career[(p, y)].append(t)
+    covered = set(covered)
+    by_player = defaultdict(dict)        # player -> {season: (evidence, weight, pos, gap club)}
+    for (player, season), (ev, mins, pos) in evidence.items():
+        by_player[player][season] = (ev, mins, pos, None)
+    last_season = max(y for _, y in evidence)
     for player, have in by_player.items():
-        # every season from FILL_FROM_SEASON to now, so the site has a number in every cell
-        for season in range(min(FILL_FROM_SEASON, min(have) + 1), last_season + 1):
+        real = sorted(have)
+        end = (retired or {}).get(player, last_season)   # retired: nothing after his last season
+        for season in range(min(FILL_FROM_SEASON, real[0] + 1), end + 1):
             if season in have:
                 continue
-            est = estimate(player, season, any_season=True)
-            if est is None:
-                continue
-            near = sorted(have, key=lambda y: abs(y - season))
-            pos = have[near[0]][0]
-            known = [(team_level[(t, season)][1], t) for t in careers.get((player, season), [])
+            pos = have[min(real, key=lambda y: abs(y - season))][2]
+            known = [(team_level[(t, season)][1], t) for t in career.get((player, season), [])
                      if (t, season) in team_level]
-            if known:
-                team = max(known)[1]          # the club with most matches in our data that season
-                gap_team[(player, season)] = team
-                if (team, season) in covered:  # a club we track players for, yet no minutes: squad/youth
-                    gap_share[(player, season)] = 0.0
-                club = team_level[(team, season)][0]
-            else:                             # the seasons either side, or the nearest one
-                either_side = [have[y][1] for y in (max((y for y in have if y < season), default=None),
-                                                     min((y for y in have if y > season), default=None))
-                               if y is not None and have[y][1]]
-                club = sum(either_side) / len(either_side) if either_side else None
-            scored.append((player, season, est, pos, club, 0))
+            team = max(known)[1] if known else 0
+            if team and (team, season) not in covered:
+                have[season] = (final_rank(50, team_level[(team, season)][0], pos), GAP_CLUB_MINUTES, pos, team)
+            else:                        # no club data, or a club we track where he didn't play
+                have[season] = (None, 0, pos, team)
 
-    # Keepers lean on club level, so smooth that across his career too (weight 0.5 ^ years apart):
-    # a move to a bigger club counts, but not fully straight away (Suzuki, Parma 912 -> Villa 1056,
-    # would otherwise jump 66 -> 83 in four games)
-    gk_club = defaultdict(dict)        # (all players now: rank leans on club level for everyone)
-    for player, season, s, pos, club, mins in scored:
-        if club:
-            gk_club[player][season] = club
-    smooth_club = {}
-    for player, clubs in gk_club.items():
-        for season in clubs:
-            w = {y: 0.5 ** abs(y - season) for y in clubs if y <= season}   # this season and earlier ones
-            smooth_club[(player, season)] = sum(clubs[y] * w[y] for y in w) / sum(w.values())
-
-    # share of his club's minutes in each real season; an estimated season with no club data
-    # inherits the share of his nearest real season (a fringe player stays a fringe player)
-    real_share = {}
-    for player, season, s, pos, club, mins in scored:
-        games = season_games.get((player, season))
-        if mins and games:
-            real_share[(player, season)] = min(mins / (games * 90), 1)
-    real_seasons = defaultdict(list)
-    for (player, season) in real_share:
-        real_seasons[player].append(season)
-
+    # 4. His level off the curve: minutes-weighted average of (evidence - curve) over all his
+    #    seasons (weighted LEVEL_DECAY ^ years apart), plus PRIOR_MINUTES of a below-average
+    #    level, so a player with little data sits low
+    # 5. Season rank = level + curve, plus the season's own difference from that, kept in
+    #    proportion minutes / (minutes + DEVIATION_MINUTES): thin seasons stay on the curve
     rows = []
-    for player, season, s, pos, club, mins in scored:
-        if (player, season) in smooth_club:
-            club = smooth_club[(player, season)]
-        if ref.get(pos) and club:
-            share = real_share.get((player, season)) if mins else gap_share.get((player, season))
-            if share is None and not mins and real_seasons.get(player):
-                nearest = min(real_seasons[player], key=lambda y: abs(y - season))
-                share = real_share[(player, nearest)]
-            rows.append((player, season, round(final_rank(pct(s, ref[pos]), club, pos, share), 1), mins,
-                         gap_team.get((player, season))))
+    for player, have in by_player.items():
+        mins_in = Counter()              # his role group: the one he's played most minutes in
+        for _, w, pos, team in have.values():
+            if team is None:
+                mins_in[pos] += w
+        g = mins_in.most_common(1)[0][0]
+        kind = "GK" if g == "GK" else "OUT"
+        off = {y: (ev - curve(player, y, g), w) for y, (ev, w, _, _) in have.items() if w > 0}
+        for season, (ev, w, pos, team) in have.items():
+            c = curve(player, season, g)
+            wsum = PRIOR_MINUTES
+            level = PRIOR_LEVEL[kind] * PRIOR_MINUTES
+            for y, (o, wy) in off.items():
+                k = wy * LEVEL_DECAY ** abs(y - season)
+                level += o * k
+                wsum += k
+            level /= wsum
+            r = level + c
+            if ev is not None and team is None:
+                r += (ev - r) * w / (w + DEVIATION_MINUTES)
+            if detail is not None:
+                detail[(player, season)] = (ev, w, level, c)
+            rows.append((player, season, round(min(max(r, 0), 100), 1), 0 if team is not None else int(w),
+                         team or None))
     return rows
+
+
+RETIRED_AGE = 34           # a player in no club's squad counts as retired from this age (younger ones
+                           # are usually free agents or late transfers; they leave the list anyway once
+                           # their last match is WINDOW_DAYS old)
+
+
+def retired_players(conn, apps):
+    """{player: last season} for players we know have retired: a current-club check made after
+    his last season here (ingest.check_retired) found him in no club's squad, aged RETIRED_AGE+."""
+    last = {}
+    for row in apps:
+        if row[3]:
+            last[row[2]] = max(last.get(row[2], row[8]), row[8])
+    return {p: last[p] for p, checked, age in conn.execute(
+                """select c.player_id, c.season, extract(year from age(p.birth_date))
+                   from player_career_checks c left join players p using (player_id)
+                   where c.team_id is null""")
+            if p in last and checked > last[p] and (age or 0) >= RETIRED_AGE}
 
 
 def compute_player_ratings(conn):
     appearances = _appearances(conn)
+    retired = retired_players(conn, appearances)
     offsets = _offsets(conn)
     norms = _norms(appearances, offsets)
     team_rank = {(r[0], r[1]): r[8] for r in rank_history(conn)}
@@ -650,8 +655,8 @@ def compute_player_ratings(conn):
         score, club = s
         ref = cdf.get(pos) or pooled
         return round(final_rank(100 * bisect.bisect_left(ref, score) / len(ref), club, pos), 1)
-    log.info("Player ratings: %d appearances, %d team-fixtures, regulars per position %s",
-             len(appearance_scores), len(team_rows), {p: len(v) for p, v in cdf.items()})
+    log.info("Player ratings: %d appearances, %d team-fixtures, regulars per position %s, %d retired",
+             len(appearance_scores), len(team_rows), {p: len(v) for p, v in cdf.items()}, len(retired))
 
     # Team ratings (recent = mean of the team's previous actual XI ratings)
     team_out, lineups = [], []
@@ -670,11 +675,13 @@ def compute_player_ratings(conn):
     # Current rank per player: latest window
     current = []
     for player in list(windows):
+        if player in retired:            # off the players list
+            continue
         s, pos, minutes = raw_score(player, fixtures[-1][1] if fixtures else None)
         if s is not None:
             current.append((player, to_rank(s, pos), windows[player].label(), int(minutes)))
 
-    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank)
+    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired)
     _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows)
 
 

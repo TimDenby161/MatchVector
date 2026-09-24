@@ -320,6 +320,16 @@ create table if not exists player_career_teams (
     primary key (player_id, season, team_id)
 );
 
+-- Latest current-club check (/players/squads) of a player who hasn't played this season
+-- (ingest.check_retired): one made after his last season finding no club marks him retired
+create table if not exists player_career_checks (
+    player_id   int primary key,
+    season      int not null,              -- the current season when checked
+    team_id     int,                       -- a club whose squad he's in; null: none
+    checked_at  timestamptz not null default now()
+);
+alter table player_career_checks add column if not exists team_id int;
+
 -- Player rank for each season: minutes-weighted average of his rank after each match that
 -- season (player_ratings.py, rebuilt on every run)
 create table if not exists player_season_ranks (

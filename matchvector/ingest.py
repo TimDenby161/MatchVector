@@ -426,6 +426,7 @@ def sync_nightly(api, conn, league_ids):
             step("players", sync_players, [league_id], [season])
             step("injuries", sync_injuries, [league_id], [season])
     step("rankings", lambda api, conn: update_rankings(conn))
+    step("retirement checks", check_retired)
     step("player ratings", lambda api, conn: compute_player_ratings(conn))
     step("player careers", sync_player_careers)
     step("predictions", lambda api, conn: update_predictions(conn))
@@ -441,8 +442,7 @@ def sync_player_careers(api, conn, player_ids=None):
 
     A gap season is a season with no minutes in the player-data leagues between a player's first
     and last seasons there (player_season_ranks.minutes = 0). Fetched once per player; players
-    already in player_career_teams are skipped. Keeps national and youth sides out by storing
-    only teams we know as clubs, or ones the API doesn't flag as national.
+    already in player_career_teams are skipped.
     """
     if player_ids is None:
         player_ids = [p for (p,) in conn.execute(
@@ -450,6 +450,53 @@ def sync_player_careers(api, conn, player_ids=None):
                where r.minutes = 0
                  and not exists (select 1 from player_career_teams c where c.player_id = r.player_id)""")]
     log.info("Player careers to fetch: %d", len(player_ids))
+    _fetch_careers(api, conn, player_ids)
+
+
+RETIRED_RECHECK_DAYS = 7
+
+
+def check_retired(api, conn):
+    """Look up the current club (/players/squads) of players who played in the last 18 months
+    but not yet this season, at most every RETIRED_RECHECK_DAYS, into player_career_checks
+    (team_id null: in no club squad; national and youth sides don't count). A check made after
+    his last season that finds him in no squad marks him retired (player_ratings.retired_players),
+    and he leaves the players list. /players/teams is no use for this: early in a season it
+    often doesn't list the new season yet, even for regulars."""
+    (current,) = conn.execute(
+        "select max(season) from fixtures where league_id = any(%s) and status_short = any(%s)",
+        [config.INJURY_MODEL_LEAGUES, list(config.FINISHED_STATUSES)]).fetchone()
+    player_ids = [p for (p,) in conn.execute(
+        """select l.player_id from (
+               select fp.player_id, max(f.season) as last_season, max(f.kickoff) as last_kickoff
+               from fixture_players fp join fixtures f using (fixture_id)
+               where fp.minutes > 0 group by 1) l
+           where l.last_season < %(s)s and l.last_kickoff > now() - interval '540 days'
+             and not exists (select 1 from player_career_checks c where c.player_id = l.player_id
+                             and c.season = %(s)s and c.checked_at > now() - %(d)s * interval '1 day')""",
+        {"s": current, "d": RETIRED_RECHECK_DAYS})]
+    countries = {c for (c,) in conn.execute(
+        "select country from teams where country is not null union select nationality from players "
+        "where nationality is not null")}
+    log.info("Retirement checks: %d players", len(player_ids))
+    for n, player in enumerate(player_ids, 1):
+        resp = api.get("players/squads", player=player)
+        clubs = [item["team"]["id"] for item in (resp["response"] if isinstance(resp, dict) else resp) or []
+                 if not (item["team"].get("name") in countries
+                         or any(tag in (item["team"].get("name") or "") for tag in (" U1", " U2", " U-")))]
+        conn.execute("""insert into player_career_checks (player_id, season, team_id) values (%s, %s, %s)
+                        on conflict (player_id) do update
+                        set season = excluded.season, team_id = excluded.team_id, checked_at = now()""",
+                     [player, current, clubs[0] if clubs else None])
+        if n % 50 == 0:
+            conn.commit()
+            log.info("Retirement checks: %d/%d", n, len(player_ids))
+    conn.commit()
+
+
+def _fetch_careers(api, conn, player_ids):
+    """Fetch and store each player's clubs by season. Keeps national and youth sides out by
+    storing only teams the API doesn't flag as national."""
     for n, player in enumerate(player_ids, 1):
         resp = api.get("players/teams", player=player)
         items = resp["response"] if isinstance(resp, dict) else resp
