@@ -322,6 +322,15 @@ create table if not exists player_career_teams (
     primary key (player_id, season, team_id)
 );
 
+-- How good each player would be in each outfield position group now (player_ratings.py,
+-- rebuilt on every run): his recent stats scored as that position, against its players
+create table if not exists player_position_ranks (
+    player_id      int not null,
+    role_group     text not null,       -- CB FB DM CM AM W ST
+    position_rank  numeric(4,1),
+    primary key (player_id, role_group)
+);
+
 -- Hand corrections to player details from API-Football (which the nightly sync would
 -- overwrite on players itself); applied when the site data is exported
 create table if not exists player_overrides (

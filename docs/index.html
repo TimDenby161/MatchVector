@@ -387,6 +387,7 @@
   .pos-share { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--series-blue) 12%, transparent); color: var(--text-primary); }
   .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
+  table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { background: color-mix(in srgb, var(--series-blue) 6%, transparent); }
   .rated-as { font-size: 11px; color: var(--text-muted); align-self: center; margin-left: 2px; }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
   .pos-period { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -1215,8 +1216,9 @@ function renderPlayers() {
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
   // (youngest first); blanks last
   const seasons = state.players.seasons || [];
-  const key = state.playerSort || `s${seasons[0]}`;
-  const val = (p) => key.startsWith("s") ? p.seasons?.[seasons.indexOf(Number(key.slice(1)))] : p[key];
+  const groups = selectedGroups();
+  const key = state.playerSort === "pos" && !groups.length ? `s${seasons[0]}` : state.playerSort || (groups.length ? "pos" : `s${seasons[0]}`);
+  const val = (p) => key === "pos" ? posRank(p, groups) : key.startsWith("s") ? p.seasons?.[seasons.indexOf(Number(key.slice(1)))] : p[key];
   rows = key === "age"
     ? rows.slice().sort((a, b) => (a.age ?? 999) - (b.age ?? 999))
     : rows.slice().sort((a, b) => (val(b) ?? -1) - (val(a) ?? -1));
@@ -1231,9 +1233,10 @@ function renderPlayers() {
         <th data-tip="Player, with his club, country and league. Click the club to open its page.">Player</th>
         <th class="num" data-tip="Position: the role he has started in most over his last 20 appearances.">Pos</th>
         ${th("age", "Age", "Age today (sorts youngest first).", " col-age")}
+        ${groups.length ? th("pos", groups.length === 1 ? `As ${groups[0]}` : "In pos", `How good he is now as ${groups.map((g) => GROUP_SINGLE[g]).join(" / ")}: his recent stats scored as that position against its players, with up to 6 points off for a position he hasn't played much (none once it's 40% of his starts). With several positions picked, his best of them.`, " col-posrank") : ""}
         ${seasons.map((y, i) => [y, i]).reverse().map(([y, i]) => th(`s${y}`, `${String(y).slice(2)}/${String(y + 1).slice(2)}`, `Rank for the ${seasonName(y)} season (the ${y} season in calendar-year leagues such as MLS and Norway${i === 0 ? "; so far" : ""}): his club's level that season, moved by how his stats compare with other players in his position (elite seasons earn extra, and positions are weighted). Squad players who play little are marked down. Every player follows the typical age curve for his position from a level of his own, and only moves off it as far as his minutes that season justify, so a thin season (an injury year, the start of a season) stays close to his curve. A season with no minutes in these leagues is estimated from his other seasons and his age, and shown outlined.`, ` col-season col-s${i}${i === 0 ? " col-now" : ""}`)).join("")}
       </tr></thead>
-      <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, seasons)).join("")}</tbody>
+      <tbody>${rows.slice(0, FIRST_ROWS).map((p, i) => playerRow(p, i, seasons, groups)).join("")}</tbody>
     </table></div>`;
   fitTopRows(wrap, all || !!q);
   // The rest of the rows go in afterwards in batches, so the first screen (and the age slider)
@@ -1243,7 +1246,7 @@ function renderPlayers() {
   let at = FIRST_ROWS;
   const more = () => {
     if (token !== state.playerRenderToken || at >= rows.length) return;
-    tbody.insertAdjacentHTML("beforeend", rows.slice(at, at + BATCH_ROWS).map((p, j) => playerRow(p, at + j, seasons)).join(""));
+    tbody.insertAdjacentHTML("beforeend", rows.slice(at, at + BATCH_ROWS).map((p, j) => playerRow(p, at + j, seasons, groups)).join(""));
     at += BATCH_ROWS;
     setTimeout(more, 0);
   };
@@ -1251,7 +1254,7 @@ function renderPlayers() {
 }
 
 const FIRST_ROWS = 100, BATCH_ROWS = 300;
-function playerRow(p, i, seasons) {
+function playerRow(p, i, seasons, groups = selectedGroups()) {
   return `
         <tr data-team="${p.team}" data-player="${p.id}">
           <td>${i + 1}</td>
@@ -1259,6 +1262,7 @@ function playerRow(p, i, seasons) {
             <div>${playerLink(p.id, p.name)}<span class="club-sub">${clubLink(p.team)}${p.nationality ? `<span class="pl-nat"><span class="pl-sep"> · </span>${natLink(p.nationality)}</span>` : ""}</span></div></div></td>
           <td class="num">${POS_LABEL[p.position] || p.position || ""}</td>
           <td class="num col-age">${p.age ?? `<span class="dim">–</span>`}</td>
+          ${groups.length ? `<td class="num col-posrank">${rankChipSmall(posRank(p, groups))}</td>` : ""}
           ${seasons.map((y, k) => [y, k]).reverse().map(([y, k]) => `<td class="num col-season col-s${k}${k === 0 ? " col-now" : ""} tip-cell" data-key="${y}">${p.seasons?.[k] == null ? `<span class="dim">–</span>` : p.estimated?.includes(k) ? `<span class="est">${rankChipSmall(p.seasons[k])}</span>` : rankChipSmall(p.seasons[k])}</td>`).join("")}
         </tr>`;
 }
@@ -1328,6 +1332,15 @@ const PITCH_LINES = `<svg viewBox="0 0 68 88" preserveAspectRatio="none" aria-hi
 // A player shows under a position if it's his main one, or he started there for 25%+ of his
 // starting minutes in the last 12 months (positions_12m)
 const playsAt = (p) => new Set([p.position, ...(p.positions_12m || [])]);
+// With the position filter on: the selected role groups, and a player's rank as the best of them
+// (position_ranks: his stats scored as each position, less for one he hasn't played)
+function selectedGroups() {
+  return state.positions?.size ? [...new Set([...state.positions].map((r) => GROUP_OF[r]).filter(Boolean))] : [];
+}
+function posRank(p, groups) {
+  const v = groups.map((g) => p.position_ranks?.[g]).filter((x) => x != null);
+  return v.length ? Math.max(...v) : p.rank;
+}
 function playerVisible(p) {
   return inAgeRange(p) && (!state.positions?.size || [...playsAt(p)].some((r) => state.positions.has(r)))
     && (!state.clubs?.size || state.clubs.has(p.team))
@@ -1933,6 +1946,10 @@ function renderPlayerPage(p) {
     </div>
     ${posBySeason["all"] ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">Positions played (share of his starting minutes)</div>
       ${posRow("Last 12 months", posBySeason["12m"])}${posRow("All time (since 2020/21)", posBySeason["all"])}</div>` : ""}
+    ${p.position_ranks && Object.keys(p.position_ranks).length ? `<div class="club-section" style="margin-top:0;margin-bottom:12px"><div class="modal-section">How good he'd be in each position (now)</div>
+      <div class="pos-shares big">${Object.entries(p.position_ranks).sort((a, b) => b[1] - a[1]).map(([g, r]) =>
+        `<span class="pos-share${g === group ? "" : " sub"}" title="${escapeHtml(GROUP_SINGLE[g])}">${escapeHtml(g)} ${Math.round(r)}</span>`).join("")}</div>
+      <div class="page-note">His recent stats scored as each position against its players, with up to 6 points off for a position he hasn't played much.</div></div>` : ""}
     ${seasonChart(p, seasons)}
     <div class="club-section"><div class="modal-section">Season by season</div>
       <table class="season-table"><thead><tr><th>Season</th><th class="num">Age</th><th>Club · club rank · minutes · rating · goals, assists · positions</th><th class="num">Rank</th></tr></thead>

@@ -335,6 +335,9 @@ def export_players(conn, out_dir=OUT_DIR):
     # his position on the site: where he's started most minutes over the last 12 months (his
     # latest rating window's most common start if he hasn't started in that time)
     main_pos = {p: max(rm, key=rm.get) for p, rm in role_mins.items()}
+    pos_ranks = defaultdict(dict)        # {player: {role group: rank as that position}}
+    for player, g, r in conn.execute("select player_id, role_group, position_rank from player_position_ranks"):
+        pos_ranks[player][g] = float(r)
     lineups = conn.execute(
         """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
                   p.name, pl.position, pl.player_rank
@@ -353,12 +356,12 @@ def export_players(conn, out_dir=OUT_DIR):
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     (out_dir / "players.json").write_text(json.dumps({
         "fields": ["id", "name", "position", "rank", "minutes", "team", "league", "seasons", "age", "estimated",
-                   "nationality", "positions_12m"],
+                   "nationality", "positions_12m", "position_ranks"],
         "seasons": PLAYER_SEASONS,
         "players": [[r[0], r[1], main_pos.get(r[0], r[2]), float(r[3]), r[4], r[5], r[6],
                      [season_ranks[r[0]].get(y) for y in PLAYER_SEASONS], r[7],
                      [i for i, y in enumerate(PLAYER_SEASONS) if y in estimated[r[0]]], r[8],
-                     pos_12m.get(r[0], [])] for r in players],
+                     pos_12m.get(r[0], []), pos_ranks.get(r[0], {})] for r in players],
         "next_xi": next_xi,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported %d player ranks and %d predicted XIs", len(players), len(next_xi))

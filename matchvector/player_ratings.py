@@ -97,6 +97,11 @@ METRIC_INPUTS = {"goals": {"goals"}, "assists": {"assists"}, "shots_on": {"shots
                  "discipline": {"fouls_committed"}, "save_pct": {"saves"}, "conceded": {"goals_conceded"},
                  "dribbled_past": {"dribbled_past"}, "pens_conceded": {"penalties_committed"}}
 REFERENCE = set(config.RATING_REFERENCE_LEAGUES)   # the players everyone is compared with
+OUTFIELD_GROUPS = ("CB", "FB", "DM", "CM", "AM", "W", "ST")
+POSITION_RANK_SEASONS = 3  # rank in each position: from his last this-many seasons ...
+POSITION_RANK_MINUTES = 450  # ... with at least this many minutes
+FAMILIARITY_PENALTY = 6.0  # rank points off in a position he's never started in, ...
+FAMILIAR_SHARE = 0.4       # ... none once it's this share of his starting minutes
 ANCHOR_MINUTES = 1500      # a season with this many minutes measures the age curve
 FILL_FROM_SEASON = 2021    # every season from here to now gets a number (estimated where he has no minutes)
 CURVE_MIN_PAIRS = 30       # an age needs this many season pairs to measure the curve there
@@ -454,7 +459,7 @@ def _stat_score(sums, pos, norms):
                for k, w in WEIGHTS[pos].items() if m[k] is not None)
 
 
-def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
+def _season_ranks(conn, norms, apps, offsets, team_rank, retired, position_ranks=None):
     """[(player, season, rank, minutes, gap-season club or None)] (see module docstring).
     team_rank: {(fixture, team): LT ALGO going into the match}."""
     q = lambda sql, p=None: conn.execute(sql, p).fetchall()
@@ -489,18 +494,19 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired):
                                          and league_id = any(%s) group by 1)
                           select l.league_id, l.pos, (l.r - ref.r)::float8 from l join ref using (pos)""",
                         [config.RATING_REFERENCE_LEAGUES]),
-        retired=retired)
+        retired=retired, position_ranks=position_ranks)
 
 
 def season_model(norms, apps, offsets, team_rank, born, team_level, careers, covered, team_games=(),
-                 other_seasons=(), other_offsets=(), retired=None, detail=None):
+                 other_seasons=(), other_offsets=(), retired=None, detail=None, position_ranks=None):
     """Season ranks: every player follows the age curve through all his seasons, from a level
     of his own, and only leaves it where he has the minutes to (see module docstring). Query
     results come in as rows so this can be run offline. other_seasons: player_seasons rows
     (season totals) from leagues without per-match data, other_offsets: their match-rating
     offsets by (league, position letter). retired: {player: last season}, no
     estimates after it (retired_players). detail: a dict to fill with the
-    workings per (player, season): (evidence, weight, level, curve), for checking."""
+    workings per (player, season): (evidence, weight, level, curve), for checking.
+    position_ranks: a dict to fill with {player: {role group: rank}} (see below)."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(SUMS, 0.0), "roles": Counter(), "broad": Counter(),
                                    "club": [0.0, 0.0], "games": 0, "ref_mins": 0})
     team_games = {(t, y): n for t, y, n in team_games}
@@ -755,6 +761,41 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
                 detail[(player, season)] = (ev, w, level, c)
             rows.append((player, season, round(min(max(r, 0), 100), 1), 0 if team is not None else int(w),
                          team or other_team.get((player, season))))
+
+    # 6. How good he'd be in each outfield position: his recent seasons' stats scored with each
+    #    group's weights against that group's players (and its position weighting), minus the
+    #    same for the group he actually played; that difference, minutes-weighted over his last
+    #    POSITION_RANK_SEASONS seasons (LEVEL_DECAY ^ years back), is added to his current rank.
+    #    Gakpo as a striker is judged on striker stats against strikers. Then less for a position
+    #    he hasn't played: up to FAMILIARITY_PENALTY if he's never started there, none once it's
+    #    FAMILIAR_SHARE of his (recency-weighted) starting minutes in those seasons
+    if position_ranks is not None:
+        now = {p: r for p, y, r, _, _ in rows if y == last_season}
+        acc = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
+        played = defaultdict(Counter)        # player -> {group: recency-weighted starting minutes}
+        for key, (sc, mins, pos, club) in raw.items():
+            player, season = key
+            if (pos == "GK" or player not in now or mins < POSITION_RANK_MINUTES
+                    or season <= last_season - POSITION_RANK_SEASONS):
+                continue
+            own = final_rank(pct(sc, pos), club, pos, share.get(key))
+            w = mins * LEVEL_DECAY ** (last_season - season)
+            for role, rm in seasons[key]["roles"].items():
+                if role_group(role):
+                    played[player][role_group(role)] += rm * LEVEL_DECAY ** (last_season - season)
+            for g in OUTFIELD_GROUPS:
+                sc_g = sc if g == pos else _stat_score(seasons[key]["sums"], g, norms)
+                if sc_g is None:
+                    continue
+                a = acc[player][g]
+                a[0] += (final_rank(pct(sc_g, g), club, g, share.get(key)) - own) * w
+                a[1] += w
+        for player, groups in acc.items():
+            starts = sum(played[player].values())
+            fam = lambda g: min(played[player][g] / starts / FAMILIAR_SHARE, 1) if starts else 0.0
+            position_ranks[player] = {
+                g: round(min(max(now[player] + d / w - FAMILIARITY_PENALTY * (1 - fam(g)), 0), 100), 1)
+                for g, (d, w) in groups.items() if w}
     return rows
 
 
@@ -896,7 +937,8 @@ def compute_player_ratings(conn):
     # Current rank per player (the players list): his season rank for the current season from
     # the season model, so it follows the same age curve and minutes weighting as his seasons;
     # role and minutes from his latest window (players with nothing in the window are left off)
-    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired)
+    position_ranks = {}
+    season_rows = _season_ranks(conn, norms, appearances, offsets, team_rank, retired, position_ranks)
     this_season = max(y for _, y, _, _, _ in season_rows)
     now_rank = {p: r for p, y, r, _, _ in season_rows if y == this_season}
     current = []
@@ -907,10 +949,10 @@ def compute_player_ratings(conn):
         if s is not None:
             current.append((player, now_rank.get(player, to_rank(s, pos)), windows[player].label(), int(minutes)))
 
-    _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows)
+    _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks)
 
 
-def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows):
+def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks):
     with conn.cursor() as cur:
         # Rebuilt with truncate + copy rather than updating fixture_players, so the big table
         # isn't rewritten (and bloated with dead rows) on every run
@@ -943,6 +985,9 @@ def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_
         cur.execute("truncate player_season_ranks")
         with cur.copy("copy player_season_ranks (player_id, season, season_rank, minutes, team_id) from stdin") as cp:
             cp.write("".join(f"{p}\t{y}\t{r}\t{m}\t{t if t else chr(92) + 'N'}\n" for p, y, r, m, t in season_rows))
+        cur.execute("truncate player_position_ranks")
+        with cur.copy("copy player_position_ranks (player_id, role_group, position_rank) from stdin") as cp:
+            cp.write("".join(f"{p}\t{g}\t{r}\n" for p, gs in position_ranks.items() for g, r in gs.items()))
     conn.commit()
     log.info("Player ratings written: %d current player ranks, %d predicted-lineup rows, %d player-seasons",
              len(current), len(lineups), len(season_rows))
