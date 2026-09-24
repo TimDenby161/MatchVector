@@ -2018,7 +2018,6 @@ function renderClubPage() {
   const tier = share <= 0.05 ? 4 : share <= 0.2 ? 3 : share <= 0.5 ? 2 : 1;
   const tab = state.clubTab || "overview";
   $("#club-body").innerHTML = `
-    ${backButton()}
     <div class="pl-hero">
       <img class="club-logo-lg" src="${teamLogo(id)}" alt="" onerror="this.style.visibility='hidden'">
       <div class="pl-hero-main">
