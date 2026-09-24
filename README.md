@@ -318,6 +318,7 @@ These were tested and not adopted:
   - Blending xG into the ranks cut the gap to the bookmakers from 0.018 to 0.013.
   - The 95% range for the current gap is 0.000 to 0.027, so the sample can't yet rule out the model matching the bookmakers.
   - Opening odds scored the same as closing odds (0.9742).
+- **When the model and the bookmakers disagree** (checked 25 September 2026, the same 506 matches). On the 82 matches where the new model and the closing consensus differed by 10+ points on some outcome, the bookmakers were right. The model gave its side 42% on average, the bookmakers 30%, and it won 29%. Backing the model's side at the best closing price lost 2.6% (old model: −13%), with a 95% range of −38% to +41%. At 15+ points it showed +48%, but that's 19 bets, 7 winners and three long shots, which is noise. The model's side was the market underdog in 58 of the 82. Overall the model is slightly timid on strong favourites (said 84%, won 87% in the 80–90% band, 2024/25 onwards), but stretching the margin gained almost nothing (test W/D/L 0.99734 → 0.99728 at ×1.1), so it isn't used. Split by league: in the big five the model matched the bookmakers (−0.0013 log loss, 53 matches), and elsewhere it was 0.017 worse.
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
 
