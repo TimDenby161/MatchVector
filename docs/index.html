@@ -507,6 +507,54 @@
   .xi-card .xi-pos { font-size: 10px; font-weight: 700; color: var(--text-muted); }
   .xi-card .xi-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .xi-card .xi-sub { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* league and country pages */
+  table.league-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  table.league-table th, table.league-table td { padding: 6px 4px; border-bottom: 1px solid var(--gridline); text-align: right; white-space: nowrap; }
+  table.league-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted); font-weight: 600; cursor: help; }
+  table.league-table .lt-pos { text-align: left; color: var(--text-muted); border-left: 3px solid transparent; padding-left: 6px; width: 30px; }
+  table.league-table .lt-badge { width: 26px; padding-left: 0; padding-right: 0; }
+  table.league-table .lt-club { text-align: left; width: 100%; white-space: normal; overflow-wrap: anywhere; min-width: 110px; }
+  table.league-table .lt-elo { color: var(--text-muted); }
+  .table-scroll:has(table.league-table) { overflow-x: auto; }
+  .table-scroll table.league-table tbody tr:last-child td { border-bottom: none; }
+  .table-scroll + .modal-section { margin-top: 14px; }
+  .lt-form { display: inline-flex; gap: 2px; }
+  .lt-form i { font-style: normal; font-size: 10px; font-weight: 800; width: 16px; height: 16px; line-height: 16px; text-align: center; border-radius: 4px; }
+  .lt-form i.res-w { background: color-mix(in srgb, var(--status-good) 20%, transparent); }
+  .lt-form i.res-d { background: var(--chip-bg); }
+  .lt-form i.res-l { background: color-mix(in srgb, var(--status-critical) 18%, transparent); }
+  .lt-legend { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+  .lt-legend span { display: flex; align-items: center; gap: 7px; }
+  .lt-legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .round-nav { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .round-nav select { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-primary); }
+  .round-nav .filter-chip[disabled] { opacity: .35; cursor: default; }
+  .lf-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); align-items: center; column-gap: 8px; padding: 8px 0; font-size: 13px; }
+  .lf-row + .lf-row { border-top: 1px solid var(--border); }
+  .lf-team { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .lf-team .club-logo { width: 20px; height: 20px; flex: none; }
+  .lf-team a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lf-home { justify-content: flex-end; text-align: right; }
+  .lf-win a { font-weight: 700; }
+  .lf-mid { text-align: center; font-variant-numeric: tabular-nums; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; }
+  .lf-mid b { color: var(--text-primary); font-size: 14px; }
+  .lf-live b { color: var(--status-critical); }
+  .lf-note, .lf-sub { font-size: 11px; color: var(--text-muted); }
+  .lf-sub { grid-column: 1 / -1; text-align: center; margin-top: 2px; }
+  .lg-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+  .lg-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface-1); color: inherit; text-decoration: none; min-width: 0; }
+  .lg-card:hover, .lg-card:focus-visible { border-color: var(--series-blue); }
+  .lg-card .club-logo { width: 28px; height: 28px; flex: none; }
+  .lg-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .lg-name { font-weight: 700; font-size: 14px; }
+  .lg-sub { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .country-flag-lg { width: 60px; height: 42px; object-fit: cover; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }
+  @media (max-width: 600px) {
+    table.league-table .lt-wide { display: none; }
+    .lf-row { grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr); column-gap: 6px; }
+  }
   .league-chips { display: flex; flex-wrap: wrap; gap: 5px; }
   .league-chips span { background: var(--chip-bg); border-radius: 999px; padding: 3px 9px; font-size: 12px; }
   .show-all { appearance: none; border: 0; background: none; color: var(--series-blue); font: inherit; font-size: 13px;
@@ -1032,17 +1080,11 @@ function buildCompetitionLabels() {
   }
 }
 const compLabel = (id) => state.compLabels[id] || `Competition ${id}`;
-// "Country · League" shown on the same line after the team name, for rows that span leagues
-function countryLeagueText(id) {
+// "Country · League" after the team name, for rows that span leagues; both link to their pages
+function countryLeague(id) {
   const c = state.data.competitions[id];
   if (!c) return "";
-  const country = c.country === "World" ? "International" : c.country.replace(/-/g, " ");
-  return `${country} · ${SHORT_NAMES[id] || c.name}`;
-}
-function countryLeague(id) {
-  const text = countryLeagueText(id);
-  if (!text) return "";
-  return ` <span class="club-meta">${escapeHtml(text)}</span>`;
+  return ` <span class="club-meta">${countryLink(c.country)} · ${leagueLink(id)}</span>`;
 }
 const teamName = (id) => state.data.teams[id] || state.players?.teams?.[id] || `Team ${id}`;
 const teamLogo = (id) => `https://media.api-sports.io/football/teams/${id}.png`;
@@ -1055,6 +1097,13 @@ const playerLink = (id, text) => `<a class="player-link" href="#/player/${id}">$
 // Flag for a nationality (API-Football's country names -> ISO codes; flagcdn has the home nations too)
 const FLAG_CODES = {"Afghanistan": "af", "Albania": "al", "Algeria": "dz", "Angola": "ao", "Antigua and Barbuda": "ag", "Argentina": "ar", "Armenia": "am", "Australia": "au", "Austria": "at", "Azerbaijan": "az", "Barbados": "bb", "Belgium": "be", "Benin": "bj", "Bermuda": "bm", "Bolivia": "bo", "Bosnia and Herzegovina": "ba", "Brazil": "br", "Bulgaria": "bg", "Burkina Faso": "bf", "Burundi": "bi", "Cameroon": "cm", "Canada": "ca", "Cape Verde": "cv", "Central African Republic": "cf", "Chad": "td", "Chile": "cl", "Colombia": "co", "Comoros": "km", "Congo": "cg", "Congo DR": "cd", "Costa Rica": "cr", "Croatia": "hr", "Cuba": "cu", "Curaçao": "cw", "Cyprus": "cy", "Czech Republic": "cz", "Czechia": "cz", "Côte d'Ivoire": "ci", "Denmark": "dk", "Dominican Republic": "do", "Ecuador": "ec", "Egypt": "eg", "El Salvador": "sv", "England": "gb-eng", "Equatorial Guinea": "gq", "Estonia": "ee", "Faroe Islands": "fo", "Finland": "fi", "France": "fr", "French Guiana": "gf", "Gabon": "ga", "Gambia": "gm", "Georgia": "ge", "Germany": "de", "Ghana": "gh", "Great Britain": "gb", "Greece": "gr", "Grenada": "gd", "Guadeloupe": "gp", "Guatemala": "gt", "Guinea": "gn", "Guinea-Bissau": "gw", "Guyana": "gy", "Haiti": "ht", "Honduras": "hn", "Hungary": "hu", "Iceland": "is", "Indonesia": "id", "Iran": "ir", "Iraq": "iq", "Israel": "il", "Italy": "it", "Ivory Coast": "ci", "Jamaica": "jm", "Japan": "jp", "Jordan": "jo", "Kazakhstan": "kz", "Kenya": "ke", "Korea Republic": "kr", "Kosovo": "xk", "Latvia": "lv", "Lebanon": "lb", "Liberia": "lr", "Libya": "ly", "Lithuania": "lt", "Luxembourg": "lu", "Madagascar": "mg", "Malawi": "mw", "Mali": "ml", "Malta": "mt", "Mexico": "mx", "Montenegro": "me", "Montserrat": "ms", "Morocco": "ma", "Mozambique": "mz", "Namibia": "na", "Netherlands": "nl", "New Zealand": "nz", "Niger": "ne", "Nigeria": "ng", "North Macedonia": "mk", "Northern Ireland": "gb-nir", "Norway": "no", "Panama": "pa", "Paraguay": "py", "Peru": "pe", "Poland": "pl", "Portugal": "pt", "Republic of Ireland": "ie", "Romania": "ro", "Russia": "ru", "Rwanda": "rw", "Saudi Arabia": "sa", "Scotland": "gb-sct", "Senegal": "sn", "Serbia": "rs", "Sierra Leone": "sl", "Slovakia": "sk", "Slovenia": "si", "South Africa": "za", "Spain": "es", "Sri Lanka": "lk", "St. Kitts and Nevis": "kn", "St. Lucia": "lc", "Suriname": "sr", "Sweden": "se", "Switzerland": "ch", "Tanzania": "tz", "Thailand": "th", "Togo": "tg", "Trinidad and Tobago": "tt", "Tunisia": "tn", "Turkey": "tr", "Türkiye": "tr", "USA": "us", "Uganda": "ug", "Ukraine": "ua", "Uruguay": "uy", "Uzbekistan": "uz", "Venezuela": "ve", "Wales": "gb-wls", "Zambia": "zm", "Zimbabwe": "zw"};
 const flagImg = (nat) => FLAG_CODES[nat] ? `<img class="flag" src="https://flagcdn.com/${FLAG_CODES[nat]}.svg" alt="" loading="lazy" onerror="this.remove()">` : "";
+// country and competition pages
+const countryDisplay = (c) => c === "World" ? "International" : (c || "").replace(/-/g, " ");
+const countryHref = (c) => `#/country/${encodeURIComponent(c)}`;
+const leagueHref = (lid) => `#/league/${lid}`;
+const leagueLogo = (lid) => `https://media.api-sports.io/football/leagues/${lid}.png`;
+const countryLink = (c) => `<a class="nat-link" href="${countryHref(c)}">${escapeHtml(countryDisplay(c))}</a>`;
+const leagueLink = (lid) => `<a class="nat-link" href="${leagueHref(lid)}">${escapeHtml(SHORT_NAMES[lid] || state.data.competitions[lid]?.name || compLabel(lid))}</a>`;
 const natLink = (nat) => nat ? `<a class="nat-link" href="#/nation/${encodeURIComponent(nat)}">${escapeHtml(nat)}</a>` : "";
 
 function idsForFilter(filter) {
@@ -1951,7 +2000,7 @@ function renderClubPage() {
       <img class="club-logo-lg" src="${teamLogo(id)}" alt="" onerror="this.style.visibility='hidden'">
       <div class="pl-hero-main">
         <h2>${escapeHtml(teamName(id))}</h2>
-        ${comp ? `<div class="pl-hero-club">${flagImg(country)}<span>${escapeHtml(country)}<span class="dim-sep"> · </span><span class="pl-league">${escapeHtml(league)}</span></span></div>` : ""}
+        ${comp ? `<div class="pl-hero-club">${flagImg(country)}<span>${countryLink(comp.country)}<span class="dim-sep"> · </span><span class="pl-league">${leagueLink(r.league)}</span></span></div>` : ""}
         ${r ? `<div class="pl-hero-club pl-hero-nat"><span class="pl-meta">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</span>
           <span class="dim-sep">·</span><span class="pl-meta">${r.played} matches</span></div>` : ""}
       </div>
@@ -2910,6 +2959,247 @@ function openNationPage(nat) {
   $("#nat-more")?.addEventListener("click", (e) => { $("#nat-list").innerHTML = list.map(row).join(""); e.target.remove(); });
 }
 
+// ------------------------------------------------------------------ league and country pages
+const leagueCache = new Map();
+const LEAGUE_TABS = [["table", "Table"], ["matches", "Matches"], ["clubs", "Clubs"]];
+const roundLabel = (r) => (r || "").replace(/^Regular Season - (\d+)$/, "Round $1");
+const OFF = new Set(["CANC", "PST", "ABD"]);
+// clubs playing their league football in this competition this season, best rated first
+const leagueClubs = (lid) => state.rankings.filter((r) => r.in_league && r.league === lid).sort((a, b) => b.lt - a.lt);
+const avgRating = (rows) => rows.length ? rows.reduce((a, r) => a + r.lt, 0) / rows.length : null;
+// a rating's place among every ranked club, as the badge colours (top 5% green ...)
+function ratingTierOf(v) {
+  const share = (state.rankings.filter((x) => x.lt > v).length + 1) / state.rankings.length;
+  return share <= 0.05 ? 4 : share <= 0.2 ? 3 : share <= 0.5 ? 2 : 1;
+}
+// "2026/27" for a season that starts in the second half of the year, "2026" for a calendar-year
+// one (API-Football's end dates only reach the last fixture it has scheduled)
+function seasonLabel(lg) {
+  const month = Number((lg.start || lg.fixtures[0]?.[1] || "").slice(5, 7));
+  return month >= 6 ? `${lg.season}/${String(lg.season + 1).slice(2)}` : String(lg.season);
+}
+
+async function openLeaguePage(lid) {
+  showPage();
+  state.club = null;
+  const comp = state.data.competitions[lid];
+  $("#club-body").innerHTML = `<div class="empty-state">Loading ${escapeHtml(comp?.name || "competition")}…</div>`;
+  let lg = leagueCache.get(lid);
+  if (!lg) {
+    lg = await fetch(`data/leagues/${lid}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    if (lg) {
+      lg.tableRows = rowsToObjects(lg.table_fields, lg.table);
+      lg.fixtureRows = rowsToObjects(lg.fixture_fields, lg.fixtures);
+      leagueCache.set(lid, lg);
+    }
+  }
+  if (location.hash !== leagueHref(lid)) return;      // moved on while loading
+  const tabs = LEAGUE_TABS.filter(([k]) => k !== "table" || lg?.tableRows.length);
+  const keep = state.league?.id === lid && tabs.some(([k]) => k === state.league.tab);
+  state.league = { id: lid, data: lg, tabs, tab: keep ? state.league.tab : tabs[0][0], round: keep ? state.league.round : null };
+  renderLeaguePage();
+}
+
+function renderLeaguePage() {
+  const { id, data } = state.league;
+  const comp = state.data.competitions[id] || { name: compLabel(id), country: "World", type: "" };
+  const avg = avgRating(leagueClubs(id));
+  const teams = data ? new Set([...data.tableRows.map((r) => r.team), ...data.fixtureRows.flatMap((f) => [f.home, f.away])]).size : 0;
+  $("#club-body").innerHTML = `
+    ${backButton()}
+    <div class="pl-hero">
+      <img class="club-logo-lg" src="${leagueLogo(id)}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="pl-hero-main">
+        <h2>${escapeHtml(comp.name)}</h2>
+        <div class="pl-hero-club">${flagImg(countryDisplay(comp.country))}<span>${countryLink(comp.country)}${data ? `<span class="dim-sep"> · </span><span class="pl-league">${seasonLabel(data)}</span>` : ""}</span></div>
+        ${teams ? `<div class="pl-hero-club pl-hero-nat"><span class="pl-meta">${teams} clubs</span>${comp.type ? `<span class="dim-sep">·</span><span class="pl-meta">${escapeHtml(comp.type)}</span>` : ""}</div>` : ""}
+      </div>
+      ${avg != null ? `<div class="pl-hero-rank rel-${ratingTierOf(avg)}" title="Average Rating (long-term Elo) of the clubs playing in this league">
+        <span class="val">${Math.round(avg)}</span></div>` : ""}
+    </div>
+    ${data ? `<div class="page-tabs" role="tablist">${state.league.tabs.map(([k, label]) =>
+      `<button type="button" role="tab" data-ltab="${k}" aria-selected="${k === state.league.tab}">${label}</button>`).join("")}</div>
+    <div id="league-tab"></div>` : `<div class="empty-state">No data for this competition this season.</div>`}`;
+  if (data) renderLeagueTab();
+}
+
+function renderLeagueTab() {
+  const tab = state.league.tab;
+  document.querySelectorAll("#club-body [data-ltab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ltab === tab)));
+  $("#league-tab").innerHTML = tab === "table" ? leagueTableTab() : tab === "matches" ? leagueMatchesTab() : leagueClubsTab();
+}
+
+// ---- Table: this season's standings, one table per group, zones coloured from API-Football's notes
+const ZONE_COLOURS = ["var(--series-blue)", "var(--series-aqua)", "var(--status-good)", "var(--status-warning)", "var(--text-muted)"];
+function leagueTableTab() {
+  const { data } = state.league;
+  const rows = data.tableRows;
+  const zones = new Map();
+  let next = 0, releg = 0;
+  for (const r of rows) {
+    if (!r.description || zones.has(r.description)) continue;
+    zones.set(r.description, /relegation/i.test(r.description)
+      ? (releg++ ? "var(--series-orange)" : "var(--status-critical)") : ZONE_COLOURS[Math.min(next++, ZONE_COLOURS.length - 1)]);
+  }
+  const groups = [...new Set(rows.map((r) => r.group))];
+  // API-Football's form string is newest first; shown oldest first like the club page
+  const formChips = (f) => f ? `<span class="lt-form">${[...f].reverse().map((c) =>
+    `<i class="${c === "W" ? "res-w" : c === "D" ? "res-d" : "res-l"}">${c}</i>`).join("")}</span>` : "";
+  const table = (g) => `
+    ${groups.length > 1 ? `<div class="modal-section">${escapeHtml(g)}</div>` : ""}
+    <div class="table-scroll"><table class="league-table">
+      <thead><tr><th class="lt-pos">#</th><th></th><th class="lt-club">Club</th>
+        <th title="Played">P</th><th title="Won">W</th><th title="Drawn">D</th><th title="Lost">L</th>
+        <th class="lt-wide" title="Goals for and against">Goals</th><th title="Goal difference">GD</th><th title="Points">Pts</th>
+        <th class="lt-wide" title="Last five league games, oldest first">Form</th><th title="Rating: the club's long-term Elo rating">Elo</th></tr></thead>
+      <tbody>${rows.filter((r) => r.group === g).map((r) => {
+        const rk = state.rankByTeam.get(r.team);
+        return `<tr><td class="lt-pos" style="border-left-color:${zones.get(r.description) || "transparent"}">${r.rank}</td>
+          <td class="lt-badge"><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+          <td class="lt-club">${clubLink(r.team, data.teams[r.team] || teamName(r.team))}</td>
+          <td>${r.played ?? ""}</td><td>${r.win ?? ""}</td><td>${r.draw ?? ""}</td><td>${r.lose ?? ""}</td>
+          <td class="lt-wide">${r.gf ?? ""}–${r.ga ?? ""}</td><td>${r.gd > 0 ? "+" : ""}${r.gd ?? ""}</td><td><b>${r.points ?? ""}</b></td>
+          <td class="lt-wide">${formChips(r.form)}</td><td class="lt-elo">${rk ? Math.round(rk.lt) : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+  return groups.map(table).join("") + (zones.size ? `<div class="lt-legend">${[...zones].map(([d, c]) =>
+    `<span><i style="background:${c}"></i>${escapeHtml(d)}</span>`).join("")}</div>` : "");
+}
+
+// ---- Matches: one round at a time, opening on the round with the next fixture
+function leagueMatchesTab() {
+  const { data } = state.league;
+  const fx = data.fixtureRows;
+  if (!fx.length) return `<div class="empty-state">No fixtures yet this season.</div>`;
+  const rounds = [...new Set(fx.map((f) => f.round))];
+  if (!rounds.includes(state.league.round)) {
+    const upcoming = fx.find((f) => !FINISHED.has(f.status) && !OFF.has(f.status));
+    state.league.round = upcoming ? upcoming.round : rounds[rounds.length - 1];
+  }
+  const i = rounds.indexOf(state.league.round);
+  const preds = new Map(state.data.matches.map((m) => [m.id, m]));
+  const name = (t) => data.teams[t] || teamName(t);
+  const byDay = new Map();
+  for (const f of fx.filter((f) => f.round === state.league.round)) {
+    const day = localDateStr(new Date(f.kickoff));
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(f);
+  }
+  const logo = (t) => `<img class="club-logo" src="${teamLogo(t)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
+  const row = (f) => {
+    const done = f.hg != null && (FINISHED.has(f.status) || LIVE.has(f.status));
+    const p = preds.get(f.id);
+    const mid = done ? `<b>${f.hg}–${f.ag}</b>${f.pen_h != null ? `<span class="lf-note">${f.pen_h}–${f.pen_a} pens</span>` : ""}`
+      : OFF.has(f.status) ? `<span class="lf-note">${f.status === "PST" ? "Postponed" : f.status === "CANC" ? "Cancelled" : "Abandoned"}</span>`
+      : escapeHtml(fmtTime(f.kickoff));
+    const won = (a, b) => done && FINISHED.has(f.status) && a > b ? " lf-win" : "";
+    return `<div class="lf-row">
+      <div class="lf-team lf-home${won(f.hg, f.ag)}">${clubLink(f.home, name(f.home))}${logo(f.home)}</div>
+      <div class="lf-mid${LIVE.has(f.status) ? " lf-live" : ""}">${mid}</div>
+      <div class="lf-team${won(f.ag, f.hg)}">${logo(f.away)}${clubLink(f.away, name(f.away))}</div>
+      ${!done && p?.p_home != null ? `<div class="lf-sub">${Math.round(p.p_home * 100)}% · ${Math.round(p.p_draw * 100)}% · ${Math.round(p.p_away * 100)}%</div>` : ""}
+    </div>`;
+  };
+  return `
+    <div class="round-nav">
+      <button type="button" class="filter-chip" data-round-step="-1" ${i <= 0 ? "disabled" : ""} aria-label="Previous round">‹</button>
+      <select id="round-select" aria-label="Round">${rounds.map((r) => `<option value="${escapeHtml(r)}"${r === state.league.round ? " selected" : ""}>${escapeHtml(roundLabel(r))}</option>`).join("")}</select>
+      <button type="button" class="filter-chip" data-round-step="1" ${i >= rounds.length - 1 ? "disabled" : ""} aria-label="Next round">›</button>
+    </div>
+    ${[...byDay.values()].map((list) => `<div class="modal-section">${escapeHtml(fmtDay(list[0].kickoff))}</div>${list.map(row).join("")}`).join("")}
+    <div class="page-note">Under upcoming matches: the model's home · draw · away chances, where it has them.</div>`;
+}
+
+// ---- Clubs: the league's clubs by Elo rating, with their table position
+function leagueClubsTab() {
+  const { id, data } = state.league;
+  const pos = new Map(data.tableRows.map((r) => [r.team, r.rank]));
+  const ids = new Set([...data.tableRows.map((r) => r.team), ...leagueClubs(id).map((r) => r.team)]);
+  if (!data.tableRows.length) data.fixtureRows.forEach((f) => { ids.add(f.home); ids.add(f.away); });
+  const rows = [...ids].map((t) => state.rankByTeam.get(t)).filter(Boolean).sort((a, b) => b.lt - a.lt);
+  if (!rows.length) return `<div class="empty-state">No ranked clubs.</div>`;
+  return clubRatingTable(rows, data.tableRows.length ? (r) => pos.get(r.team) ?? "" : null, data.teams)
+    + `<div class="page-note">Rating: the long-term Elo rating. Form: the current Elo rating. Trend: its change over the last 6 matches.</div>`;
+}
+
+// clubs table for the league and country pages; pos = the table position column (Pl when null)
+function clubRatingTable(rows, pos, names = {}, meta = null) {
+  return `<div class="table-scroll"><table class="leaderboard clubs">
+    <thead><tr><th>#</th><th></th><th>Club</th><th class="num">${pos ? "Pos" : "Pl"}</th>
+      <th class="num">Rating</th><th class="num">Trend</th><th class="num">Form</th></tr></thead>
+    <tbody>${rows.map((r, i) => `<tr>
+      <td>${i + 1}</td>
+      <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+      <td>${clubLink(r.team, names[r.team] || teamName(r.team))}${meta ? meta(r) : ""}</td>
+      <td class="num" style="color:var(--text-muted)">${pos ? pos(r) : r.played}</td>
+      <td class="num"><b>${Math.round(r.lt)}</b></td>
+      <td class="num">${formHtml(r.form)}</td>
+      <td class="num">${Math.round(r.current)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+$("#club-body").addEventListener("click", (e) => {
+  if (!state.league || !$("#league-tab")) return;
+  const t = e.target.closest("[data-ltab]");
+  if (t) { state.league.tab = t.dataset.ltab; return renderLeagueTab(); }
+  const step = e.target.closest("[data-round-step]");
+  if (step) {
+    const rounds = [...new Set(state.league.data.fixtureRows.map((f) => f.round))];
+    state.league.round = rounds[rounds.indexOf(state.league.round) + Number(step.dataset.roundStep)] ?? state.league.round;
+    renderLeagueTab();
+  }
+});
+$("#club-body").addEventListener("change", (e) => {
+  if (e.target.id === "round-select" && state.league) { state.league.round = e.target.value; renderLeagueTab(); }
+});
+
+// ---- Country: its leagues (strongest first), cups and clubs
+function openCountryPage(country) {
+  showPage();
+  state.club = null;
+  const body = $("#club-body");
+  const name = countryDisplay(country);
+  const comps = Object.entries(state.data.competitions).filter(([, c]) => c.country === country)
+    .map(([lid, c]) => ({ lid: Number(lid), ...c }));
+  if (!comps.length) { body.innerHTML = `${backButton()}<div class="empty-state">No competitions for ${escapeHtml(name)}.</div>`; return; }
+  const leagues = comps.filter((c) => c.type === "League").map((c) => {
+    const clubs = leagueClubs(c.lid);
+    return { ...c, clubs, avg: avgRating(clubs) };
+  }).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1));
+  const order = (lid) => { const k = GROUP_ORDER.indexOf(lid); return k < 0 ? 999 : k; };
+  const cups = comps.filter((c) => c.type !== "League").sort((a, b) => order(a.lid) - order(b.lid));
+  const clubs = leagues.flatMap((c) => c.clubs).sort((a, b) => b.lt - a.lt);
+  const avg = avgRating(clubs);
+  const card = (c) => `<a class="lg-card" href="${leagueHref(c.lid)}">
+      <img class="club-logo" src="${leagueLogo(c.lid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <span class="lg-main"><span class="lg-name">${escapeHtml(c.name)}</span>
+        ${c.clubs?.length ? `<span class="lg-sub">${c.clubs.length} clubs · top rated ${escapeHtml(teamName(c.clubs[0].team))}</span>` : ""}</span>
+      ${c.avg != null ? `<span class="rel-chip rel-${ratingTierOf(c.avg)}" title="Average Rating of its clubs">${Math.round(c.avg)}</span>` : ""}</a>`;
+  const LIMIT = 50;
+  const meta = leagues.length > 1 ? (r) => ` <span class="club-meta">${leagueLink(r.league)}</span>` : null;
+  const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  body.innerHTML = `
+    ${backButton()}
+    <div class="pl-hero">
+      ${FLAG_CODES[name] ? `<img class="country-flag-lg" src="https://flagcdn.com/${FLAG_CODES[name]}.svg" alt="" onerror="this.style.visibility='hidden'">` : "<span></span>"}
+      <div class="pl-hero-main">
+        <h2>${escapeHtml(name)}</h2>
+        <div class="pl-hero-club"><span class="pl-meta">${[leagues.length && count(leagues.length, "league"), cups.length && count(cups.length, "cup"),
+          clubs.length && count(clubs.length, "club")].filter(Boolean).join(" · ")}</span></div>
+      </div>
+      ${avg != null ? `<div class="pl-hero-rank rel-${ratingTierOf(avg)}" title="Average Rating (long-term Elo) of the clubs in its leagues">
+        <span class="val">${Math.round(avg)}</span></div>` : ""}
+    </div>
+    ${leagues.length ? `<div class="modal-section" style="margin-top:0">Leagues</div><div class="lg-list">${leagues.map(card).join("")}</div>
+      ${leagues.length > 1 ? `<div class="page-note">Strongest first, by the average Rating of their clubs.</div>` : ""}` : ""}
+    ${cups.length ? `<div class="club-section"${leagues.length ? "" : ' style="margin-top:0"'}><div class="modal-section">${leagues.length ? "Cups" : "Competitions"}</div>
+      <div class="lg-list">${cups.map(card).join("")}</div></div>` : ""}
+    ${clubs.length ? `<div class="club-section"><div class="modal-section">Clubs by rating</div><div id="country-clubs">${clubRatingTable(clubs.slice(0, LIMIT), null, {}, meta)}</div>
+      ${clubs.length > LIMIT ? `<button type="button" class="show-all" id="country-more">Show all ${clubs.length.toLocaleString()}</button>` : ""}</div>` : ""}`;
+  $("#country-more")?.addEventListener("click", (e) => {
+    $("#country-clubs").innerHTML = clubRatingTable(clubs, null, {}, meta);
+    e.target.remove();
+  });
+}
+
 // ------------------------------------------------------------------ wiring
 function showTab(tab) {
   state.tab = tab;
@@ -2925,11 +3215,16 @@ function route() {
   const club = location.hash.match(/^#\/club\/(\d+)/);
   const player = location.hash.match(/^#\/player\/(\d+)/);
   const nation = location.hash.match(/^#\/nation\/(.+)/);
+  const country = location.hash.match(/^#\/country\/(.+)/);
+  const league = location.hash.match(/^#\/league\/(\d+)/);
   if (!state.data) return;
-  if (club || player || nation) $("#team-modal").hidden = true;
+  if (club || player || nation || country || league) $("#team-modal").hidden = true;
+  if (!league) state.league = null;
   if (club) openClubPage(Number(club[1]));
   else if (player) openPlayerPage(Number(player[1]));
   else if (nation) openNationPage(decodeURIComponent(nation[1]));
+  else if (country) openCountryPage(decodeURIComponent(country[1]));
+  else if (league) openLeaguePage(Number(league[1]));
   else showTab(state.tab || "table");
 }
 window.addEventListener("hashchange", route);

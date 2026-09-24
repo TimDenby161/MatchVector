@@ -139,6 +139,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     export_players(conn, out_dir)
     export_player_seasons(conn, out_dir)
     export_clubs(conn, out_dir)
+    export_leagues(conn, out_dir)
     export_player_pages(conn, out_dir)
 
 
@@ -647,3 +648,47 @@ def export_clubs(conn, out_dir=OUT_DIR):
                    "teams": {o: names.get(o) for o in opponents}}
         (club_dir / f"{team}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d club pages", len(active))
+
+
+def export_leagues(conn, out_dir=OUT_DIR):
+    """One file per competition for its league page: docs/data/leagues/<league_id>.json.
+
+    The current season's table (every group, as API-Football sends it) and all its fixtures.
+    Loaded only when the page opens.
+    """
+    seasons = {lid: (season, start) for lid, season, start in conn.execute(
+        """select distinct on (league_id) league_id, season, start_date from league_seasons
+           where is_current order by league_id, season desc""")}
+    tables = defaultdict(list)
+    for (lid, season, group, team, rank, pts, gd, form, desc, pl, w, d, l, gf, ga) in conn.execute(
+            """select league_id, season, group_name, team_id, rank, points, goal_diff, form, description,
+                      played, win, draw, lose, goals_for, goals_against
+               from standings where (league_id, season) in (select league_id, max(season) from league_seasons
+                                                             where is_current group by league_id)
+               order by league_id, group_name, rank"""):
+        tables[lid].append([group, rank, team, pl, w, d, l, gf, ga, gd, pts, form, desc])
+    fixtures = defaultdict(list)
+    for fid, lid, kickoff, rnd, home, away, status, hg, ag, ph, pa_ in conn.execute(
+            """select fixture_id, league_id, kickoff, round, home_team_id, away_team_id, status_short,
+                      home_goals, away_goals, pen_home, pen_away
+               from fixtures where (league_id, season) in (select league_id, max(season) from league_seasons
+                                                          where is_current group by league_id)
+               order by kickoff, fixture_id"""):
+        fixtures[lid].append([fid, kickoff.isoformat(), rnd, home, away, status, hg, ag, ph, pa_])
+    names = dict(conn.execute("select team_id, name from teams"))
+    league_dir = out_dir / "leagues"
+    league_dir.mkdir(parents=True, exist_ok=True)
+    for old in league_dir.glob("*.json"):
+        if int(old.stem) not in seasons:
+            old.unlink()
+    for lid, (season, start) in seasons.items():
+        teams = {r[2] for r in tables[lid]} | {t for f in fixtures[lid] for t in (f[3], f[4])}
+        payload = {"id": lid, "season": season, "start": start.isoformat() if start else None,
+                   "table_fields": ["group", "rank", "team", "played", "win", "draw", "lose", "gf", "ga", "gd",
+                                    "points", "form", "description"],
+                   "table": tables[lid],
+                   "fixture_fields": ["id", "kickoff", "round", "home", "away", "status", "hg", "ag", "pen_h", "pen_a"],
+                   "fixtures": fixtures[lid],
+                   "teams": {t: names.get(t) for t in teams}}
+        (league_dir / f"{lid}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    log.info("Exported %d league pages", len(seasons))

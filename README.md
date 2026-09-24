@@ -337,6 +337,12 @@ The site labels the club rank as an **Elo rating** (**Rating** = LT ALGO, **Form
 
 Each club's history comes from `docs/data/clubs/<team_id>.json`, which is written by `export_clubs` for clubs active in the last 400 days and loaded only when the page opens. Each match carries the formation from its line-up (`fixture_formations`; only the leagues with match-by-match player data have line-ups).
 
+**League and country pages.** Wherever a club shows "Country · League" (the club page header, and Rankings rows when searching or showing all leagues), both parts are links:
+- `#/league/<league_id>` has tabs: **Table** (this season's standings from `standings`, with each group, the zones API-Football describes, last-five form and each club's Rating), **Matches** (one round at a time, opening on the round with the next fixture, with the model's chances for upcoming games) and **Clubs** (the league's clubs by Rating, with their table position). Cups have no Table tab. The badge is the average Rating of the clubs playing in the league.
+- `#/country/<country>` lists the country's leagues, strongest first by the average Rating of their clubs, then its cups, then all its league clubs by Rating. UEFA and FIFA competitions are under International (`#/country/World`).
+
+Each competition's current season comes from `docs/data/leagues/<league_id>.json`, written by `export_leagues` and loaded only when the page opens (about 2 MB for all 70). A season starting from June onwards is labelled 2026/27, and a calendar-year one 2026, because API-Football's end dates only reach the last fixture it has scheduled.
+
 **Managers.** Every night, each club in those leagues gets its manager from `/coachs?team=`, at most once a week each, or the next night after a line-up names a different coach (`team_coaches`, `python -m matchvector sync coaches`). The API keeps former managers listed with no end date, so the one on the club's latest line-up wins, otherwise the one who started last. Line-ups store their coach in `fixture_formations.coach_id`. API-Football seems to fill a season's line-ups with one coach, so they can't pin down a mid-season change, and the start date comes from `/coachs`.
 
 The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `docs/data/rankings.json`. These are written by `python -m matchvector export`, and the nightly workflow commits them, so the site never needs database credentials. To view it on this PC, run `python -m http.server` in `docs/` and open http://localhost:8000.
