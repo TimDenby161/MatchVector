@@ -305,7 +305,8 @@
   table.leaderboard td:nth-child(2) { overflow-wrap: anywhere; }
   table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 32px; padding-left: 2px; padding-right: 2px; }
   table.leaderboard.clubs th:nth-child(3), table.leaderboard.clubs td:nth-child(3) { width: auto; overflow-wrap: anywhere; }
-  table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 40px; }
+  /* Pl, Rating, Trend and Form: one width, centred */
+  table.leaderboard.clubs th:nth-child(n+4), table.leaderboard.clubs td:nth-child(n+4) { width: 68px; text-align: center; }
   table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
   table.leaderboard tr.row-hl td { background: color-mix(in srgb, var(--series-blue) 14%, transparent); }
   table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 2px 6px; font-size: 12px; }
@@ -358,7 +359,6 @@
     .pl-cell .player-photo { width: 28px; height: 28px; }
   }
   .player-photo { width: 32px; height: 32px; flex: none; border-radius: 50%; object-fit: cover; background: var(--chip-bg); }
-  table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 74px; }
   .table-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border);
     border-radius: 10px; background: var(--surface-1); }
   .table-scroll table.leaderboard th { background: var(--surface-1); z-index: 1; }
@@ -898,11 +898,9 @@
     table.leaderboard.clubs th { font-size: 10px; }
     table.leaderboard.clubs th:first-child, table.leaderboard.clubs td:first-child { width: 28px; padding-left: 6px; padding-right: 2px; }
     table.leaderboard.clubs th:nth-child(2), table.leaderboard.clubs td:nth-child(2) { width: 24px; padding-left: 0; padding-right: 2px; }
-    table.leaderboard.clubs th:nth-child(4), table.leaderboard.clubs td:nth-child(4) { width: 28px; padding-left: 1px; padding-right: 1px; }
-    table.leaderboard.clubs th:nth-child(n+5), table.leaderboard.clubs td:nth-child(n+5) { width: 37px; padding-left: 1px; padding-right: 1px; }
+    table.leaderboard.clubs th:nth-child(n+4), table.leaderboard.clubs td:nth-child(n+4) { width: 42px; padding-left: 1px; padding-right: 1px; }
     table.leaderboard.clubs .rel-chip { min-width: 32px; padding: 2px 3px; font-size: 11.5px; }
-    table.leaderboard.clubs th:nth-child(6), table.leaderboard.clubs td:nth-child(6) { width: 46px; }
-    table.leaderboard.clubs th:last-child, table.leaderboard.clubs td:last-child { width: 44px; padding-right: 8px; }
+    table.leaderboard.clubs th:last-child, table.leaderboard.clubs td:last-child { padding-right: 4px; }
     .club-logo { width: 20px; height: 20px; }
     /* country · league on one line under the name, cut short rather than wrapping */
     table.leaderboard.clubs td:nth-child(3) { overflow: hidden; }
