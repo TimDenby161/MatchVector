@@ -381,14 +381,22 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
             select fp.player_id, 'now', fp.team_id, {per_club}
             from apps fp left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
             where fp.n <= 20 group by 1, 3""", [ids, list(config.FINISHED_STATUSES)]).fetchall()
-    # gap seasons (no minutes here): the club he was at and its level that season
+    # seasons away from the per-match leagues: the club he was at and its level that season, with
+    # his season totals where the league has them (player_seasons; minutes 0: an estimate)
     gaps = conn.execute(
-        """select r.player_id, r.season, r.team_id, 0, avg(h.lt_before), null, 0, 0
+        """select r.player_id, r.season, r.team_id, r.minutes, avg(h.lt_before),
+                  (select sum(ps.rating * ps.minutes) / nullif(sum(ps.minutes) filter (where ps.rating is not null), 0)
+                   from player_seasons ps where ps.player_id = r.player_id and ps.season = r.season
+                     and ps.team_id = r.team_id)::float8,
+                  coalesce((select sum(ps.goals) from player_seasons ps where ps.player_id = r.player_id
+                            and ps.season = r.season and ps.team_id = r.team_id), 0),
+                  coalesce((select sum(ps.assists) from player_seasons ps where ps.player_id = r.player_id
+                            and ps.season = r.season and ps.team_id = r.team_id), 0)
            from player_season_ranks r
            left join fixtures f on f.season = r.season and r.team_id in (f.home_team_id, f.away_team_id)
            left join team_rank_history h on h.fixture_id = f.fixture_id and h.team_id = r.team_id
-           where r.minutes = 0 and r.team_id is not null and r.player_id = any(%s)
-           group by 1, 2, 3""", [ids]).fetchall()
+           where r.team_id is not null and r.player_id = any(%s)
+           group by 1, 2, 3, 4""", [ids]).fetchall()
     spells = _club_spells(seasons + recent + gaps)
     team_ids = {x[0] for p in spells.values() for v in p.values() for x in v}
     names = dict(conn.execute("select team_id, name from teams where team_id = any(%s)", [list(team_ids)]))

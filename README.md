@@ -89,7 +89,7 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
    - Wingers: shots on target, key passes, goals, dribbles and assists.
    - Strikers: shots on target (28%), goals (25%), key passes and duels.
    - Goalkeepers: match rating only, corrected for workload. Busy keepers earn rating points for saves: Raya was 7.21 at Brentford (4.1 saves per 90) and 6.86 at Arsenal (1.4). So a keeper's rating has 0.10 taken off per save per 90 above the average of 2.9, or added per save below it. That was the correction that made ratings most consistent for keepers who changed club, and it took Raya's move from 7.21 → 6.86 to 7.09 → 7.01. Goals conceded mostly measures the defence in front of him, and save % is mostly luck. For example, Trafford went from 41 to 96 moving from a relegated Premier League side to the Championship's best defence. Rating alone repeated best from season to season: 0.60, and 0.61 for keepers who changed club. A keeper's season rating only repeats at about 0.28 from one season to the next, against about 0.55 for outfield players, so one keeper season says little on its own (see season ranks below).
-   - **Keeper rank leans on club level.** Even after all that, regular Premier League keepers sit within 6.8–7.05, a gap that's mostly noise. Stretching it over the whole scale gave near-random ranks (Henderson 37, Kelleher 67). So a keeper's rank is 100 × club rank ÷ 1200 − 10, plus 0.2 × (rating percentile − 50). Club level carries it, since good clubs sign good keepers, and the rating moves it by up to about ±10.
+   - **Keeper rank leans on club level.** Even after all that, regular Premier League keepers sit within 6.8–7.05, a gap that's mostly noise. Stretching it over the whole scale gave near-random ranks (Henderson 37, Kelleher 67). So a keeper's rank is 100 × club rank ÷ 1200 − 6, plus 0.2 × (rating percentile − 50). Club level carries it, since good clubs sign good keepers, and the rating moves it by up to about ±10.
    - **Match ratings are league-adjusted everywhere:** each rating has the league's average for that position taken off, and the average across all leagues added back. The adjustments are small, from −0.09 for Norwegian keepers to +0.06 for Dutch keepers.
    - Two things were tested for keepers and not used:
      - *API-Football's "goals prevented":* it only exists from 2024/25, and it gives the same number to both teams in a match, so it can't say whose it is.
@@ -101,14 +101,14 @@ API-Football's injury lists run from 2021 for the big five, the Championship, Tu
 4. Compare each stat with other players in the same role group.
 5. **Mark down players with few minutes:** pull them towards a below-average level (−0.5, weighted as 900 minutes), not towards the average.
 6. Turn the result into a **percentile among regulars in that role group**: 50 is an average regular, and 90 is better than 90% of them.
-7. **Club level first, stats adjust it** (all players): rank = 100 × club rank ÷ 1200 − 12, plus 0.3 × (stats percentile − 50). Club level sets the base, because being a regular for a strong club is good evidence of quality, and stats move a player by up to about ±15 (keepers ±10, since their stats are noisier). **Elite seasons get extra:** an outfield player earns 1 more point for each percentile above the 90th, up to +10, so a club's level doesn't cap a great player. Everyone below the 90th percentile is unchanged. **The top of the scale is a soft ceiling rather than a hard cap at 100:** above 88, a rank r becomes 88 + 12 × (1 − e^(−(r − 88) / 12)). So the best still spread out below 100 instead of piling up against it, in the same order. Without it, Van Dijk read about 99 in every season and six players had a current rank of exactly 100. With it:
+7. **Club level first, stats adjust it** (all players): rank = 100 × club rank ÷ 1200 − 8, plus 0.3 × (stats percentile − 50). The −8 (it was −12) puts an average Premier League regular at about 75. Club level sets the base, because being a regular for a strong club is good evidence of quality, and stats move a player by up to about ±15 (keepers ±10, since their stats are noisier). **Elite seasons get extra:** an outfield player earns 1 more point for each percentile above the 90th, up to +10, so a club's level doesn't cap a great player. Everyone below the 90th percentile is unchanged. **The top of the scale is a soft ceiling rather than a hard cap at 100:** above 86, a rank r becomes 86 + 14 × (1 − e^(−(r − 86) / 14)). So the best still spread out below 100 instead of piling up against it, in the same order. Without it, Van Dijk read about 99 in every season and six players had a current rank of exactly 100. With it:
 
 | Player | Season ranks |
 |---|---|
-| Van Dijk | 94–96 |
-| Davies | 92–95 |
-| Messi at PSG (LT about 1040), 22/23 | 92.5, up from 87 before the elite bonus |
-| Kane | up to 95.6 |
+| Van Dijk | 91–94.5 |
+| Davies | 86–91 |
+| Messi at PSG (LT about 1040), 22/23 | 94.2, up from 87 before the elite bonus |
+| Kane | up to 96.4 |
 
 The same ceiling applies to keepers.
 
@@ -139,6 +139,7 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 
 **Season ranks follow the age curve.** Every player follows the typical age curve through all his seasons, and only moves off it where he has the minutes to (`season_model` in `matchvector/player_ratings.py`):
 1. **Evidence for each season he played:** his clubs' average LT ALGO over his matches that season, moved by his stat score. The score is the same as above, as a percentile among player-seasons with 900+ minutes in the same role group. It goes through the same club-first formula as above, with no smoothing across seasons. A player under 70% of his club's minutes (80% for keepers) is scaled down by up to 20%, because a rotation player at a top club is evidence of being below its regulars. Gabriel Jesus played 55% of City's minutes in 21/22 and 44% of Arsenal's in 23/24.
+   - **Seasons in leagues without match data** (Portugal, Belgium, Greece and the other player leagues) come from API-Football's season totals (`player_seasons`), scored the same way against the same players and at the club's real level that season. Their match ratings have the league's offset taken off (Portuguese ratings run high), and pass accuracy is left out where the API has none. Gyökeres's Sporting seasons (29 and 39 league goals) used to count as average stats at Sporting's level. They now read about 90, and his 26/27 at Arsenal is about 83.
 2. **The age curve depends on position.** Each player uses the curve for the role group he's played most minutes in. It's in rank points, measured from how evidence changes from one season to the next, for players with 1,500+ minutes in the first season and 900+ in the next. The lower bar for the next season keeps players who lost their place, so decline isn't understated. Seasons chosen for their minutes tend to be good ones, so the next season is worse on average at every age (regression to the mean, about −0.7 a year). That's measured and taken off, otherwise it looks like players decline from 23.
    - **Growth to 24**, measured: +4.1 a year at 18, +2.4 at 21, +1.1 at 24. Keepers gain about +1 a year from 22 to 24.
    - **A flat prime until 31**, or **33 for keepers.** This is set, not measured: the data is too noisy to place it.
@@ -154,7 +155,7 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 
      Kane (32) is still on the flat part of his curve. Giroud's curve is −9 at 39, and Neuer's is −6 at 40.
    - **Below 18** there are too few regulars to measure, so it's set by hand: +4 a year at 17, and 2 more for each year younger.
-3. **His level on the curve** is the average of (evidence − curve) over all his seasons, weighted by minutes. When rating one season, the others count 0.7 ^ years apart. A starting level of 55 (his rank at peak age) is added in, weighted as 450 minutes, so a player with little data anywhere sits below an average regular.
+3. **His level on the curve** is the average of (evidence − curve) over all his seasons, weighted by minutes. When rating one season, the others count 0.7 ^ years apart. A starting level of 58 (his rank at peak age) is added in, weighted as 450 minutes, so a player with little data anywhere sits below an average regular.
 4. **Season rank** = level + curve for that season, plus the season's own difference from it, kept in proportion minutes ÷ (minutes + 1,500). A full season (3,000 minutes) keeps two thirds of its difference. A thin one stays on his curve: an injury year, the first weeks of this season, or a teenager's debut. Rodri's 24/25 (80 minutes, injured) is 93.6, where the old model gave 79. Tah's weak 22/23 (evidence 68) is 72, between his curve (79) and the season.
 
 Holding out each 1,500+ minute season and predicting it from the player's other seasons (level + curve) misses by 6.0 rank points on average. The settings are at the top of `matchvector/player_ratings.py`: `PRIOR_LEVEL`, `PRIOR_MINUTES`, `LEVEL_DECAY` and `DEVIATION_MINUTES`.
