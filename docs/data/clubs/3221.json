@@ -1,1 +1,1 @@
-{"id":3221,"start":750,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-05-19",748.3,433,1,1,1,62,null],["2026-05-24",744.5,433,0,0,1,62,null]],"goal_averages":[1.0,1.0,0.0,1.0],"coach":null,"teams":{"433":"Laval"}}
+{"id":3221,"start":750,"fields":["date","rank","opponent","home","gf","ga","league","formation"],"matches":[["2026-05-19",748.3,433,1,1,1,62,null],["2026-05-24",744.5,433,0,0,1,62,null]],"goal_averages":[1.0,1.0,0.0,1.0],"coach":null,"colors":null,"teams":{"433":"Laval"}}

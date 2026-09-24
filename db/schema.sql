@@ -302,6 +302,14 @@ create table if not exists fixture_formations (
     primary key (fixture_id, team_id)
 );
 alter table fixture_formations add column if not exists coach_id int;   -- the manager on the line-up
+-- Each club's home kit colours (hex, no #) from its latest home line-up, for the club page pitch
+create table if not exists team_colors (
+    team_id     int primary key,
+    fixture_id  int not null,
+    kickoff     timestamptz not null,
+    shirt       text,
+    number      text
+);
 -- Each club's current manager (/coachs?team=, ingest.sync_coaches) and when he started there
 create table if not exists team_coaches (
     team_id     int primary key,
@@ -554,3 +562,4 @@ alter table fixture_team_ratings enable row level security;
 alter table predicted_lineups  enable row level security;
 alter table fixture_formations enable row level security;
 alter table team_coaches       enable row level security;
+alter table team_colors        enable row level security;

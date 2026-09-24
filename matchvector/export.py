@@ -679,7 +679,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
 
     history: every match since 2020 as [date, rank after, opponent, home?, goals for, against,
     competition, formation (null where the line-up isn't known)]; plus 12-month home/away goal
-    averages and the current manager. Loaded only when the page opens.
+    averages, the current manager and the home kit colours. Loaded only when the page opens.
     """
     now = datetime.now(timezone.utc)
     active = {r[0] for r in conn.execute(
@@ -693,6 +693,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
             order_by="fixture_id, team_id")}
     coaches = {t: {"id": c, "name": n, "photo": p, "since": s.isoformat() if s else None}
                for t, c, n, p, s in conn.execute("select team_id, coach_id, name, photo, since from team_coaches")}
+    colors = {t: [s, n] for t, s, n in conn.execute("select team_id, shirt, number from team_colors")}
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league in club_rows:
@@ -714,7 +715,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
         payload = {"id": team, "start": h["start"],
                    "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation"],
                    "matches": h["matches"], "goal_averages": stats.get(team), "coach": coaches.get(team),
-                   "teams": {o: names.get(o) for o in opponents}}
+                   "colors": colors.get(team), "teams": {o: names.get(o) for o in opponents}}
         (club_dir / f"{team}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d club pages", len(active))
 

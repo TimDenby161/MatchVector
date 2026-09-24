@@ -617,6 +617,14 @@
     .fm-card { flex-direction: column; align-items: stretch; text-align: center; }
     .fm-pitch { margin: 0 auto; }
   }
+  /* Club pitches in the home kit colours: mown stripes of the shirt colour, darkened so white
+     text stays readable (a white kit gives a grey pitch), lines in the number colour */
+  .pitch.kit { background: repeating-linear-gradient(180deg,
+      color-mix(in srgb, var(--kit) 52%, #101010) 0 8.333%, color-mix(in srgb, var(--kit) 44%, #101010) 8.333% 16.667%); }
+  .pitch.kit > svg { stroke: color-mix(in srgb, var(--kit2) 45%, transparent); }
+  .pitch.kit .dp-spot:not(.empty), .pitch.kit .xi-spot { background: rgba(0,0,0,0.45); }
+  .pitch.kit a.xi-spot:hover { background: rgba(0,0,0,0.6); }
+  .pitch.kit .dp-spot.empty { border-color: rgba(255,255,255,0.4); color: rgba(255,255,255,0.6); }
   /* Club overview pitch: who can play in each position */
   .pitch.dp-pitch { max-width: 420px; overflow: visible; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: repeat(6, auto); align-content: space-between; align-items: center; gap: 10px 6px; padding: 14px 10px; }
@@ -2213,8 +2221,16 @@ function depthPitch(teamId) {
         <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`).join("")}
     </div>`;
   }).join("");
-  return `<div class="club-section pp-section"><div class="pitch dp-pitch">${PITCH_LINES}${spots}</div></div>`;
+  return `<div class="club-section pp-section"><div class="pitch dp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div></div>`;
 }
+// The club's home kit colours (club file) for its pitches: stripes in the shirt colour, lines in
+// the number colour; clubs without them keep the plain dark pitch
+const kitColors = () => state.club?.data?.colors?.[0] ? state.club.data.colors : null;
+const kitClass = () => kitColors() ? " kit" : "";
+const kitStyle = () => {
+  const c = kitColors();
+  return c ? ` style="--kit:#${escapeHtml(c[0])};--kit2:#${escapeHtml(c[1] || "ffffff")}"` : "";
+};
 // Surname for tight spaces, keeping lower-case particles ("M. de Ligt" -> "de Ligt")
 function shortName(name) {
   const parts = name.split(" ");
@@ -2254,7 +2270,7 @@ function xiPitch(teamId) {
     });
   }).join("");
   const avg = xi.players.filter((p) => p[3] != null);
-  return `<div class="club-section pp-section"><div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
+  return `<div class="club-section pp-section"><div class="pitch pp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div>
     <div class="page-note" style="text-align:center">Predicted XI${avg.length ? ` · average rank ${Math.round(avg.reduce((a, p) => a + p[3], 0) / avg.length)}` : ""}</div></div>`;
 }
 

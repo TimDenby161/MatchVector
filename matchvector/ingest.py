@@ -430,6 +430,7 @@ def sync_nightly(api, conn, league_ids):
     step("squads", sync_squads)
     step("line-up coaches", sync_lineup_coaches)
     step("coaches", sync_coaches)
+    step("kit colours", sync_team_colors)
     step("player ratings", lambda api, conn: compute_player_ratings(conn))
     step("player careers", sync_player_careers)
     step("predictions", lambda api, conn: update_predictions(conn))
@@ -747,6 +748,45 @@ def sync_injuries(api, conn, league_ids, seasons):
             log.info("Injuries league=%s season=%s: %d", league_id, season, len(rows))
 
 
+def _home_colors(f):
+    """[(team, fixture, kickoff, shirt, number)] for the home side's kit on a /fixtures line-up."""
+    home = ((f.get("teams") or {}).get("home") or {}).get("id")
+    for lu in f.get("lineups") or []:
+        kit = ((lu.get("team") or {}).get("colors") or {}).get("player") or {}
+        if (lu.get("team") or {}).get("id") == home and kit.get("primary"):
+            return [(home, f["fixture"]["id"], f["fixture"]["date"], kit["primary"], kit.get("number"))]
+    return []
+
+
+def _store_colors(conn, colors):
+    """Keep each club's kit colours from its latest home line-up (an older one never overwrites)."""
+    if colors:
+        with conn.cursor() as cur:
+            cur.executemany(
+                """insert into team_colors (team_id, fixture_id, kickoff, shirt, number) values (%s, %s, %s, %s, %s)
+                   on conflict (team_id) do update set fixture_id = excluded.fixture_id, kickoff = excluded.kickoff,
+                       shirt = excluded.shirt, number = excluded.number
+                   where excluded.kickoff > team_colors.kickoff""", colors)
+
+
+def sync_team_colors(api, conn, batch_size=20):
+    """Home kit colours for clubs in the per-match player leagues that have none yet, from their
+    latest home line-up (/fixtures?ids=, 20 per call). After that sync_fixture_players keeps
+    them current."""
+    fids = [r[0] for r in conn.execute(
+        """select distinct on (f.home_team_id) f.fixture_id from fixtures f join fixture_formations ff
+               on ff.fixture_id = f.fixture_id and ff.team_id = f.home_team_id
+           where f.home_team_id = any(%s) and f.home_team_id not in (select team_id from team_colors)
+           order by f.home_team_id, f.kickoff desc""", [_current_player_league_teams(conn)])]
+    log.info("Clubs needing kit colours: %d (~%d API calls)", len(fids), -(-len(fids) // batch_size))
+    for i in range(0, len(fids), batch_size):
+        colors = []
+        for f in api.get("fixtures", ids="-".join(map(str, fids[i:i + batch_size]))):
+            colors += _home_colors(f)
+        _store_colors(conn, colors)
+        conn.commit()
+
+
 def sync_fixture_players(api, conn, league_ids, batch_size=20):
     """Per-match player minutes for finished fixtures not fetched yet (/fixtures?ids=)."""
     pending = [r[0] for r in conn.execute(
@@ -757,9 +797,10 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
     now = datetime.now(timezone.utc)
     for i in range(0, len(pending), batch_size):
         resp = api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size])))
-        rows, done, formations = [], [], []
+        rows, done, formations, colors = [], [], [], []
         for f in resp:
             fid = f["fixture"]["id"]
+            colors += _home_colors(f)
             grids = {}                               # player -> (grid, role) for starters
             for lu in f.get("lineups") or []:
                 formation = lu.get("formation")
@@ -807,6 +848,7 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
                ["fixture_id", "player_id"], touch_updated_at=False)
         upsert(conn, "fixture_formations", _dedupe(formations, ("fixture_id", "team_id")),
                ["fixture_id", "team_id"], touch_updated_at=False)
+        _store_colors(conn, colors)
         if done:
             conn.execute("update fixtures set players_fetched_at = now() where fixture_id = any(%s)", [done])
         conn.commit()
