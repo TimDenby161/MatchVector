@@ -1642,16 +1642,18 @@ window.addEventListener("resize", () => {
   fitYearsBox($("#table-wrap"));
 });
 // Players with the years open: the box widens to the right, as far as the window allows (16px
-// short of its edge), to fit the extra columns; its left edge and the page don't move
+// short of its edge), to fit the extra columns, and the search box above widens with it; their
+// left edges and the page don't move
 function fitYearsBox(wrap) {
-  const box = wrap.querySelector(".table-scroll");
+  const box = wrap.querySelector(".table-scroll"), search = $("#table-search");
+  search.style.width = "";
   if (!box) return;
   box.style.width = "";
   const table = box.querySelector("table.players.years");
   if (!table) return;
   const room = document.documentElement.clientWidth - box.getBoundingClientRect().left - 16;
   const need = table.scrollWidth + box.offsetWidth - box.clientWidth;   // plus its borders
-  if (need > box.offsetWidth) box.style.width = `${Math.max(box.offsetWidth, Math.min(need, room))}px`;
+  if (need > box.offsetWidth) box.style.width = search.style.width = `${Math.max(box.offsetWidth, Math.min(need, room))}px`;
 }
 
 function loadPlayerSeasons() {
@@ -1896,6 +1898,7 @@ function renderTable() {
     </table></div>
 `;
   fitTopRows(wrap, all || !!q);
+  fitYearsBox(wrap);
 }
 
 // ------------------------------------------------------------------ stats
