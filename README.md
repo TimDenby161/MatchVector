@@ -245,6 +245,8 @@ This differs from the sheet, which uses (home × 1.09 − away) / 100, × 10 and
 
 `team_rank_history.act_diff` still holds the actual goal difference.
 
+**Line-ups in the rank update: tested, not used.** The idea: when a club starts a weaker XI than usual and loses, its rank should fall less. The expected goal difference in the update was shifted by the starting XI rating against the club's usual one (actual − recent XI rating), for the 13 leagues with line-up ratings. Replaying every fixture and scoring 2024/25 onwards with line-up-free forecasts, it didn't help: log loss 1.00490 with no shift, 1.00496, 1.00513 and 1.00579 with shifts of 0.06, 0.12 and 0.24 goals per XI point. Goal-difference error was 1.6676 at best, with no shift. Rotation does matter at the extremes: a side starting an XI 4–8 points weaker than its opponent's shortfall does about 0.2 goals worse. But only about 4% of line-up-rated matches have gaps that big. A squad player's rank is built from his club's level too, so reserves rate close to starters. The XI gap's spread is only 1.9 points (about 0.08 goals). The pre-match predicted XI gap also cut goal-difference error by only 0.1% out of sample (1.6299 → 1.6284), in line with the prediction backtests further down.
+
 A team's first rank is `leagues.starting_rank` of the first league it plays in. For a team that only ever appears in cups, it's the `starting_rank` of the first cup it plays in.
 
 - `team_rank_history` holds each team's rank before and after every match, like the Ranking Breakdown tab.
