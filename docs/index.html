@@ -1891,6 +1891,11 @@ async function openClubPage(id) {
   }
   state.club = { id, data: club, range: state.club?.range || "1y" };
   renderClubPage();
+  if (!state.playerSeasons) {        // position minutes for the overview pitch: redraw once loaded
+    loadPlayerSeasons();
+    await state.playerSeasonsLoading;
+    if (state.club?.id === id && (state.clubTab || "overview") === "overview") renderClubTab();
+  }
 }
 
 const CLUB_TABS = [["overview", "Overview"], ["xi", "Predicted XI"], ["matches", "Matches"], ["squad", "Squad"], ["history", "History"]];
@@ -2009,14 +2014,21 @@ function clubXiTab() {
 }
 
 // Overview pitch: in each position, the squad's players who can play there (their main position,
-// or 25%+ of their starting minutes there over the last 12 months), best first by their rank in
+// or 2+ full matches' worth of starting minutes there over the last 12 months; until the
+// position minutes have loaded, the 25% rule of the position filter), best first by their rank in
 // that position. The top 3 are shown; the rest are counted.
+const DEPTH_MINUTES = 180;
+function canPlay(p) {
+  const rows = state.playerSeasons?.positions?.[String(p.id)]?.["12m"];
+  if (!rows) return playsAt(p);
+  return new Set([p.position, ...rows.filter(([r, m]) => r !== "SUB" && m >= DEPTH_MINUTES).map(([r]) => r)]);
+}
 function depthPitch(teamId) {
   const squad = (state.players?.list || []).filter((p) => p.team === teamId);
   if (!squad.length) return "";
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
   const spots = PITCH_SPOTS.map(([r, x, y]) => {
-    const ps = squad.filter((p) => playsAt(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
+    const ps = squad.filter((p) => canPlay(p).has(r)).map((p) => ({ p, rank: rankAt(p, r) ?? p.rank }))
       .sort((a, b) => b.rank - a.rank);
     if (!ps.length) return `<div class="dp-spot empty" style="left:${x}%;top:${y}%"><span class="dp-pos">${r}</span></div>`;
     const more = ps.length - 3;
@@ -2027,7 +2039,7 @@ function depthPitch(teamId) {
     </div>`;
   }).join("");
   return `<div class="club-section pp-section"><div class="pitch dp-pitch">${PITCH_LINES}${spots}</div>
-    <div class="page-note" style="text-align:center">Who can play where · rank in that position</div></div>`;
+    <div class="page-note" style="text-align:center">Who can play where (main position, or ${DEPTH_MINUTES}+ starting minutes there in the last 12 months) · rank in that position</div></div>`;
 }
 const shortName = (name) => name.includes(" ") ? name.split(" ").slice(-1)[0] : name;
 
