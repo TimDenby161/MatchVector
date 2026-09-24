@@ -1916,10 +1916,10 @@ function renderClubTab() {
   document.querySelectorAll("#club-body [data-ctab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ctab === tab)));
   $("#club-tab").innerHTML = tab === "matches" ? clubMatchesTab() : tab === "squad" ? clubSquadTab()
     : tab === "history" ? clubHistoryTab() : clubOverviewTab();
-  if (tab === "overview") drawRankChart();
+  if (tab === "history") drawRankChart();
 }
 
-// ---- Overview: next match beside the predicted XI, rank chart, recent form, key numbers
+// ---- Overview: next match beside the predicted XI, recent form, key numbers
 function clubOverviewTab() {
   const { id, data } = state.club;
   const r = state.rankByTeam.get(id);
@@ -1930,15 +1930,6 @@ function clubOverviewTab() {
   const next = clubNextCard(), pitch = xiPitch(id);
   return `
     ${next && pitch ? `<div class="ov-top">${next}${pitch}</div>` : next + pitch}
-    <div class="chart-card">
-      <div class="chart-head">
-        <span class="chart-title">Club rank over time</span>
-        <div class="chart-ranges" id="chart-ranges">${CHART_RANGES.map(([k, label]) =>
-          `<button type="button" class="filter-chip" data-range="${k}" aria-pressed="${state.club.range === k}">${label}</button>`).join("")}</div>
-      </div>
-      <div class="chart-wrap" id="chart-wrap"></div>
-      <div class="chart-summary" id="chart-summary"></div>
-    </div>
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · rank change</div>
       <div class="form-strip">${form.map(({ m, move }) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span><span class="form-res">${moveHtml(move)}</span></div>`).join("")}</div></div>` : ""}
@@ -2081,7 +2072,7 @@ function clubSquadTab() {
     <div class="page-note">Current player ranks (0-100), with league minutes over the last 12 months.</div>`;
 }
 
-// ---- History: season by season from the club's matches since 2020. A season runs July to June,
+// ---- History: the rank chart, then season by season from the club's matches since 2020. A season runs July to June,
 // or the calendar year for clubs that play through the summer (MLS, Norway ...).
 function clubHistoryTab() {
   const { data } = state.club;
@@ -2110,7 +2101,16 @@ function clubHistoryTab() {
   });
   const label = (y) => calendar ? String(y) : seasonShort(y);
   return `
-    <div class="chart-card"><div class="chart-head"><span class="chart-title">Rank at the end of each season</span></div>
+    <div class="chart-card">
+      <div class="chart-head">
+        <span class="chart-title">Club rank over time</span>
+        <div class="chart-ranges" id="chart-ranges">${CHART_RANGES.map(([k, label]) =>
+          `<button type="button" class="filter-chip" data-range="${k}" aria-pressed="${state.club.range === k}">${label}</button>`).join("")}</div>
+      </div>
+      <div class="chart-wrap" id="chart-wrap"></div>
+      <div class="chart-summary" id="chart-summary"></div>
+    </div>
+    <div class="chart-card" style="margin-top:12px"><div class="chart-head"><span class="chart-title">Rank at the end of each season</span></div>
       <div class="season-bars">${seasons.slice().reverse().map((s) => {
         const lo = Math.min(...seasons.map((x) => x.end)) - 20, hi = Math.max(...seasons.map((x) => x.end));
         return `<div class="season-bar" title="${escapeHtml(`${label(s.y)}: ${s.end.toFixed(1)}`)}"><span class="sb-val">${Math.round(s.end)}</span>
