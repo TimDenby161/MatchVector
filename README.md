@@ -319,6 +319,23 @@ These were tested and not adopted:
   - The 95% range for the current gap is 0.000 to 0.027, so the sample can't yet rule out the model matching the bookmakers.
   - Opening odds scored the same as closing odds (0.9742).
 - **When the model and the bookmakers disagree** (checked 25 September 2026, the same 506 matches). On the 82 matches where the new model and the closing consensus differed by 10+ points on some outcome, the bookmakers were right. The model gave its side 42% on average, the bookmakers 30%, and it won 29%. Backing the model's side at the best closing price lost 2.6% (old model: −13%), with a 95% range of −38% to +41%. At 15+ points it showed +48%, but that's 19 bets, 7 winners and three long shots, which is noise. The model's side was the market underdog in 58 of the 82. Overall the model is slightly timid on strong favourites (said 84%, won 87% in the 80–90% band, 2024/25 onwards), but stretching the margin gained almost nothing (test W/D/L 0.99734 → 0.99728 at ×1.1), so it isn't used. Split by league: in the big five the model matched the bookmakers (−0.0013 log loss, 53 matches), and elsewhere it was 0.017 worse.
+- **Every market with odds** (same 506 matches, new model reconstructed pre-match, 90-minute results). Log loss is model minus bookmakers, so negative means the model was better. The 10+ column covers matches where the model rated a selection 10+ points above the bookmaker consensus, with the model's, the bookmakers' and the actual rate, and the return at the best closing price. Value bets are the paper-betting rule: model × best price ≥ 1.03.
+
+  | Market | Model − bookmakers (95%) | 10+ above market | Value bets |
+  |---|---|---|---|
+  | Match result | +0.0147 (+0.001 to +0.028) | 58: 48 / 34 / 36%, +17.6% (−28 to +71) | 359, −8.7% |
+  | Double chance | +0.0079 (0.000 to +0.015) | 64: 64 / 50 / 53%, −0.4% | 263, −8.8% |
+  | Both teams score | +0.0058 (−0.003 to +0.014) | 25: 45 / 33 / 32%, −5.3% | 240, −4.2% |
+  | Over/under 0.5 | −0.0040 (−0.012 to +0.004) | none | 11, −89.5% |
+  | Over/under 1.5 | +0.0034 (−0.003 to +0.010) | 1 | 233, −9.7% |
+  | Over/under 2.5 | +0.0044 (−0.005 to +0.013) | 22: 46 / 34 / 36%, +5.2% | 301, −1.7% |
+  | Over/under 3.5 | +0.0024 (−0.007 to +0.013) | 35: 58 / 46 / 54%, +5.2% | 251, +1.2% |
+  | Over/under 4.5 | −0.0022 (−0.012 to +0.008) | 23: 73 / 62 / 70%, −1.7% | 175, −11.8% |
+
+  - Nothing beats the bookmakers with confidence. Every range crosses zero or sits on the bookmakers' side.
+  - The goal markets are much closer than the match result: within ±0.005, against 0.015.
+  - The lines other than 2.5 use a calibration fitted on 2023/24 (base, shrink): 0.5 (0.96, 1.1), 1.5 (0.76, 0.9), 3.5 (0.36, 0.9), 4.5 (0.04, 1.0).
+  - *Opening prices:* these matches' odds were first downloaded on 23 September, after most had been played, so `first_odd` equals the closing price for 99.9% of rows. Opening vs closing can only be tested on matches from 24 September on.
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
 
