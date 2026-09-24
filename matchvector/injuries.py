@@ -17,20 +17,36 @@ RECENT_MATCHES = 10
 BETA = 0.1            # goals of expected margin per unit of missing strength
 
 
-def missing_strengths(conn):
-    """{(fixture_id, team_id): missing strength} for every fixture with an injury list."""
+def missing_strengths(conn, fixture_ids=None):
+    """{(fixture_id, team_id): missing strength} for every fixture with an injury list, or
+    only those in fixture_ids.
+
+    Only the minutes of players who appear on an injury list for that team are downloaded
+    (plus which matches each team has player data for), not every appearance: the full
+    fixture_players table is ~35 MB of database egress per call.
+    """
+    where, params = "league_id = any(%s)", [config.INJURY_MODEL_LEAGUES]
+    if fixture_ids is not None:
+        where += " and fixture_id = any(%s)"
+        params.append(list(fixture_ids))
     injured = defaultdict(list)
     for fid, team, player in conn.execute(
-            "select fixture_id, team_id, player_id from injuries where league_id = any(%s)",
-            [config.INJURY_MODEL_LEAGUES]):
+            f"select fixture_id, team_id, player_id from injuries where {where}", params):
         injured[(fid, team)].append(player)
     if not injured:
         return {}
+    teams = list({t for _, t in injured})
 
-    played = defaultdict(dict)                 # fixture -> {team: {player: minutes}}
+    played = defaultdict(dict)                 # fixture -> {team: {injured player: minutes}}
+    for fid, team in conn.execute(
+            "select distinct fixture_id, team_id from fixture_players where team_id = any(%s)",
+            [teams]):
+        played[fid][team] = {}
     for fid, team, player, mins in conn.execute(
-            "select fixture_id, team_id, player_id, minutes from fixture_players"):
-        played[fid].setdefault(team, {})[player] = mins
+            f"""select fp.fixture_id, fp.team_id, fp.player_id, fp.minutes from fixture_players fp
+                join (select distinct team_id, player_id from injuries where {where}) i
+                  using (team_id, player_id)""", params):
+        played[fid][team][player] = mins
 
     recent = defaultdict(lambda: deque(maxlen=RECENT_MATCHES))
     result = {}
@@ -40,7 +56,7 @@ def missing_strengths(conn):
             """select fixture_id, home_team_id, away_team_id from fixtures
                where home_team_id = any(%s) or away_team_id = any(%s)
                order by kickoff, fixture_id""",
-            [list({t for _, t in injured}), list({t for _, t in injured})]):
+            [teams, teams]):
         for team in (home, away):
             players = injured.get((fid, team))
             if players:

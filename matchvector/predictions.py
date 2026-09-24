@@ -166,11 +166,11 @@ def update_predictions(conn):
         away_rec[away].append((af, hf))
         comp_goals[league_id].append((hg, ag))
 
-    missing = missing_strengths(conn)
     upcoming = conn.execute(
         """select fixture_id, kickoff, league_id, home_team_id, away_team_id from fixtures
            where status_short = any(%s) and kickoff >= %s order by kickoff""",
         [list(UPCOMING_STATUSES), now - timedelta(hours=3)]).fetchall()
+    missing = missing_strengths(conn, [f[0] for f in upcoming])
 
     rows = []
     for fid, kickoff, league_id, home, away in upcoming:
@@ -243,7 +243,8 @@ def backfill_predictions(conn):
 
     window = timedelta(days=365)
     xg = _load_xg(conn)
-    missing = missing_strengths(conn)
+    missing = missing_strengths(conn, [f[0] for f in fixtures
+                                       if f[1] >= BACKFILL_FROM and f[0] not in have])
     home_rec, away_rec, comp = defaultdict(deque), defaultdict(deque), defaultdict(deque)
 
     def trim(dq, now):
