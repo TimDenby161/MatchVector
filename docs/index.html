@@ -387,7 +387,12 @@
   .pos-share { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
     background: color-mix(in srgb, var(--series-blue) 12%, transparent); color: var(--text-primary); }
   .pos-share.sub { background: var(--chip-bg); color: var(--text-muted); }
-  table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank { background: color-mix(in srgb, var(--series-blue) 6%, transparent); }
+  /* "As ST" column (position filter on): last, styled like the current season, lightly tinted */
+  table.leaderboard.players th.col-posrank, table.leaderboard.players td.col-posrank {
+    width: 64px; padding-left: 10px; padding-right: 12px; text-align: center; white-space: nowrap;
+    border-left: 1px solid var(--gridline); background: color-mix(in srgb, var(--series-blue) 6%, transparent); }
+  table.leaderboard.players th.col-posrank { color: var(--series-blue); font-weight: 800; letter-spacing: 0; }
+  table.leaderboard.players td.col-posrank .rel-chip { font-weight: 900; font-size: 12px; min-width: 34px; }
   .rated-as { font-size: 11px; color: var(--text-muted); align-self: center; margin-left: 2px; }
   .pos-shares.big .pos-share { font-size: 13px; padding: 3px 10px; }
   .pos-period { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
