@@ -160,7 +160,6 @@ Line-up roles are stored in `fixture_players.role` and `fixture_players.grid`, a
 So a player who has left drops off his old club's list, even before he plays for his new one. A nationality can be corrected by hand in `player_overrides`, for example Elliot Anderson as England. The nightly sync would overwrite a change made on `players` itself. Clicking his name opens a **player page** (`#/player/<id>`). A header shows his club, league, position, age, nationality and current rank, and four tabs sit under it:
 - **Overview:**
   - his club's next match, with the win chance, the projected score, and whether he's in the predicted XI, doubtful or out (with the injury reason);
-  - where he ranks among players in his position, among his nationality, and overall;
   - a chart of his rank going into each of his last 20 league matches, or of his season ranks (estimated seasons hollow);
   - **a pitch of his positions** (the spots of the position filter): in every position he can play, his rank there and his share of starting minutes in that spot, over the last 12 months or since 2020/21. Ranks are per role group, so LB and RB share his full-back rank. A spot he has a rank for but no starts in (0%) is greyed out, and positions he has no rank in are hollow. Starting minutes are the role he started in, from the line-up and formation; minutes off the bench have no position and aren't counted;
   - his match ratings over the last 10 matches, and this season so far.

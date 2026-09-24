@@ -2032,10 +2032,6 @@ const seasonName = (y) => `${y}/${String(y + 1).slice(2)}`;
 function playerById(id) {
   return (state.playersById ||= new Map(state.players.list.map((x) => [String(x.id), x]))).get(String(id));
 }
-function rankAmong(p, list) {   // "#3 of 412", by current rank
-  const sorted = list.slice().sort((a, b) => b.rank - a.rank);
-  return `#${sorted.findIndex((x) => x.id === p.id) + 1} of ${sorted.length.toLocaleString()}`;
-}
 const playerPages = new Map();     // player id -> his page file (data/players/<id>.json)
 async function openPlayerPage(id) {
   showPage();
@@ -2119,16 +2115,11 @@ function renderPlayerTab() {
   if (tab === "overview") drawPlayerChart();
 }
 
-// ---- Overview: next match, where he ranks, rank chart, recent form, this season, positions
+// ---- Overview: next match, positions pitch, rank chart, recent form, this season
 function playerOverviewTab() {
   const { p, page } = state.player;
   const seasons = state.players.seasons || [];
-  const list = state.players.list;
-  const group = GROUP_OF[p.position] || p.position;
   const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
-  const sameGroup = list.filter((x) => (GROUP_OF[x.position] || x.position) === group);
-  const sameNat = p.nationality ? list.filter((x) => x.nationality === p.nationality) : [];
-  const among = (pool) => { const [n, of] = rankAmong(p, pool).slice(1).split(" of "); return [`#${n}`, `of ${of}`]; };
   const hasMatchRanks = page?.matchRows?.some((m) => m.rank != null);
   const hasSeasons = seasons.filter((y, k) => p.seasons?.[k] != null).length >= 2;
   const chartMode = state.player.chart = !hasMatchRanks ? "seasons" : !hasSeasons ? "matches" : state.playerChart || "matches";
@@ -2136,12 +2127,6 @@ function playerOverviewTab() {
   const form = (page?.matchRows || []).slice(0, 10).reverse();
   return `
     ${nextMatchCard()}
-    <div class="team-stats">
-      ${tile(`Among ${GROUP_NAME[group] || "his position"}`, ...among(sameGroup))}
-      ${sameNat.length ? tile(`${escapeHtml(p.nationality)} players`, ...among(sameNat)) : ""}
-      ${tile("All players", ...among(list))}
-      ${tile("Minutes", p.minutes.toLocaleString(), "last 20 apps")}
-    </div>
     ${positionPitch(p)}
     ${hasMatchRanks || hasSeasons ? `<div class="chart-card">
       <div class="chart-head"><span class="chart-title">${chartMode === "matches" ? "Rank going into each match" : "Season ranks"}</span>
