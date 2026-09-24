@@ -538,6 +538,33 @@
   .goal-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .rank-move { font-size: 11px; font-weight: 700; width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
+  /* Club page: predicted XI on the pitch, squad list, end-of-season ranks */
+  .pl-hero .club-logo-lg { width: 60px; height: 60px; }
+  a.xi-spot { text-decoration: none; min-width: 58px; padding: 3px 5px 4px; }
+  a.xi-spot:hover { background: rgba(255,255,255,0.26); }
+  .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .squad-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 7px 0; font-size: 13px; }
+  .squad-row + .squad-row { border-top: 1px solid var(--border); }
+  .squad-row .player-photo { width: 32px; height: 32px; }
+  .sq-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sq-sub { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; }
+  .sq-sub .flag { width: 14px; height: 10px; }
+  .sq-xi { margin-left: 6px; font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
+    background: color-mix(in srgb, var(--series-blue) 15%, transparent); color: var(--series-blue); }
+  .season-bars { display: flex; align-items: flex-end; gap: 6px; height: 150px; margin-top: 8px; }
+  .season-bar { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
+  .sb-fill { width: 100%; max-width: 44px; border-radius: 5px 5px 0 0; background: var(--series-blue); }
+  .season-bar:last-child .sb-fill { opacity: .55; }
+  .sb-val { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sb-label { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  @media (max-width: 480px) {
+    .pl-hero .club-logo-lg { width: 48px; height: 48px; }
+    a.xi-spot { min-width: 48px; padding: 2px 3px 3px; }
+    .xi-spot .pp-name { font-size: 9px; max-width: 52px; }
+    .xi-spot .pp-rank { font-size: 15px; }
+    #club-tab .team-stats.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  }
+
   /* Country / league filter (Rankings) */
   .cgroups { display: flex; flex-wrap: wrap; gap: 6px; }
   .cgroup { display: contents; }
@@ -1842,58 +1869,67 @@ async function openClubPage(id) {
   renderClubPage();
 }
 
+const CLUB_TABS = [["overview", "Overview"], ["matches", "Matches"], ["squad", "Squad"], ["history", "History"]];
+const clubOpp = (o) => state.club?.data?.teams?.[o] || teamName(o);
+// his club's upcoming fixtures from the matches file
+const clubUpcoming = (id) => state.data.matches.filter((m) => (m.home === id || m.away === id)
+  && !FINISHED.has(m.status) && !["CANC", "PST", "ABD"].includes(m.status));
+// a result's rank change: its rank after less the one before (the club file's start for the first)
+function clubMove(rows, i, start) {
+  const before = i > 0 ? rows[i - 1].rank : start;
+  return before != null ? rows[i].rank - before : null;
+}
+const moveHtml = (v) => v == null ? "" : `<span class="${v > 0 ? "form-up" : v < 0 ? "form-down" : ""}">${v > 0 ? "+" : ""}${v.toFixed(1)}</span>`;
+
 function renderClubPage() {
-  const { id, data } = state.club;
+  const { id } = state.club;
   const r = state.rankByTeam.get(id);
-  const body = $("#club-body");
   const comp = r ? state.data.competitions[r.league] : null;
   const country = comp ? (comp.country === "World" ? "International" : comp.country.replace(/-/g, " ")) : "";
-  const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
-  const rel = r ? `<span class="rel-chip rel-${relTier(r.reliability)}" style="font-size:16px">${Math.round(r.reliability)}</span>` : "–";
-  const oppName = (o) => data?.teams?.[o] || teamName(o);
-
-  // upcoming from the matches file
-  const upcoming = state.data.matches.filter((m) => (m.home === id || m.away === id) && !FINISHED.has(m.status) && !LIVE.has(m.status) && m.status !== "CANC").slice(0, 6);
-  const nextRows = upcoming.map((m) => {
-    const home = m.home === id, opp = home ? m.away : m.home;
-    const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
-    const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
-    return `<div class="team-row"><span class="team-row-date">${escapeHtml(fmtShortDate(m.kickoff))}</span>
-      <span class="team-row-opp">${home ? "" : "@ "}${clubLink(opp)} <span class="club-sub" style="display:inline">${escapeHtml(compLabel(m.league))}</span></span>
-      <span class="team-row-res" style="font-weight:600;color:var(--text-muted)">${proj}</span>
-      <span class="team-row-res">${win != null ? win + "% win" : ""}</span></div>`;
-  }).join("");
-
-  // recent results from the club file (newest first)
-  const rows = data?.rows || [];
-  const recent = rows.slice(-12).reverse().map((m, i, arr) => {
-    const idx = rows.length - 1 - i;
-    const before = idx > 0 ? rows[idx - 1].rank : data.start;
-    const move = before != null ? m.rank - before : null;
-    const cls = m.gf > m.ga ? "res-w" : m.gf === m.ga ? "res-d" : "res-l";
-    return `<div class="team-row"><span class="team-row-date">${escapeHtml(fmtShortDate(m.date))}</span>
-      <span class="team-row-opp">${m.home ? "" : "@ "}${clubLink(m.opponent, oppName(m.opponent))}</span>
-      <span class="team-row-res ${cls}">${m.gf}–${m.ga}</span>
-      <span class="rank-move ${move > 0 ? "form-up" : move < 0 ? "form-down" : ""}">${move == null ? "" : (move > 0 ? "+" : "") + move.toFixed(1)}</span></div>`;
-  }).join("");
-
-  // players
-  const squad = (state.players?.list || []).filter((p) => p.team === id).sort((a, b) => b.rank - a.rank);
-  const squadRows = squad.map((p) => `<div class="team-row"><span class="team-row-date">${POS_LABEL[p.position] || p.position || ""}</span>
-    <span class="team-row-opp">${playerLink(p.id, p.name)}</span><span class="team-row-res" style="color:var(--text-muted);font-weight:600">${p.minutes.toLocaleString()}′</span>
-    <span class="team-row-res">${rankChipSmall(p.rank)}</span></div>`).join("");
-
-  const ga = data?.goal_averages;
-  body.innerHTML = `
+  const league = comp ? SHORT_NAMES[r.league] || comp.name : "";
+  // where it stands among every ranked club; the badge colour follows that (top 5% green ...)
+  const place = r ? state.rankings.filter((x) => x.lt > r.lt).length + 1 : null;
+  const share = place ? place / state.rankings.length : 1;
+  const tier = share <= 0.05 ? 4 : share <= 0.2 ? 3 : share <= 0.5 ? 2 : 1;
+  const tab = state.clubTab || "overview";
+  $("#club-body").innerHTML = `
     ${backButton()}
-    <div class="club-head">
+    <div class="pl-hero">
       <img class="club-logo-lg" src="${teamLogo(id)}" alt="" onerror="this.style.visibility='hidden'">
-      <div><h2>${escapeHtml(teamName(id))}</h2><span class="club-sub">${escapeHtml(country)}</span><span class="club-sub">${escapeHtml(comp ? (SHORT_NAMES[r.league] || comp.name) : "")}</span></div>
+      <div class="pl-hero-main">
+        <h2>${escapeHtml(teamName(id))}</h2>
+        ${comp ? `<div class="pl-hero-club">${flagImg(country)}<span>${escapeHtml(country)}<span class="dim-sep"> · </span><span class="pl-league">${escapeHtml(league)}</span></span></div>` : ""}
+        ${r ? `<div class="pl-hero-club pl-hero-nat"><span class="pl-meta">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</span>
+          <span class="dim-sep">·</span><span class="pl-meta">${r.played} matches</span></div>` : ""}
+      </div>
+      ${r ? `<div class="pl-hero-rank rel-${tier}" title="Club rank (LT ALGO): its long-term level, from every match since 2020">
+        <span class="val">${Math.round(r.lt)}</span></div>` : ""}
     </div>
-    ${r ? `<div class="team-stats">
-      ${tile("Played", r.played)}${tile("Now", Math.round(r.current))}
-      ${tile("LT", Math.round(r.lt))}${tile("Form", formHtml(r.form) || "–")}${tile("Reliability", rel)}
-    </div>` : ""}
+    <div class="page-tabs" role="tablist">${CLUB_TABS.map(([k, label]) =>
+      `<button type="button" role="tab" data-ctab="${k}" aria-selected="${k === tab}">${label}</button>`).join("")}</div>
+    <div id="club-tab"></div>`;
+  renderClubTab();
+}
+
+function renderClubTab() {
+  const tab = state.clubTab || "overview";
+  document.querySelectorAll("#club-body [data-ctab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ctab === tab)));
+  $("#club-tab").innerHTML = tab === "matches" ? clubMatchesTab() : tab === "squad" ? clubSquadTab()
+    : tab === "history" ? clubHistoryTab() : clubOverviewTab();
+  if (tab === "overview") drawRankChart();
+}
+
+// ---- Overview: next match beside the predicted XI, rank chart, recent form, key numbers
+function clubOverviewTab() {
+  const { id, data } = state.club;
+  const r = state.rankByTeam.get(id);
+  const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
+  const rows = data?.rows || [];
+  const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) }));
+  const ga = data?.goal_averages;
+  const next = clubNextCard(), pitch = xiPitch(id);
+  return `
+    ${next && pitch ? `<div class="ov-top">${next}${pitch}</div>` : next + pitch}
     <div class="chart-card">
       <div class="chart-head">
         <span class="chart-title">Club rank over time</span>
@@ -1903,22 +1939,206 @@ function renderClubPage() {
       <div class="chart-wrap" id="chart-wrap"></div>
       <div class="chart-summary" id="chart-summary"></div>
     </div>
-    ${ga ? `<div class="club-section"><div class="modal-section">Goals per game, last 12 months</div><div class="goal-grid">
-      ${tile("Home scored", ga[0].toFixed(2))}${tile("Home conceded", ga[1].toFixed(2))}${tile("Away scored", ga[2].toFixed(2))}${tile("Away conceded", ga[3].toFixed(2))}
+    ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · rank change</div>
+      <div class="form-strip">${form.map(({ m, move }) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
+        <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span><span class="form-res">${moveHtml(move)}</span></div>`).join("")}</div></div>` : ""}
+    ${r ? `<div class="club-section"><div class="modal-section">Rank</div><div class="team-stats compact">
+      ${tile("LT", Math.round(r.lt))}${tile("Now", Math.round(r.current))}
+      ${tile("Form", formHtml(r.form) || "–")}${tile("Reliability", `<span class="rel-chip rel-${relTier(r.reliability)}">${Math.round(r.reliability)}</span>`)}
     </div></div>` : ""}
-    ${nextRows ? `<div class="club-section"><div class="modal-section">Next matches</div>${nextRows}</div>` : ""}
-    ${recent ? `<div class="club-section"><div class="modal-section">Recent results · rank change</div>${recent}</div>` : ""}
-    ${xiBlock(id) ? `<div class="club-section">${xiBlock(id)}</div>` : ""}
-    ${squadRows ? `<div class="club-section"><div class="modal-section">Squad player ranks (${squad.length})</div>${squadRows}</div>` : ""}`;
-  $("#chart-ranges").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-range]");
-    if (!b) return;
-    state.club.range = b.dataset.range;
-    document.querySelectorAll("#chart-ranges [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    drawRankChart();
-  });
-  drawRankChart();
+    ${ga ? `<div class="club-section"><div class="modal-section">Goals per game · last 12 months</div><div class="team-stats compact">
+      ${tile("Home", ga[0].toFixed(2), `conceded ${ga[1].toFixed(2)}`)}${tile("Away", ga[2].toFixed(2), `conceded ${ga[3].toFixed(2)}`)}
+    </div></div>` : ""}`;
 }
+
+// The next match: when, who, the model's view and the predicted XI's rating
+function clubNextCard() {
+  const { id } = state.club;
+  const m = clubUpcoming(id)[0];
+  if (!m) return "";
+  const home = m.home === id, opp = home ? m.away : m.home;
+  const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
+  const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
+  const xiRating = home ? m.home_xi : m.away_xi;
+  const missing = home ? m.home_missing : m.away_missing;
+  return `<div class="next-card">
+    <div class="next-top"><span class="next-label">${LIVE.has(m.status) ? "Live now" : "Next match"}</span>
+      <span>${escapeHtml(fmtDay(m.kickoff))} · ${escapeHtml(fmtTime(m.kickoff))}</span></div>
+    <div class="next-opp"><img class="club-logo" src="${teamLogo(opp)}" alt="" onerror="this.style.visibility='hidden'">
+      <span class="next-opp-name">${home ? "v" : "@"} ${clubLink(opp)}</span></div>
+    <div class="next-meta"><span>${escapeHtml(compLabel(m.league))}</span>${win != null ? `<span>${win}% win</span>` : ""}${proj ? `<span>projected ${proj}</span>` : ""}
+      ${xiRating != null ? `<span>XI rating ${Math.round(xiRating)}</span>` : ""}</div>
+    ${missing ? `<div class="next-status warn">${missing} missing</div>` : ""}
+  </div>`;
+}
+
+// The predicted XI on the pitch: each player at his position with his rank. Players on the
+// same line are spread evenly across it (two centre-backs, two left wingers ...).
+function xiPitch(teamId) {
+  const xi = state.players?.nextXi?.[String(teamId)];
+  if (!xi?.players.length) return "";
+  const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
+  const lines = new Map();                       // y -> players on that line
+  for (const pl of xi.players) {
+    const [x, y] = spot[pl[2]] || spot.CM;
+    const key = y >= 85 ? 89 : y >= 70 ? 72 : y >= 55 ? 57 : y >= 38 ? 42 : y >= 20 ? 26 : 12;
+    if (!lines.has(key)) lines.set(key, []);
+    lines.get(key).push({ pl, x });
+  }
+  const spots = [...lines].flatMap(([y, ps]) => {
+    ps.sort((a, b) => a.x - b.x);
+    const xs = ps.map((p) => p.x);
+    // too close together: spread evenly around their middle, 24% apart (less if that won't fit)
+    const clash = xs.some((v, i) => i && v - xs[i - 1] < 22);
+    const gap = Math.min(24, 72 / Math.max(1, ps.length - 1)), width = gap * (ps.length - 1);
+    const from = Math.min(Math.max(xs.reduce((a, v) => a + v, 0) / xs.length - width / 2, 14), 86 - width);
+    return ps.map((p, i) => {
+      const x = clash ? from + i * gap : p.x;
+      const [pid, name, pos, rank] = p.pl;
+      const short = name.includes(" ") ? name.split(" ").slice(-1)[0] : name;
+      return `<a class="pp-spot xi-spot rel-${rank != null ? rankTier(rank) : 1}" href="#/player/${pid}" style="left:${x}%;top:${y}%"
+          title="${escapeHtml(`${name} · ${pos}${rank != null ? ` · rank ${rank.toFixed(1)}` : ""}`)}">
+        <span class="pp-rank">${rank != null ? Math.round(rank) : "–"}</span><span class="pp-name">${escapeHtml(short)}</span></a>`;
+    });
+  }).join("");
+  const avg = xi.players.filter((p) => p[3] != null);
+  return `<div class="club-section pp-section"><div class="pitch pp-pitch">${PITCH_LINES}${spots}</div>
+    <div class="page-note" style="text-align:center">Predicted XI${avg.length ? ` · average rank ${Math.round(avg.reduce((a, p) => a + p[3], 0) / avg.length)}` : ""}</div></div>`;
+}
+
+// ---- Matches: upcoming fixtures, then every result since 2020 (newest first)
+function clubMatchesTab() {
+  const { id, data } = state.club;
+  const upcoming = clubUpcoming(id);
+  const rows = data?.rows || [];
+  const fixture = (m) => {
+    const home = m.home === id, opp = home ? m.away : m.home;
+    const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
+    const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
+    return `<div class="match-row">
+      <div class="mr-date">${escapeHtml(fmtShortDate(m.kickoff))}</div>
+      <div class="mr-opp"><img class="club-logo" src="${teamLogo(opp)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+        <span>${home ? "v" : "@"} ${clubLink(opp)}</span></div>
+      <div class="mr-res" style="color:var(--text-muted)">${proj}</div>
+      <div class="mr-rating">${win != null ? `<b>${win}%</b>` : ""}</div>
+      <div class="mr-sub"><span>${escapeHtml(compLabel(m.league))} · ${escapeHtml(fmtTime(m.kickoff))}</span></div>
+    </div>`;
+  };
+  const LIMIT = state.club.allResults ? Infinity : 40;
+  const thisYear = String(new Date().getFullYear());
+  const results = rows.map((m, i) => ({ m, move: clubMove(rows, i, data.start) })).reverse();
+  const result = ({ m, move }) => `<div class="match-row">
+      <div class="mr-date">${escapeHtml(fmtShortDate(m.date))}${m.date.slice(0, 4) !== thisYear ? ` '${m.date.slice(2, 4)}` : ""}</div>
+      <div class="mr-opp"><img class="club-logo" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+        <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, clubOpp(m.opponent))}</span></div>
+      <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
+      <div class="mr-rating rank-move">${moveHtml(move)}</div>
+      <div class="mr-sub"><span>${escapeHtml(compLabel(m.league))}</span><span class="mr-rank">rank ${m.rank.toFixed(1)}</span></div>
+    </div>`;
+  if (!upcoming.length && !results.length) return `<div class="empty-state">No matches for this club yet.</div>`;
+  return `
+    ${upcoming.length ? `<div class="modal-section" style="margin-top:0">Fixtures</div><div class="match-list">${upcoming.map(fixture).join("")}</div>
+      <div class="page-note">Projected score and win chance from the model.</div>` : ""}
+    ${results.length ? `<div class="club-section"${upcoming.length ? "" : ' style="margin-top:0"'}><div class="modal-section">Results · rank change</div>
+      <div class="match-list" id="club-results">${results.slice(0, LIMIT).map(result).join("")}</div>
+      ${results.length > LIMIT ? `<button type="button" class="show-all" data-club-more>Show all ${results.length.toLocaleString()}</button>` : ""}
+      <div class="page-note">Rank: the club rank after the match; the change is how far that match moved it.</div></div>` : ""}`;
+}
+
+// ---- Squad: the club's ranked players by line, best first
+const SQUAD_LINES = [["Goalkeepers", ["GK"]], ["Defenders", ["CB", "FB"]], ["Midfielders", ["DM", "CM", "AM"]], ["Forwards", ["W", "ST"]]];
+function clubSquadTab() {
+  const { id } = state.club;
+  const squad = (state.players?.list || []).filter((p) => p.team === id).sort((a, b) => b.rank - a.rank);
+  if (!squad.length) return `<div class="empty-state">No ranked players for this club (only the leagues with player stats have them).</div>`;
+  const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
+  const aged = squad.filter((p) => p.age != null);
+  const xi = state.players.nextXi?.[String(id)];
+  const inXi = new Set((xi?.players || []).map(([pid]) => pid));
+  const row = (p) => `<div class="squad-row">
+      <img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="sq-main"><div class="sq-name">${playerLink(p.id, p.name)}${inXi.has(p.id) ? `<span class="sq-xi" title="In the predicted XI">XI</span>` : ""}</div>
+        <div class="sq-sub">${escapeHtml(p.position || "")}${p.age != null ? ` · ${p.age}` : ""}${p.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""} · ${p.minutes.toLocaleString()}′</div></div>
+      <div>${rankChipSmall(p.rank)}</div>
+    </div>`;
+  const placed = new Set();
+  const groups = SQUAD_LINES.map(([name, gs]) => {
+    const ps = squad.filter((p) => gs.includes(GROUP_OF[p.position]));
+    ps.forEach((p) => placed.add(p.id));
+    return [name, ps];
+  });
+  const rest = squad.filter((p) => !placed.has(p.id));
+  if (rest.length) groups.push(["Others", rest]);
+  return `
+    <div class="team-stats compact">
+      ${tile("Players", squad.length)}
+      ${tile("Average rank", Math.round(squad.reduce((a, p) => a + p.rank, 0) / squad.length))}
+      ${tile("Average age", aged.length ? (aged.reduce((a, p) => a + p.age, 0) / aged.length).toFixed(1) : "–")}
+      ${tile("Best", `<span style="font-size:13px">${playerLink(squad[0].id, squad[0].name)}</span>`)}
+    </div>
+    ${groups.filter(([, ps]) => ps.length).map(([name, ps]) => `<div class="club-section"><div class="modal-section">${name} (${ps.length})</div>
+      <div class="match-list">${ps.map(row).join("")}</div></div>`).join("")}
+    <div class="page-note">Current player ranks (0-100), with league minutes over the last 12 months.</div>`;
+}
+
+// ---- History: season by season from the club's matches since 2020. A season runs July to June,
+// or the calendar year for clubs that play through the summer (MLS, Norway ...).
+function clubHistoryTab() {
+  const { data } = state.club;
+  const rows = data?.rows || [];
+  if (!rows.length) return `<div class="empty-state">No match history for this club yet.</div>`;
+  const month = (m) => Number(m.date.slice(5, 7));
+  const summer = rows.filter((m) => month(m) === 6 || month(m) === 7).length;
+  const winter = rows.filter((m) => month(m) === 12 || month(m) === 1).length;
+  const calendar = summer > winter;
+  const seasonOf = (m) => { const y = Number(m.date.slice(0, 4)); return calendar ? y : month(m) >= 7 ? y : y - 1; };
+  const bySeason = new Map();
+  rows.forEach((m, i) => {
+    const y = seasonOf(m);
+    if (!bySeason.has(y)) bySeason.set(y, { start: i > 0 ? rows[i - 1].rank : data.start, list: [] });
+    bySeason.get(y).list.push(m);
+  });
+  const seasons = [...bySeason].reverse().map(([y, { start, list }]) => {
+    const w = list.filter((m) => m.gf > m.ga).length, d = list.filter((m) => m.gf === m.ga).length;
+    const gf = list.reduce((a, m) => a + m.gf, 0), ga = list.reduce((a, m) => a + m.ga, 0);
+    const end = list[list.length - 1].rank;
+    const leagueCount = new Map();
+    for (const m of list) if (state.data.competitions[m.league]?.type !== "Cup") leagueCount.set(m.league, (leagueCount.get(m.league) || 0) + 1);
+    const lg = [...leagueCount].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const peak = Math.max(...list.map((m) => m.rank));
+    return { y, list, w, d, l: list.length - w - d, gf, ga, start, end, peak, lg };
+  });
+  const label = (y) => calendar ? String(y) : seasonShort(y);
+  return `
+    <div class="chart-card"><div class="chart-head"><span class="chart-title">Rank at the end of each season</span></div>
+      <div class="season-bars">${seasons.slice().reverse().map((s) => {
+        const lo = Math.min(...seasons.map((x) => x.end)) - 20, hi = Math.max(...seasons.map((x) => x.end));
+        return `<div class="season-bar" title="${escapeHtml(`${label(s.y)}: ${s.end.toFixed(1)}`)}"><span class="sb-val">${Math.round(s.end)}</span>
+          <div class="sb-fill" style="height:${Math.max(6, 100 * (s.end - lo) / (hi - lo || 1)).toFixed(0)}%"></div><span class="sb-label">${label(s.y)}</span></div>`;
+      }).join("")}</div></div>
+    <div class="club-section"><div class="modal-section">Season by season</div>
+      <table class="season-table"><thead><tr><th>Season</th><th>League · record · goals</th><th class="num">Rank</th><th class="num">Change</th></tr></thead>
+      <tbody>${seasons.map((s) => `<tr>
+        <td class="num" style="text-align:left">${label(s.y)}${s.y === seasons[0].y ? `<div class="dim">so far</div>` : ""}</td>
+        <td>${s.lg ? escapeHtml(SHORT_NAMES[s.lg] || state.data.competitions[s.lg]?.name || "") : `<span class="dim">Cups only</span>`}
+          <div class="dim">${s.list.length} played · ${s.w}W ${s.d}D ${s.l}L · ${s.gf}–${s.ga}</div></td>
+        <td class="num">${Math.round(s.end)}<div class="dim">high ${Math.round(s.peak)}</div></td>
+        <td class="num">${s.start != null ? moveHtml(s.end - s.start) : ""}</td></tr>`).join("")}</tbody></table>
+      <div class="page-note">Rank: the club rank after its last match of the season; change: over the season. All competitions.</div></div>`;
+}
+
+$("#club-body").addEventListener("click", (e) => {
+  if (!state.club) return;
+  const t = e.target.closest("[data-ctab]");
+  if (t) { state.clubTab = t.dataset.ctab; return renderClubTab(); }
+  const range = e.target.closest("#chart-ranges [data-range]");
+  if (range) {
+    state.club.range = range.dataset.range;
+    document.querySelectorAll("#chart-ranges [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === range)));
+    return drawRankChart();
+  }
+  if (e.target.closest("[data-club-more]")) { state.club.allResults = true; renderClubTab(); }
+});
 
 function niceTicks(lo, hi, count) {
   const step0 = (hi - lo) / count;
@@ -1931,6 +2151,7 @@ function niceTicks(lo, hi, count) {
 
 function drawRankChart() {
   const wrap = $("#chart-wrap"), summary = $("#chart-summary");
+  if (!wrap) return;
   const { data, range } = state.club;
   const rows = data?.rows || [];
   if (rows.length < 2) { wrap.innerHTML = `<div class="empty-state" style="padding:20px">Not enough matches yet.</div>`; summary.textContent = ""; return; }
@@ -1999,7 +2220,7 @@ function drawRankChart() {
   hit.addEventListener("pointerdown", show);
   hit.addEventListener("pointerleave", hide);
 }
-window.addEventListener("resize", () => { if (state.club && $("#club-body").offsetParent) drawRankChart(); });
+window.addEventListener("resize", () => { if (state.club && $("#chart-wrap")?.offsetParent) drawRankChart(); });
 
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
