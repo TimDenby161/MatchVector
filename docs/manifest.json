@@ -1,6 +1,6 @@
 {
-  "name": "FootCorner",
-  "short_name": "FootCorner",
+  "name": "The Corner FC",
+  "short_name": "Corner FC",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0d0d0d",
