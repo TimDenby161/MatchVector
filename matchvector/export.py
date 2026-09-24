@@ -338,13 +338,15 @@ def export_players(conn, out_dir=OUT_DIR):
     pos_ranks = defaultdict(dict)        # {player: {role group: rank as that position}}
     for player, g, r in conn.execute("select player_id, role_group, position_rank from player_position_ranks"):
         pos_ranks[player][g] = float(r)
-    # anchored on the position shown for him, so "As <his position>" equals his rank
+    # anchored on the position shown for him, so "As <his position>" equals his rank, and no
+    # position above his rank (De Cuyper, shown as LW, isn't better as a full-back than overall)
     for r in players:
         ranks = pos_ranks.get(r[0])
-        g = positions.group(main_pos.get(r[0], r[2])) if ranks else None
-        if ranks and g in ranks:
-            shift = float(r[3]) - ranks[g]
-            pos_ranks[r[0]] = {k: round(min(max(v + shift, 0), 100), 1) for k, v in ranks.items()}
+        if not ranks:
+            continue
+        g = positions.group(main_pos.get(r[0], r[2]))
+        shift = float(r[3]) - ranks[g] if g in ranks else 0.0
+        pos_ranks[r[0]] = {k: round(min(max(v + shift, 0), float(r[3])), 1) for k, v in ranks.items()}
     lineups = conn.execute(
         """select distinct on (pl.team_id, pl.player_id) pl.team_id, pl.fixture_id, pl.player_id,
                   p.name, pl.position, pl.player_rank
