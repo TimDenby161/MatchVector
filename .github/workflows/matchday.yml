@@ -33,13 +33,13 @@ jobs:
       - name: Pre-kickoff odds, injuries, late paper bets, settle
         run: python -m matchvector matchday
 
-      - name: Commit bets data if it changed
+      - name: Commit bets and injury data if it changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898183+github-actions[bot]@users.noreply.github.com"
-          git add docs/data/bets.json
+          git add docs/data/bets.json docs/data/injuries.json
           if ! git diff --cached --quiet; then
-            git commit -m "Update paper bets"
+            git commit -m "Update paper bets and injuries"
             git pull --rebase
             git push
           fi

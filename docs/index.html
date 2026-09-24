@@ -708,6 +708,11 @@
   .ov-top { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
   .ov-top .pp-section { margin: 0; }
   .ov-top .next-card { margin: 0; padding: 9px 10px; }
+  .ov-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
+  .inj-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inj-reason { font-size: 11px; color: var(--status-critical); }
+  .inj-reason.doubt { color: var(--status-warning); }
   .ov-top .next-top { flex-direction: column; gap: 2px; font-size: 10.5px; }
   .ov-top .next-opp { font-size: 13px; gap: 6px; }
   .ov-top .next-opp .club-logo { width: 18px; height: 18px; }
@@ -1962,6 +1967,7 @@ async function openClubPage(id) {
     club = await fetch(`data/clubs/${id}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
     if (club) { club.rows = rowsToObjects(club.fields, club.matches); clubCache.set(id, club); }
   }
+  state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
   state.club = { id, data: club, range: state.club?.range || "1y" };
   renderClubPage();
   if (!state.playerSeasons) {        // position minutes for the overview pitch: redraw once loaded
@@ -1970,6 +1976,8 @@ async function openClubPage(id) {
     if (state.club?.id === id && (state.clubTab || "overview") === "overview") renderClubTab();
   }
 }
+// The club's injury list (injuries.json): its next match's, else its latest recent one
+const clubInjuries = (id) => state.injuries?.teams?.[String(id)] || null;
 
 const CLUB_TABS = [["overview", "Overview"], ["xi", "Predicted XI"], ["formations", "Formations"], ["matches", "Matches"], ["squad", "Squad"], ["history", "History"]];
 const clubOpp = (o) => state.club?.data?.teams?.[o] || teamName(o);
@@ -2029,9 +2037,9 @@ function clubOverviewTab() {
   const rows = data?.rows || [];
   const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) }));
   const ga = data?.goal_averages;
-  const next = clubNextCard(), pitch = depthPitch(id);
+  const next = clubNextCard() + injuredCard(id), pitch = depthPitch(id);
   return `
-    ${next && pitch ? `<div class="ov-top">${next}${pitch}</div>` : next + pitch}
+    ${next && pitch ? `<div class="ov-top"><div class="ov-side">${next}</div>${pitch}</div>` : next + pitch}
     ${form.length ? `<div class="club-section"><div class="modal-section">Recent form · Elo change</div>
       <div class="form-strip">${form.map(({ m, move }) => `<div class="form-cell" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span><span class="form-res">${moveHtml(move)}</span></div>`).join("")}</div></div>` : ""}
@@ -2042,6 +2050,22 @@ function clubOverviewTab() {
     ${ga ? `<div class="club-section"><div class="modal-section">Goals per game · last 12 months</div><div class="team-stats compact">
       ${tile("Home", ga[0].toFixed(2), `conceded ${ga[1].toFixed(2)}`)}${tile("Away", ga[2].toFixed(2), `conceded ${ga[3].toFixed(2)}`)}
     </div></div>` : ""}`;
+}
+
+// Injured (and suspended or doubtful) players, from the club's injury list: the next match's, or
+// its latest one if the next match's isn't out yet (bans already served are left out of that)
+function injuredCard(id) {
+  const inj = clubInjuries(id);
+  if (!inj?.players.length) return "";
+  const day = inj.kickoff.slice(0, 10);
+  const past = state.club.data?.rows?.find((m) => m.date === day);
+  const when = inj.upcoming ? "Next match" : `Latest list · ${past ? `${past.home ? "v" : "@"} ${escapeHtml(clubOpp(past.opponent))}, ` : ""}${escapeHtml(fmtShortDate(inj.kickoff))}`;
+  return `<div class="next-card inj-card">
+    <div class="next-top"><span class="next-label">Injured Players</span><span>${when}</span></div>
+    ${inj.players.map(([pid, name, type, reason]) => `<div class="inj-row">
+      <span class="inj-name">${playerById(pid) ? playerLink(pid, name) : escapeHtml(name)}</span>
+      <span class="inj-reason${type === "Questionable" ? " doubt" : ""}">${escapeHtml(type === "Questionable" ? `Doubtful${reason ? ` · ${reason}` : ""}` : reason || "Out")}</span></div>`).join("")}
+  </div>`;
 }
 
 // The next match: when, who, the model's view and the predicted XI's rating
@@ -2135,7 +2159,8 @@ function canPlay(p) {
   return new Set([p.position, ...rows.filter(([r, m]) => r !== "SUB" && m >= DEPTH_MINUTES).map(([r]) => r)]);
 }
 function depthPitch(teamId) {
-  const squad = (state.players?.list || []).filter((p) => p.team === teamId);
+  const out = new Set((clubInjuries(teamId)?.players || []).map(([pid]) => pid));   // injured: in their own box
+  const squad = (state.players?.list || []).filter((p) => p.team === teamId && !out.has(p.id));
   if (!squad.length) return "";
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
   // only the positions in the formations the club has used (all of them if none are known)

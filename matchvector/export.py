@@ -3,6 +3,7 @@
 The nightly GitHub Action runs this after the sync and commits docs/data/ if it changed,
 so the site never needs database credentials.
 """
+import html
 import json
 import logging
 import math
@@ -136,6 +137,7 @@ def export_site_data(conn, out_dir=OUT_DIR):
     log.info("Exported %d matches and %d rankings to %s", len(matches), len(rankings), out_dir)
     export_stats(conn, out_dir)
     export_bets(conn, out_dir)
+    export_injuries(conn, out_dir)
     export_players(conn, out_dir)
     export_player_seasons(conn, out_dir)
     export_clubs(conn, out_dir)
@@ -248,6 +250,41 @@ def _summary(bets):
         "avg_clv": round(sum(clvs) / len(clvs), 4) if clvs else None,
         "beat_close": round(sum(1 for c in clvs if c > 0) / len(clvs), 4) if clvs else None,
     }
+
+
+INJURY_LOOKBACK_DAYS = 21
+# reasons that only cover the match they were listed for: left out of a past match's list
+ONE_MATCH_REASONS = {"Red Card", "Yellow Cards", "Suspended", "Coach's decision", "Rest", "International duty",
+                     "Transfer negotiations", "Personal Reasons"}
+
+
+def export_injuries(conn, out_dir=OUT_DIR):
+    """Each club's injury list for the club page (docs/data/injuries.json): out and doubtful
+    players for its next match that has a list, else its latest list from the last
+    INJURY_LOOKBACK_DAYS (API-Football publishes a match's list only shortly before it), less
+    the one-match reasons (a ban already served). Small, so the match-day run refreshes it too."""
+    teams = {}
+    for team, fid, kickoff, upcoming, player, name, kind, reason in conn.execute(
+            """with pick as (
+                   select distinct on (i.team_id) i.team_id, i.fixture_id, f.kickoff,
+                          f.status_short in ('NS', 'TBD') and f.kickoff > now() as upcoming
+                   from injuries i join fixtures f using (fixture_id)
+                   where f.kickoff > now() - %s * interval '1 day'
+                   order by i.team_id, (f.status_short in ('NS', 'TBD') and f.kickoff > now()) desc,
+                            case when f.kickoff > now() then f.kickoff end, f.kickoff desc)
+               select i.team_id, i.fixture_id, pick.kickoff, pick.upcoming, i.player_id, p.name, i.type, i.reason
+               from injuries i join pick using (team_id, fixture_id) left join players p using (player_id)
+               order by i.team_id, i.type, p.name""", [INJURY_LOOKBACK_DAYS]):
+        if not upcoming and reason in ONE_MATCH_REASONS:
+            continue
+        entry = teams.setdefault(str(team), {"fixture": fid, "kickoff": kickoff.isoformat(), "upcoming": upcoming,
+                                             "players": []})
+        entry["players"].append([player, html.unescape(name or ""), kind, reason])
+    (out_dir / "injuries.json").write_text(json.dumps({
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "fields": ["player", "name", "type", "reason"], "teams": teams,
+    }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    log.info("Exported injury lists for %d clubs", len(teams))
 
 
 def export_bets(conn, out_dir=OUT_DIR):

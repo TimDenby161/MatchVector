@@ -78,6 +78,7 @@ def main(argv=None):
             if args.command == "matchday":
                 matchday.run_matchday(api, conn)
                 export.export_bets(conn)
+                export.export_injuries(conn)
                 return 0
             if args.command == "nightly":
                 failures = ingest.sync_nightly(api, conn, args.leagues)
