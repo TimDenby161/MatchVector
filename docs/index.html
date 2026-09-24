@@ -1663,15 +1663,72 @@ function playerRow(p, i, seasons, groups = selectedGroups()) {
         </tr>`;
 }
 
-// Club search: every word has to start a word of the club's name, its league (short or full name)
-// or that league's country, ignoring accents and punctuation ("england league one", "man city",
-// "munchen"). Clubs outside this season's leagues only match by name.
-const foldText = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ");
+// Club search: every word has to start a word of the club's name, its league or that league's
+// country, ignoring accents and punctuation ("england league one", "man city", "munchen").
+// Short forms count too: nicknames and abbreviations below, the initials of longer names
+// ("psg", "qpr"), the site's league labels ("prem", "l1") and flag codes ("ned", "us").
+// Clubs outside this season's leagues only match by name.
+const foldText = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const CLUB_ALIASES = {
+  "Arsenal": "gunners afc", "Aston Villa": "villa avfc", "Bournemouth": "cherries afcb", "Brentford": "bees",
+  "Brighton": "seagulls bhafc brighton and hove albion", "Chelsea": "cfc blues", "Crystal Palace": "palace cpfc eagles",
+  "Everton": "efc toffees", "Fulham": "cottagers ffc", "Ipswich": "tractor boys itfc", "Leeds": "lufc leeds united",
+  "Leicester": "foxes lcfc", "Liverpool": "lfc reds", "Manchester City": "man city mcfc citizens",
+  "Manchester United": "man utd man united mufc red devils", "Newcastle": "toon nufc magpies newcastle united",
+  "Nottingham Forest": "forest nffc", "Southampton": "saints", "Sunderland": "safc black cats",
+  "Tottenham": "spurs thfc tottenham hotspur", "West Ham": "hammers whufc irons west ham united",
+  "Wolves": "wolverhampton wanderers wwfc", "Burnley": "clarets", "Coventry": "sky blues ccfc", "Hull City": "tigers",
+  "Middlesbrough": "boro", "Sheffield Utd": "blades sheffield united sufc", "Sheffield Wednesday": "owls swfc",
+  "West Brom": "wba baggies albion west bromwich", "QPR": "queens park rangers", "Birmingham": "blues bcfc",
+  "Norwich": "canaries ncfc", "Stoke City": "potters", "Derby": "rams", "Millwall": "lions", "Preston": "pne",
+  "Swansea": "swans jacks", "Cardiff": "bluebirds", "Portsmouth": "pompey", "Blackburn": "rovers",
+  "Charlton": "addicks", "Watford": "hornets", "Bristol City": "robins", "Plymouth": "argyle", "Huddersfield": "terriers",
+  "Barcelona": "barca fcb", "Real Madrid": "rmcf los blancos", "Atletico Madrid": "atleti atm", "Athletic Club": "bilbao",
+  "Real Sociedad": "la real", "Real Betis": "betis", "Bayern München": "bayern munich fcb", "Borussia Dortmund": "bvb",
+  "Borussia Mönchengladbach": "gladbach bmg", "Bayer Leverkusen": "b04", "RB Leipzig": "rbl", "Eintracht Frankfurt": "sge",
+  "VfB Stuttgart": "vfb", "Inter": "internazionale inter milan", "AC Milan": "milan acm rossoneri", "Juventus": "juve",
+  "AS Roma": "roma", "Paris Saint Germain": "psg paris sg", "Marseille": "om olympique de marseille",
+  "Lyon": "ol olympique lyonnais", "Sporting CP": "sporting lisbon scp", "Benfica": "slb", "FC Porto": "porto",
+  "PSV Eindhoven": "psv", "Club Brugge KV": "club bruges", "Union St. Gilloise": "usg union saint gilloise",
+  "Galatasaray": "gala cimbom", "Fenerbahçe": "fener", "Beşiktaş": "besiktas bjk", "Olympiakos Piraeus": "olympiacos",
+};
+const LEAGUE_ALIASES = {
+  39: "epl pl prem", 40: "champ efl", 41: "l1 league 1 efl", 42: "l2 league 2 efl", 43: "nl non league",
+  50: "nln non league", 51: "nls non league", 140: "laliga liga", 141: "segunda liga 2", 135: "serie a", 136: "serie b",
+  78: "buli bl", 79: "2 bundesliga zweite", 61: "l1 ligue 1", 62: "l2 ligue 2", 94: "liga portugal", 179: "spfl prem",
+  144: "jpl belgian pro league", 203: "super lig", 253: "mls", 71: "brasileirao", 262: "liga mx",
+};
+const COUNTRY_ALIASES = {
+  "England": "uk gb eng", "Scotland": "uk gb sco", "USA": "us united states america", "Netherlands": "holland ned dutch",
+  "Czech-Republic": "czechia cze", "Turkey": "turkiye tur", "Spain": "esp", "Germany": "ger deu", "Switzerland": "sui",
+  "Croatia": "cro", "Denmark": "den", "Portugal": "por", "Greece": "gre", "Saudi-Arabia": "ksa", "Bosnia": "bih herzegovina",
+};
+const initials = (words) => words.length >= 2 ? words.map((w) => w[0]).join("") : "";
+const foldedAliases = new Map(Object.entries(CLUB_ALIASES).map(([n, a]) => [foldText(n), a]));
+const searchIndex = new Map();
+function clubSearchText(r) {
+  let text = searchIndex.get(r.team);
+  if (text != null) return text;
+  const name = foldText(teamName(r.team));
+  const parts = [name, initials(name.split(" ")), foldedAliases.get(name) || ""];
+  if (/\bunited\b/.test(name)) parts.push("utd");
+  if (/\butd\b/.test(name)) parts.push("united");
+  const c = r.in_league ? state.data.competitions[r.league] : null;
+  if (c) {
+    const league = foldText(c.name), country = countryDisplay(c.country);
+    const label = [...PRIMARY_COMPS, ...TABLE_COMPS].find((x) => x.id === String(r.league))?.label;
+    parts.push(league, initials(league.split(" ")), foldText(SHORT_NAMES[r.league]), foldText(label),
+      LEAGUE_ALIASES[r.league] || "", foldText(country), COUNTRY_ALIASES[c.country] || "",
+      (FLAG_CODES[country] || "").replace("gb-", ""));
+  }
+  text = " " + parts.filter(Boolean).join(" ") + " ";
+  searchIndex.set(r.team, text);
+  return text;
+}
 function clubSearchRows(q) {
-  const words = foldText(q).split(/\s+/).filter(Boolean);
+  const words = foldText(q).split(" ").filter(Boolean);
   return state.rankings.filter((r) => {
-    const c = r.in_league ? state.data.competitions[r.league] : null;
-    const text = " " + foldText(teamName(r.team)) + (c ? ` ${foldText(SHORT_NAMES[r.league])} ${foldText(c.name)} ${foldText(countryDisplay(c.country))}` : "");
+    const text = clubSearchText(r);
     return words.every((w) => text.includes(" " + w));
   });
 }
