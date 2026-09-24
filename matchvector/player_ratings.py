@@ -129,7 +129,9 @@ WEIGHTS = {
     # keepers on match rating alone, corrected for workload (gk_rating, see metrics): goals
     # conceded mostly measures the defence in front of him (Trafford went 41 -> 96 moving from a
     # relegated Premier League side to the Championship's best defence) and save % is mostly luck
-    "GK": {"gk_rating": 1.0},
+    # save % repeats 0.28 for keepers who changed club (some skill); saves per 90 (0.18) is mostly
+    # his defence's workload and goals prevented vs xG (0.05) is noise, so neither is used
+    "GK": {"gk_rating": .75, "save_pct": .25},
     # Centre-backs: no goals or shots on target (season-to-season repeat 0.08 / 0.18 for CBs who
     # changed club: luck and role), and a goal-neutral rating (see _adjusted). Times dribbled past
     # repeats 0.55 across a move (a player trait); team xG conceded while he played 0.29 (mostly
@@ -149,12 +151,14 @@ WEIGHTS = {
            "pass_acc": .09, "blocks": .02, "shots_on": .02, "dribbled_past": -.10, "discipline": -.07},
     "CM": {"rating": .12, "key_passes": .20, "passes": .15, "shots_on": .12, "duels_pct": .10,
            "goals": .08, "tackles_int": .07, "assists": .06, "dribbles_won": .05, "pass_acc": .05},
-    "AM": {"rating": .12, "key_passes": .22, "shots_on": .18, "goals": .12, "dribbles_won": .10,
-           "assists": .08, "passes": .08, "duels_pct": .07, "pass_acc": .03},
-    "W": {"rating": .12, "shots_on": .20, "key_passes": .20, "goals": .15, "dribbles_won": .10,
-          "assists": .08, "passes": .06, "duels_pct": .06, "discipline": -.03},
-    "ST": {"rating": .10, "shots_on": .28, "goals": .25, "key_passes": .10, "duels_pct": .10,
-           "assists": .07, "passes": .05, "dribbles_won": .05},
+    # Goals per 90 repeat 0.44 for strikers who changed club (0.36 wingers, 0.27 attacking mids),
+    # near shots on target, so scoring counts more for attackers; conversion rate (0.17) is luck
+    "AM": {"rating": .11, "key_passes": .21, "shots_on": .17, "goals": .17, "dribbles_won": .10,
+           "assists": .08, "passes": .07, "duels_pct": .06, "pass_acc": .03},
+    "W": {"rating": .11, "shots_on": .19, "key_passes": .18, "goals": .22, "dribbles_won": .10,
+          "assists": .08, "passes": .05, "duels_pct": .05, "discipline": -.02},
+    "ST": {"rating": .10, "goals": .33, "shots_on": .25, "key_passes": .09, "duels_pct": .08,
+           "assists": .06, "passes": .05, "dribbles_won": .04},
 }
 
 
