@@ -3,13 +3,19 @@
 Per match:
     exp_diff    = (home_rank - away_rank + HOME_ADVANTAGE_POINTS) / 100
     act_diff    = home_goals - away_goals, capped at +/- MAX_GOAL_DIFF
-    rank_change = (act_diff - exp_diff) * K_FACTOR
+                  when both sides have xG: GOALS_WEIGHT * that + (1 - GOALS_WEIGHT) * (home xG - away xG)
+    rank_change = (act_diff - exp_diff) * K   (K_FACTOR, or K_FACTOR_XG for matches with xG)
     home_rank  += rank_change;  away_rank -= rank_change
 
 Differences from the sheet (exp_diff = (home*1.09 - away)/100, K = 10, no cap), chosen by
 backtesting 2023-26 predictions: the x1.09 multiplier gave 0.4-1.1 goals of home advantage
 (real: ~0.3 for everyone), and a smaller K plus a goal cap stops one freak result or cup
 thrashing from swinging a rank. Prediction error fell from 1.77 to 1.68 goals per match.
+
+Blending in xG (backtest of the full prediction pipeline, 2024/25 onwards): log loss 1.00046 ->
+0.99834 overall and 1.00446 -> 0.99993 on matches with xG; better in each season from 2023/24.
+30% goals / 70% xG beat xG alone (0.99889) and goals alone. xG differences are far less noisy
+than goal differences, so those matches take a bigger K. Capping the xG difference made it worse.
 
 Every team starts from a Starting Rank: leagues.starting_rank of the first
 league (type 'League') it plays in, else that of the first competition it
@@ -41,6 +47,8 @@ log = logging.getLogger(__name__)
 HOME_ADVANTAGE_POINTS = 30   # = 0.3 goals, the same for every team
 K_FACTOR = 6
 MAX_GOAL_DIFF = 3            # a 7-0 counts as 3-0
+GOALS_WEIGHT = 0.3           # in matches with xG: 30% capped goal difference, 70% xG difference
+K_FACTOR_XG = 10             # K for matches with xG (less noisy, so ranks can move further)
 DEFAULT_STARTING_RANK = 650
 
 # Reliability score tuning
@@ -58,6 +66,17 @@ class Match:
     away: object
     home_goals: int
     away_goals: int
+    home_xg: float = None
+    away_xg: float = None
+
+
+def actual_diff(m):
+    """(result used for the rank change, K): capped goal difference, blended with the xG
+    difference when both sides have xG."""
+    capped = max(-MAX_GOAL_DIFF, min(MAX_GOAL_DIFF, m.home_goals - m.away_goals))
+    if m.home_xg is None or m.away_xg is None:
+        return capped, K_FACTOR
+    return GOALS_WEIGHT * capped + (1 - GOALS_WEIGHT) * (m.home_xg - m.away_xg), K_FACTOR_XG
 
 
 def run(matches, starting_rank):
@@ -74,8 +93,8 @@ def run(matches, starting_rank):
         h, a = current[m.home], current[m.away]
         exp_diff = (h - a + HOME_ADVANTAGE_POINTS) / 100
         act_diff = m.home_goals - m.away_goals
-        capped = max(-MAX_GOAL_DIFF, min(MAX_GOAL_DIFF, act_diff))
-        change = (capped - exp_diff) * K_FACTOR
+        result, k = actual_diff(m)
+        change = (result - exp_diff) * k
         current[m.home], current[m.away] = h + change, a - change
         history[m.home].append(current[m.home])
         history[m.away].append(current[m.away])
@@ -149,11 +168,16 @@ def update_rankings(conn):
 
 def _replay(conn, fixtures, starting_rank):
     conn.execute("truncate team_rank_history")
-    matches = [Match(f[0], f[4], f[5], f[6], f[7]) for f in fixtures]
+    xg = {(fid, is_home): float(v) for fid, is_home, v in conn.execute(
+        "select fixture_id, is_home, expected_goals from fixture_team_stats "
+        "where expected_goals is not null")}
+    matches = [Match(f[0], f[4], f[5], f[6], f[7], xg.get((f[0], True)), xg.get((f[0], False)))
+               for f in fixtures]
     kickoffs = {f[0]: f[1] for f in fixtures}
     rows, _ = run(matches, starting_rank)
 
     match_no = {}
+    recent = {}    # last 101 history values per team, for LT ALGO going into each match
 
     buf = io.StringIO()
     for m, h, a, exp_diff, act_diff, change in rows:
@@ -162,14 +186,20 @@ def _replay(conn, fixtures, starting_rank):
             (m.away, m.home, False, a, -change),
         ):
             match_no[team] = match_no.get(team, 0) + 1
+            hist = recent.setdefault(team, [before])
+            s = summarise(hist)
+            lt_before = s["lt_algo"] if s else before
+            hist.append(before + delta)
+            del hist[:-101]            # LT ALGO only looks at the last 100 values
             buf.write("\t".join(map(str, (
                 m.key, team, match_no[team], kickoffs[m.key].isoformat(),
                 "t" if is_home else "f", opp, before, before + delta, exp_diff, act_diff, delta,
+                lt_before,
             ))) + "\n")
     with conn.cursor() as cur:
         with cur.copy("copy team_rank_history (fixture_id, team_id, match_no, kickoff, is_home, "
-                      "opponent_id, rank_before, rank_after, exp_diff, act_diff, rank_change) "
-                      "from stdin") as cp:
+                      "opponent_id, rank_before, rank_after, exp_diff, act_diff, rank_change, "
+                      "lt_before) from stdin") as cp:
             cp.write(buf.getvalue())
     log.info("Rankings: replayed %d fixtures", len(rows))
 

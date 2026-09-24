@@ -15,7 +15,7 @@ Player rank
                (few minutes -> pulled toward a below-average level, so they're marked down)
     stat pct = percentile of the score among regulars (900+ window minutes) in the same position
                across all matches (50 = an average regular in that position)
-    club     = club rank at the time, averaged over the window's matches by minutes (the clubs he
+    club     = club LT ALGO going into each match, averaged over the window's matches by minutes (the clubs he
                actually played those matches for, as good as they were then)
     rank     = stat pct x sqrt(min(club / CLUB_RANK_MAX, 1)): even a perfect player is capped by his
                club's level, e.g. at a 966 club he can reach at most 100 x sqrt(966 / 1200) = 90
@@ -339,8 +339,8 @@ def _season_ranks(conn, norms):
             f"""select fp.player_id, f.season, fp.team_id, fp.role, fp.position, sum(fp.minutes),
                        sum(case when fp.rating is not null then {RATING} * fp.minutes else 0 end),
                        sum(case when fp.rating is not null then fp.minutes else 0 end), {cols},
-                       sum(h.rank_before * fp.minutes),
-                       sum(case when h.rank_before is not null then fp.minutes else 0 end)
+                       sum(h.lt_before * fp.minutes),
+                       sum(case when h.lt_before is not null then fp.minutes else 0 end)
                 from fixture_players fp join fixtures f using (fixture_id) {OFFSET_JOIN}
                 left join team_rank_history h on h.fixture_id = fp.fixture_id and h.team_id = fp.team_id
                 where f.status_short in ('FT', 'AET', 'PEN')
@@ -464,7 +464,7 @@ def _season_ranks(conn, norms):
              {a: round(v, 3) for a, v in sorted(curve.items())})
     # Gaps inside a player's span of seasons: estimate from the age curve (minutes = 0)
     team_level = {(t, y): (float(r), n) for t, y, r, n in conn.execute(
-        """select h.team_id, f.season, avg(h.rank_before), count(*) from team_rank_history h
+        """select h.team_id, f.season, avg(h.lt_before), count(*) from team_rank_history h
            join fixtures f using (fixture_id) group by 1, 2""")}
     careers = defaultdict(list)
     for p, y, t in conn.execute("select player_id, season, team_id from player_career_teams where season > 0"):
@@ -543,7 +543,7 @@ def _season_ranks(conn, norms):
 def compute_player_ratings(conn):
     norms = _norms(conn)
     team_rank = {(f, t): r for f, t, r in conn.execute(
-        "select fixture_id, team_id, rank_before from team_rank_history")}
+        "select fixture_id, team_id, lt_before from team_rank_history")}
     ranks = list(team_rank.values())
     tr_mean = sum(ranks) / len(ranks)
 

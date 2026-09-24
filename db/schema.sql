@@ -374,6 +374,8 @@ create table if not exists team_rank_history (
     primary key (fixture_id, team_id)
 );
 create index if not exists team_rank_history_team_idx on team_rank_history (team_id, match_no);
+-- LT ALGO going into the match: the club level used by the player ranks
+alter table team_rank_history add column if not exists lt_before double precision;
 
 create table if not exists team_rankings (
     team_id        int primary key,

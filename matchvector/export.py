@@ -361,7 +361,7 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
     ids = [r[0] for r in conn.execute(
         "select player_id from players where current_rank is not null and rank_minutes >= 450")]
     per_club = """sum(fp.minutes),
-                  sum(h.rank_before * fp.minutes) / nullif(sum(fp.minutes) filter (where h.rank_before is not null), 0),
+                  sum(h.lt_before * fp.minutes) / nullif(sum(fp.minutes) filter (where h.lt_before is not null), 0),
                   sum(fp.rating * fp.minutes) filter (where fp.rating is not null)
                     / nullif(sum(fp.minutes) filter (where fp.rating is not null), 0),
                   sum(fp.goals), sum(fp.assists)"""
@@ -382,7 +382,7 @@ def export_player_seasons(conn, out_dir=OUT_DIR):
             where fp.n <= 20 group by 1, 3""", [ids, list(config.FINISHED_STATUSES)]).fetchall()
     # gap seasons (no minutes here): the club he was at and its level that season
     gaps = conn.execute(
-        """select r.player_id, r.season, r.team_id, 0, avg(h.rank_before), null, 0, 0
+        """select r.player_id, r.season, r.team_id, 0, avg(h.lt_before), null, 0, 0
            from player_season_ranks r
            left join fixtures f on f.season = r.season and r.team_id in (f.home_team_id, f.away_team_id)
            left join team_rank_history h on h.fixture_id = f.fixture_id and h.team_id = r.team_id
