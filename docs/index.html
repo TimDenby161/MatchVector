@@ -2624,8 +2624,8 @@ function tipStake() {
   const bal = parseFloat($("#tips-balance").value), frac = parseFloat($("#tips-pct").value);
   if (!(bal > 0)) return { stake: betStake(), bal: null };
   const raw = bal * frac;
-  // whole pounds from £5, else to the 10p
-  return { stake: raw >= 5 ? Math.round(raw) : Math.max(0.1, Math.round(raw * 10) / 10), bal };
+  // to the 50p from £5, else to the 10p
+  return { stake: raw >= 5 ? Math.round(raw * 2) / 2 : Math.max(0.1, Math.round(raw * 10) / 10), bal };
 }
 {
   const bal = readStored("balance"), frac = readStored("stakePct");
