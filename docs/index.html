@@ -3069,38 +3069,40 @@ function depthPitch(teamId) {
   // there, including players since gone or now injured)
   const usual = (roles) => st?.games ? Math.round(Object.values(st.players || {})
     .reduce((a, byRole) => a + roles.reduce((b, r) => b + (byRole[r] || 0), 0), 0) / st.games) : 0;
-  // The share each available player is expected to start in this box. Starts by a player now
-  // injured or gone go to whoever has started there since his last start in it (Konsa for
-  // Mosquera, Timber for White); if he started the latest match, to the others in proportion to
-  // their starts, then the best ranked with room. Nobody over 100%. Only players who really play
-  // there take them (his main position or 180+ starting minutes there in a year), so a one-off
-  // cup start somewhere new (Zubimendi at right-back in a rotated League Cup side) doesn't.
+  // The share each available player is expected to start in this box: his own starts there this
+  // season, plus a cut of the starts of players now injured or gone. That missing share goes to
+  // the players who have started there since the last of them did (Konsa for Mosquera, Timber
+  // for White), then to the others by their starts, then the best ranked with room; nobody over
+  // 100%. Only players who really play there take it (his main position or 180+ starting minutes
+  // there in a year): a one-off cup start somewhere new (Zubimendi at right-back in a rotated
+  // League Cup side) keeps its own few % but doesn't inherit anyone's.
   const xi = st?.xi || [];
   const projected = (roles, n, ps) => {
     const actual = new Map(ps.map(({ p }) => [p.id, startPct(p, roles) || 0]));
+    const share = new Map(actual);
+    let left = n * 100 - [...actual.values()].reduce((a, v) => a + v, 0);
+    if (left <= 0.5) return { share, changed: false };
     let last = -1;
     xi.forEach((m, k) => {
       for (let i = 0; i < m.length; i += 2) if (roles.includes(m[i + 1]) && (out.has(m[i]) || !atClub.has(m[i]))) last = k;
     });
-    if (last < 0 || !n) return { share: actual, changed: false };
+    if (last < 0) return { share, changed: false };   // short only because the formation varies
     const regular = ps.filter(({ p }) => roles.some((x) => canPlay(p).has(x)));
     const pool = regular.length ? regular : ps;
-    const share = new Map(ps.map(({ p }) => [p.id, 0]));
-    const takes = new Set(pool.map(({ p }) => p.id));
-    const since = xi.slice(last + 1);
-    for (const m of since) for (let i = 0; i < m.length; i += 2)
-      if (roles.includes(m[i + 1]) && takes.has(m[i])) share.set(m[i], share.get(m[i]) + 100 / since.length);
-    if (!since.length) actual.forEach((v, id) => { if (takes.has(id)) share.set(id, v); });
     const room = (id) => 100 - share.get(id);
-    let left = n * 100 - [...share.values()].reduce((a, v) => a + v, 0);
-    const weights = pool.map(({ p }) => [p.id, actual.get(p.id)]).filter(([, w]) => w > 0);
-    const wsum = weights.reduce((a, [, w]) => a + w, 0);
-    if (left > 0.5 && wsum) {
+    const hand = (weights) => {                          // share out what's left by these weights
+      const wsum = weights.reduce((a, [, w]) => a + w, 0);
+      if (left <= 0.5 || !wsum) return;
       const give = left;
       for (const [id, w] of weights) { const g = Math.min(room(id), give * w / wsum); share.set(id, share.get(id) + g); left -= g; }
-    }
+    };
+    const since = new Map();
+    for (const m of xi.slice(last + 1)) for (let i = 0; i < m.length; i += 2)
+      if (roles.includes(m[i + 1])) since.set(m[i], (since.get(m[i]) || 0) + 1);
+    hand(pool.map(({ p }) => [p.id, since.get(p.id) || 0]));
+    hand(pool.map(({ p }) => [p.id, actual.get(p.id)]));
     for (const { p } of pool) { if (left <= 0.5) break; const g = Math.min(room(p.id), left); share.set(p.id, share.get(p.id) + g); left -= g; }
-    return { share, changed: true, actual };
+    return { share, changed: true };
   };
   const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
     const n = usual(roles);
