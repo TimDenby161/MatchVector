@@ -448,7 +448,19 @@
   .bet-tag.warn { border-color: #f08a5a; color: #f08a5a; }
   .pos { color: var(--status-good); font-weight: 700; } .neg { color: var(--status-critical); font-weight: 700; }
   .bets-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-  #tips-body { max-width: 640px; margin: 0 auto; }
+  #tips-top, #tips-bank, #tips-body { max-width: 640px; margin: 0 auto; }
+  .tips-bank { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 12px; align-items: end; margin-bottom: 10px !important;
+    padding: 12px 14px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; }
+  .tb-field, .tb-out { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .tb-input { display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 6px; padding: 0 8px; background: var(--page, var(--surface-1)); }
+  .tb-input:focus-within { border-color: var(--series-blue); }
+  .tb-input span { color: var(--text-muted); font-weight: 600; }
+  .tips-bank input, .tips-bank select { font: inherit; font-size: 14px; color: var(--text-primary); min-width: 0; height: 32px; }
+  .tips-bank input { border: 0; background: none; outline: none; width: 100%; font-variant-numeric: tabular-nums; }
+  .tips-bank select { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); padding: 0 6px; }
+  .tb-stake { font-size: 22px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tb-total { font-size: 11px; color: var(--text-secondary); }
+  @media (max-width: 520px) { .tips-bank { grid-template-columns: 1fr 1fr; } .tb-out { grid-column: 1 / -1; } }
   .tip-day { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 800; margin: 22px 0 2px;
     cursor: pointer; user-select: none; }
   .tip-day:first-of-type { margin-top: 6px; }
@@ -1076,6 +1088,14 @@
   </section>
 
   <section class="panel" data-tab="tips">
+    <div id="tips-top"></div>
+    <div id="tips-bank" class="tips-bank">
+      <label class="tb-field"><span class="stats-label">Your balance</span>
+        <span class="tb-input"><span>£</span><input id="tips-balance" type="number" inputmode="decimal" min="0" step="1" placeholder="1000"></span></label>
+      <label class="tb-field"><span class="stats-label">Stake per tip</span>
+        <select id="tips-pct"><option value="0.005">0.5% of balance</option><option value="0.01" selected>1% of balance</option><option value="0.02">2% of balance</option></select></label>
+      <div class="tb-out"><span class="stats-label">Stake each</span><span id="tips-stake" class="tb-stake">–</span><span id="tips-total" class="tb-total"></span></div>
+    </div>
     <div id="tips-body"></div>
   </section>
 
@@ -2419,7 +2439,7 @@ function renderStats() {
       </div>
       <div class="stats-note">Bookmakers' chances are the average across bookmakers with their margin removed, from the last odds before kickoff. Only matches with odds are compared${mk.n < 1000 ? "; the sample is still small, so treat this as a rough guide" : ""}.</div>
     </div>${marketsTable(s.markets)}` : `<div class="stats-card" style="margin-bottom:12px"><div class="stats-label">Model vs bookmakers</div><div class="stats-note">No finished matches with bookmaker odds in this range yet. Odds are collected nightly for upcoming matches.</div></div>`;
-  body.innerHTML = marketBlock + `
+  body.innerHTML = `
     <div class="stats-grid">
       ${card("Matches", s.n.toLocaleString(), liveNote)}
       ${card("Right result", pct(s.correct), `Picking the home team every time: ${pct(s.home_rate)}`)}
@@ -2427,7 +2447,7 @@ function renderStats() {
       ${card("Goal error", s.goal_error.toFixed(2), "Average goals off per team")}
       ${card("Log loss", s.log_loss.toFixed(3), "Lower is better. Guessing ≈ 1.07")}
       ${card("Brier score", s.brier.toFixed(3), "Lower is better. Guessing ≈ 0.64")}
-    </div>
+    </div>` + marketBlock + `
     <div class="stats-card">
       <div class="stats-label">Calibration: when it says X%, how often did it happen?</div>
       <table class="calib-table">
@@ -2596,13 +2616,38 @@ function tipsOverview() {
   return `<div class="tips-overview">${tiles.join("")}</div>`;
 }
 
+// The stake box: the viewer's balance and stake size, kept in this browser only. With no
+// balance entered the tips show the site's flat stake.
+const readStored = (k) => { try { return localStorage.getItem(`fc.${k}`); } catch { return null; } };
+const writeStored = (k, v) => { try { v == null ? localStorage.removeItem(`fc.${k}`) : localStorage.setItem(`fc.${k}`, v); } catch { /* not stored */ } };
+function tipStake() {
+  const bal = parseFloat($("#tips-balance").value), frac = parseFloat($("#tips-pct").value);
+  if (!(bal > 0)) return { stake: betStake(), bal: null };
+  const raw = bal * frac;
+  // whole pounds from £5, else to the 10p
+  return { stake: raw >= 5 ? Math.round(raw) : Math.max(0.1, Math.round(raw * 10) / 10), bal };
+}
+{
+  const bal = readStored("balance"), frac = readStored("stakePct");
+  if (bal) $("#tips-balance").value = bal;
+  if (frac && [...$("#tips-pct").options].some((o) => o.value === frac)) $("#tips-pct").value = frac;
+  const changed = () => { writeStored("balance", $("#tips-balance").value || null); writeStored("stakePct", $("#tips-pct").value); if (state.bets) renderTips(); };
+  $("#tips-balance").addEventListener("input", changed);
+  $("#tips-pct").addEventListener("change", changed);
+}
+
 function renderTips() {
   const body = $("#tips-body");
-  const stake = betStake(), book = state.bets?.rules?.bookmaker || "Bet365";
+  const { stake, bal } = tipStake(), book = state.bets?.rules?.bookmaker || "Bet365";
   const now = Date.now();
   const tips = onePerPick(state.bets?.bets || []).filter((b) => !b.result && new Date(b.kickoff) > now)
     .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff) || a.fixture - b.fixture || a.id - b.id);
-  const intro = tipsOverview() + `<div class="stats-note" style="margin-bottom:10px">${gbp(stake)} on each at ${escapeHtml(book)}, at these odds or better. More tips can appear up to 75 minutes before kickoff, after late team news.</div>`;
+  $("#tips-top").innerHTML = tipsOverview();
+  $("#tips-stake").textContent = gbp(stake);
+  const total = stake * tips.length;
+  $("#tips-total").textContent = !tips.length ? "No open tips"
+    : `${tips.length} open tip${tips.length === 1 ? "" : "s"}: ${gbp(total)} in total${bal ? ` (${Math.round(100 * total / bal)}% of balance)` : ". Enter your balance to size it"}`;
+  const intro = `<div class="stats-note" style="margin-bottom:10px">${gbp(stake)} on each at ${escapeHtml(book)}, at these odds or better. More tips can appear up to 75 minutes before kickoff, after late team news.</div>`;
   if (!tips.length) { body.innerHTML = intro + `<div class="empty-state">No tips right now. New ones are added the night before and shortly before kickoff.</div>`; return; }
   // by day, then competition (the Matches tab's order), then match; days and competitions fold
   const days = [];
@@ -2632,7 +2677,7 @@ function renderTips() {
     const comps = group(d.tips, "league");
     const ordered = [...comps.keys()].sort((a, b) => orderOf(a) - orderOf(b) || compLabel(a).localeCompare(compLabel(b)));
     const dk = `d:${d.day}`;
-    return `<div class="tip-day" data-fold="${escapeHtml(dk)}">${caret(dk)}<span>${escapeHtml(d.day)}</span><span class="comp-group-count">${d.tips.length}</span></div>
+    return `<div class="tip-day" data-fold="${escapeHtml(dk)}">${caret(dk)}<span>${escapeHtml(d.day)}</span><span class="comp-group-count">${d.tips.length} · ${gbp(stake * d.tips.length)}</span></div>
       <div class="tip-day-body${folded.has(dk) ? " collapsed" : ""}">${ordered.map((id) => {
         const ck = `c:${d.day}|${id}`;
         return `<div class="comp-group${folded.has(ck) ? " collapsed" : ""}">
