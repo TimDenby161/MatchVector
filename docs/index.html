@@ -3124,19 +3124,8 @@ function clubXiTab() {
   const xi = predictedXi(id);
   if (!xi) return `<div class="empty-state">No predicted XI for this club (it needs player data from its recent matches).</div>`;
   const next = clubNextCard(), pitch = xiPitch(xi);
-  // keeper first, then back to front, right to left as on the pitch
-  const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
-  const at = (c) => spot[c.b.label === "CM" ? "CM" : c.b.label] || [50, 50];
-  const ordered = [...xi].sort((x, y) => Math.round(at(y)[1] / 10) - Math.round(at(x)[1] / 10) || at(y)[0] - at(x)[0]);
-  const row = ({ b, p, rank, chance, mins }) => `<div class="squad-row">
-      <img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-      <div class="sq-main"><div class="sq-name">${playerLink(p.id, p.name)}</div>
-        <div class="sq-sub">${escapeHtml(b.label)} · <span class="sc-${startTier(chance)}">${Math.round(chance)}% to start</span> · ${mins}′${p.age != null ? ` · ${p.age}` : ""}${p.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""}</div></div>
-      <div>${rankChipSmall(rank)}</div>
-    </div>`;
   return `
-    ${next ? `<div class="ov-top"><div class="ov-side">${next}</div>${pitch}</div>` : pitch}
-    <div class="club-section"><div class="modal-section">The XI</div><div class="match-list">${ordered.map(row).join("")}</div></div>`;
+    ${next ? `<div class="ov-top"><div class="ov-side">${next}</div>${pitch}</div>` : pitch}`;
 }
 // The predicted XI on a pitch as the overview's: keeper at the top, attacking down, left-sided
 // positions on the right. Players in the same position are spread along its line.
