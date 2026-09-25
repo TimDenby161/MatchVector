@@ -757,6 +757,7 @@
     background: rgba(255,255,255,0.12); color: #f2f2f0; line-height: 1.2; }
   .dp-spot.empty { justify-self: center; min-width: 38px; text-align: center; padding: 5px 7px; background: transparent;
     border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
+  .dp-total { float: right; font-size: 10px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
   .dp-pos { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: rgba(255,255,255,0.7); }
   .dp-spot.empty .dp-pos { color: inherit; }
   a.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px 22px; align-items: baseline; gap: 4px;
@@ -3228,7 +3229,7 @@ function depthPitch(teamId) {
   };
   const benchRate = (p) => minsMatches ? ((mins[String(p.id)] || [])[3] || 0) / minsMatches : 0;
   const mainBox = (p) => (shown.find((b) => b.roles.includes(p.position)) || {}).label;
-  const xMins = new Map();                             // "box:player" -> minutes
+  const xMins = new Map(), boxMins = new Map();       // "box:player" -> minutes; box -> total
   for (const { label: r, n, ps } of shown) {
     let starting = 0;
     for (const { p } of ps) {
@@ -3237,22 +3238,37 @@ function depthPitch(teamId) {
       starting += m;
     }
     const demand = Math.max(0, n * 90 - starting);
-    let bench = ps.filter(({ p }) => mainBox(p) === r && benchRate(p) > 0);
-    if (!bench.length) bench = ps.filter(({ p }) => benchRate(p) > 0);
-    const rsum = bench.reduce((t, { p }) => t + benchRate(p), 0);
-    for (const { p } of bench) xMins.set(`${r}:${p.id}`, xMins.get(`${r}:${p.id}`) + demand * benchRate(p) / rsum);
+    // off the bench: by minutes per match as a sub, times his chance of not starting (a certain
+    // starter can't also come on); nobody who comes on there: the box's players by that chance
+    const notStarting = ({ p }) => (100 - startChance.get(`${r}:${p.id}`)) / 100;
+    const subW = ({ p }) => benchRate(p) * notStarting({ p });
+    let bench = ps.filter((d) => mainBox(d.p) === r && subW(d) > 0);
+    if (!bench.length) bench = ps.filter((d) => subW(d) > 0);
+    const weight = bench.length ? subW : notStarting;
+    if (!bench.length) bench = ps;
+    const wsum = bench.reduce((t, d) => t + weight(d), 0);
+    if (wsum) for (const d of bench) xMins.set(`${r}:${d.p.id}`, xMins.get(`${r}:${d.p.id}`) + demand * weight(d) / wsum);
+    // whole minutes that add up to the box's total (largest remainders get the spare minutes)
+    const raw = ps.map(({ p }) => [p.id, Math.min(90, xMins.get(`${r}:${p.id}`) || 0)]);
+    const total = Math.round(raw.reduce((t, [, v]) => t + v, 0));
+    const whole = new Map(raw.map(([id, v]) => [id, Math.floor(v)]));
+    let spare = total - [...whole.values()].reduce((t, v) => t + v, 0);
+    for (const [id] of [...raw].sort((x, y) => (y[1] % 1) - (x[1] % 1))) { if (spare <= 0) break; whole.set(id, whole.get(id) + 1); spare--; }
+    for (const [id, v] of whole) xMins.set(`${r}:${id}`, v);
+    boxMins.set(r, total);
   }
   const spots = shown.map(({ label: r, roles, row, col, n, ps, proj }) => {
     const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
     const cell = `grid-row:${row};grid-column:${col}`;
     if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${label}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
-      <span class="dp-pos" title="${n ? `${n} usually start${n === 1 ? "s" : ""} here this season` : ""}">${label}</span>
+      <span class="dp-pos" title="${n ? `${n} usually start${n === 1 ? "s" : ""} here this season` : ""}">${label}<span class="dp-total" title="Expected minutes in this position, all its players">${
+        boxMins.get(r) || 0}′</span></span>
       ${ps.map(({ p, rank }) => {
         const share = startChance.get(`${r}:${p.id}`) || 0;
         const got = Math.round(share), had = startPct(p, roles) || 0;
         const pct = got || null;
-        const xmin = Math.round(Math.min(90, xMins.get(`${r}:${p.id}`) || 0));
+        const xmin = xMins.get(`${r}:${p.id}`) || 0;
         const tip = `${p.name}: ${got}% chance of starting at ${r} in the next match${nextLabel ? ` (${nextLabel})` : ""}`
           + ` (started ${had}% of this season's matches there${proj.changed ? "; allowing for the injured or departed" : ""})`
           + ((picks.get(r) || []).includes(p.id) ? " · in the best XI by rating" : "")
