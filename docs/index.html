@@ -2985,7 +2985,6 @@ function renderClubTab() {
   document.querySelectorAll("#club-body [data-ctab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ctab === tab)));
   $("#club-tab").innerHTML = tab === "xi" ? clubXiTab() : tab === "formations" ? clubFormationsTab() : tab === "matches" ? clubMatchesTab() : tab === "squad" ? clubSquadTab()
     : tab === "history" ? clubHistoryTab() : clubOverviewTab();
-  if (tab === "history") drawRankChart();
 }
 
 // ---- Overview: injured and suspended players and recent form (newest first) beside the squad by
@@ -3685,7 +3684,7 @@ function formationSvg(f) {
   </svg>`;
 }
 
-// ---- History: the rank chart, then season by season from the club's matches since 2020. A season runs July to June,
+// ---- History: season by season from the club's matches since 2020. A season runs July to June,
 // or the calendar year for clubs that play through the summer (MLS, Norway ...).
 function clubHistoryTab() {
   const { data } = state.club;
@@ -3709,16 +3708,7 @@ function clubHistoryTab() {
     return { y, list, w, d, l: list.length - w - d, gf, ga, start, end, peak, lg };
   });
   return `
-    <div class="chart-card">
-      <div class="chart-head">
-        <span class="chart-title">Elo rating over time</span>
-        <div class="chart-ranges" id="chart-ranges">${CHART_RANGES.map(([k, label]) =>
-          `<button type="button" class="filter-chip" data-range="${k}" aria-pressed="${state.club.range === k}">${label}</button>`).join("")}</div>
-      </div>
-      <div class="chart-wrap" id="chart-wrap"></div>
-      <div class="chart-summary" id="chart-summary"></div>
-    </div>
-    <div class="chart-card" style="margin-top:12px"><div class="chart-head"><span class="chart-title">Elo at the end of each season</span></div>
+    <div class="chart-card"><div class="chart-head"><span class="chart-title">Elo at the end of each season</span></div>
       <div class="season-bars">${seasons.slice().reverse().map((s) => {
         const lo = Math.min(...seasons.map((x) => x.end)) - 20, hi = Math.max(...seasons.map((x) => x.end));
         return `<div class="season-bar" title="${escapeHtml(`${label(s.y)}: ${s.end.toFixed(1)}`)}"><span class="sb-val">${Math.round(s.end)}</span>
