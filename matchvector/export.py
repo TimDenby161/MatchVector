@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import config, positions
 from .cache import WEEK, cached_rows, rank_history
-from .betting import BOOKMAKER, CAUTIOUS_RULE, is_cautious
+from .betting import BOOKMAKER, CAUTIOUS_RULE, MAX_ODDS, MIN_EDGE, is_cautious
 from .predictions import GOAL_LINES, UPCOMING_STATUSES, goal_lines
 
 log = logging.getLogger(__name__)
@@ -473,7 +473,7 @@ def export_bets(conn, out_dir=OUT_DIR):
     # No generation timestamp, so the file only changes (and gets committed) when bets do
     (out_dir / "bets.json").write_text(json.dumps({
         "last_change": last.isoformat() if last else None,
-        "rules": {"min_edge": 0.03, "max_odds": 10.0, "bookmaker": "Bet365", "stake": 1, "stake_gbp": BET_STAKE_GBP, "bank": BET_BANK_GBP, "cautious_rule": CAUTIOUS_RULE},
+        "rules": {"min_edge": MIN_EDGE, "max_odds": MAX_ODDS, "bookmaker": "Bet365", "stake": 1, "stake_gbp": BET_STAKE_GBP, "bank": BET_BANK_GBP, "cautious_rule": CAUTIOUS_RULE},
         "summary": summary, "bets": bets,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d paper bets", len(bets))

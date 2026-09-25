@@ -27,7 +27,7 @@ from .predictions import goal_lines
 
 log = logging.getLogger(__name__)
 
-MIN_EDGE = 0.03
+MIN_EDGE = 0.10             # raised from 0.03 on 25 September 2026: 3% gave ~50 bets on a Saturday
 MAX_ODDS = 10.0
 BOOKMAKER = 8              # Bet365 (bookmakers.bookmaker_id): the one bookmaker bets are taken with
 BIG5 = {39, 140, 135, 78, 61}
