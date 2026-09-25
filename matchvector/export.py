@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config, positions
-from .cache import WEEK, cached_rows, rank_history
+from .cache import WEEK, cached_rows, finished_fixtures, rank_history
 from .betting import BOOKMAKER, CAUTIOUS_RULE, MAX_ODDS, MIN_EDGE, is_cautious
 from .predictions import GOAL_LINES, UPCOMING_STATUSES, goal_lines
 
@@ -915,6 +915,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
                where fp.team_id = any(%s) and f.kickoff > now() - interval '365 days' group by 1, 2""", [list(active)]):
         if team in starts:
             starts[team].setdefault("mins", {})[str(player)] = [n_start, m_start, n_sub, m_sub]
+    match_xg = {r[0]: (r[9], r[10]) for r in finished_fixtures(conn)}   # fixture -> (home xG, away xG)
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn, *_ in club_rows:
@@ -922,7 +923,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
         gf, ga = (hg, ag) if is_home else (ag, hg)
         rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 2 if fid in neutral else 1 if is_home else 0,
                      gf, ga, league,
-                     formations.get((fid, team)), _r(att, 1), _r(dfn, 1), xi_lines.get((fid, team))])
+                     formations.get((fid, team)), _r(att, 1), _r(dfn, 1), xi_lines.get((fid, team)),
+                     *[_r(x, 2) for x in (match_xg.get(fid, (None, None)) if is_home else match_xg.get(fid, (None, None))[::-1])]])
     stats = {t: [_r(x) for x in rest] for t, *rest in conn.execute(
         "select team_id, hg, ha, ag, aa from team_rankings where team_id = any(%s)", [list(active)])}
     club_dir = out_dir / "clubs"
@@ -936,7 +938,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
         opponents = {m[2] for m in h["matches"]}
         payload = {"id": team, "start": h["start"],
                    "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation",
-                              "attack", "defence", "xi_lines"],
+                              "attack", "defence", "xi_lines", "xgf", "xga"],
                    "matches": h["matches"], "goal_averages": stats.get(team), "coach": coaches.get(team),
                    "colors": colors.get(team), "starts": starts.get(team),
                    "teams": {o: names.get(o) for o in opponents}}

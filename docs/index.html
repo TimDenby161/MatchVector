@@ -859,7 +859,7 @@
   .ov-top .pp-section { margin: 0; }
   .ov-top .next-card { margin: 0; padding: 9px 10px; }
   .ov-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  .form-row { display: grid; grid-template-columns: 38px 16px 14px minmax(0, 1fr); align-items: center; gap: 8px;
+  .form-row { display: grid; grid-template-columns: 38px 16px 12px minmax(0, 1fr) 44px; align-items: center; gap: 6px;
     margin-top: 6px; font-size: 12px; }
   .form-row .rel-chip { min-width: 0; padding: 2px 0; font-size: 11px; }
   .form-row .club-logo { width: 16px; height: 16px; }
@@ -873,6 +873,9 @@
   .next5-hdr { margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
   .next5-hdr span { text-align: right; }
   .form-ha { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; }
+  .form-xg { font-size: 11px; text-align: center; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .form-hdr { margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+  .form-hdr span:nth-child(4) { text-align: center; text-transform: none; } .form-hdr span:nth-child(5) { text-align: right; }
   .form-move { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
   .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
   .inj-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
@@ -2941,11 +2944,13 @@ function clubOverviewTab() {
   const rows = data?.rows || [];
   const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) })).reverse();
   const formCard = form.length ? `<div class="next-card form-card">
-      <div class="next-top"><span class="next-label">Recent form</span><span>Elo change</span></div>
+      <div class="next-top"><span class="next-label">Recent form</span></div>
+      <div class="form-row form-hdr"><span></span><span></span><span></span><span>xG</span><span>Elo</span></div>
       ${form.map(({ m, move }) => `<div class="form-row" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)}${m.home === 2 ? " (neutral)" : ""} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span>
         <img class="club-logo" src="${teamLogo(m.opponent)}" alt="${escapeHtml(clubOpp(m.opponent))}" loading="lazy" onerror="this.style.visibility='hidden'">
         <span class="form-ha">${m.home === 2 ? "N" : m.home ? "H" : "A"}</span>
+        <span class="form-xg" title="Expected goals: for – against">${m.xgf != null && m.xga != null ? `${m.xgf.toFixed(1)}–${m.xga.toFixed(1)}` : "–"}</span>
         <span class="form-move">${moveHtml(move)}</span></div>`).join("")}
     </div>` : "";
   const upcoming = clubUpcoming(id).slice(0, 5);
