@@ -3164,30 +3164,71 @@ function depthPitch(teamId) {
     return { share, changed: all.changed || grp.changed };
   };
   const nextLabel = nextMatch ? SHORT_NAMES[nextMatch.league] || state.data.competitions[nextMatch.league]?.name || "" : "";
-  const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
-    const n = usual(roles);
-    const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
+  // Each box: who's in it, how many usually start there and the expected shares from history
+  const shown = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map((b) => {
+    const n = usual(b.roles);
     // who can play there, and anyone who has started there this season
-    const ps = squad.filter((p) => roles.some((x) => canPlay(p).has(x)) || startPct(p, roles))
-      .map((p) => ({ p, rank: Math.max(...roles.map((x) => rankAt(p, x) ?? -1)) }))
+    const ps = squad.filter((p) => b.roles.some((x) => canPlay(p).has(x)) || startPct(p, b.roles))
+      .map((p) => ({ p, rank: Math.max(...b.roles.map((x) => rankAt(p, x) ?? -1)) }))
       .map((d) => ({ ...d, rank: d.rank >= 0 ? d.rank : d.p.rank }))
-      .sort((a, b) => b.rank - a.rank);
+      .sort((x, y) => y.rank - x.rank);
+    return { ...b, n, ps, proj: ps.length ? projected(b.roles, n, ps) : null };
+  });
+  // The best XI by rating: the usual number of starters in each box, filled from the highest
+  // player-and-position ranks down, one position per player (Odegaard's 92 in midfield puts him
+  // there and Eze at AM; a tie goes to where he plays). A pick only counts if he's rated above
+  // one of the box's usual starters (by expected share) or is one himself, so the pull only ever
+  // moves minutes to a better player. The expected share is ABILITY_PULL of that and the rest
+  // history, so a better player the manager hasn't picked yet still gets some minutes (Hincapie
+  // over Calafiori at LB).
+  const ABILITY_PULL = 0.2;
+  const picks = new Map(), placed = new Set(), filled = new Map();   // box -> [player ids]
+  const histOf = (b, id) => b.proj?.share.get(id) || 0;
+  shown.flatMap((b) => b.n ? b.ps.map((d) => ({ b, ...d, h: histOf(b, d.p.id) })) : [])
+    .sort((x, y) => y.rank - x.rank || y.h - x.h).forEach(({ b, p }) => {
+      if (placed.has(p.id) || (filled.get(b.label) || 0) >= b.n) return;
+      placed.add(p.id);
+      filled.set(b.label, (filled.get(b.label) || 0) + 1);
+      if (!picks.has(b.label)) picks.set(b.label, []);
+      picks.get(b.label).push(p.id);
+    });
+  // per box: 100 for each counting pick, the rest of its starts shared by history among the others
+  const ability = new Map();
+  for (const b of shown) {
+    if (!b.n || !b.ps.length) continue;
+    const starters = [...b.ps].sort((x, y) => histOf(b, y.p.id) - histOf(b, x.p.id)).slice(0, b.n);
+    const worst = Math.min(...starters.map((d) => d.rank));
+    const rankOf = new Map(b.ps.map((d) => [d.p.id, d.rank]));
+    const count = (picks.get(b.label) || []).filter((id) => starters.some((d) => d.p.id === id) || rankOf.get(id) > worst);
+    const rest = b.ps.filter((d) => !count.includes(d.p.id));
+    const restHist = rest.reduce((a, d) => a + histOf(b, d.p.id), 0);
+    const left = Math.max(0, b.n - count.length) * 100;
+    const m = new Map(b.ps.map((d) => [d.p.id, count.includes(d.p.id) ? 100
+      : restHist ? left * histOf(b, d.p.id) / restHist : 0]));
+    ability.set(b.label, m);
+  }
+  const spots = shown.map(({ label: r, roles, row, col, n, ps, proj }) => {
+    const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
     const cell = `grid-row:${row};grid-column:${col}`;
     if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${label}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
       <span class="dp-pos" title="${n ? `${n} usually start${n === 1 ? "s" : ""} here this season` : ""}">${label}</span>
-      ${(() => { const proj = projected(roles, n, ps); return ps.map(({ p, rank }) => {
-        const got = Math.round(proj.share.get(p.id) || 0), had = startPct(p, roles) || 0;
+      ${ps.map(({ p, rank }) => {
+        const hist = proj.share.get(p.id) || 0;
+        const ab = ability.get(r);
+        const share = ab ? (1 - ABILITY_PULL) * hist + ABILITY_PULL * Math.min(100, ab.get(p.id) || 0) : hist;
+        const got = Math.round(share), had = startPct(p, roles) || 0;
         const pct = got || null;
         // expected minutes next match in this position: for now just his start share x 90
-        const xmin = pct != null ? Math.round((proj.share.get(p.id) || 0) * 0.9) : null;
+        const xmin = pct != null ? Math.round(share * 0.9) : null;
         const tip = `${p.name}: started ${had}% of this season's matches at ${r}`
           + (got !== had ? `; expected ${got}% in the next match${nextLabel ? ` (${nextLabel})` : ""}${proj.changed ? ", with the injured or departed out" : ""}` : "")
+          + ((picks.get(r) || []).includes(p.id) ? " · in the best XI by rating" : "")
           + ` · xMins ${xmin || 0}`;
         return `<a class="dp-row" href="#/player/${p.id}" title="${escapeHtml(tip)}">
           <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
           <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin${xmin ? "" : " zero"}">${xmin || 0}′</span></a>`;
-      }).join(""); })()}
+      }).join("")}
     </div>`;
   }).join("");
   return `<div class="club-section pp-section"><div class="pitch dp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div></div>`;
