@@ -453,6 +453,13 @@
   #tips-body .comp-group { margin-top: 10px; }
   .tip-pick + .tip-pick { border-top: 1px solid var(--gridline); padding-top: 5px; margin-top: 5px; }
   .tip-pick { align-items: center; }
+  .tips-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .tips-overview .stats-card { border-left: 4px solid var(--border); }
+  .tips-overview .good { border-left-color: var(--status-good); }
+  .tips-overview .good .stats-value { color: var(--status-good); }
+  .tips-overview .bad { border-left-color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 7%, var(--surface-1)); }
+  .tips-overview .bad .stats-value { color: var(--status-critical); }
+  .tips-overview .stats-value { font-size: 20px; }
   .tip-picks { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 4px; }
   .tip-left { display: flex; align-items: center; min-width: 0; }
   .tip-left .sel { display: block; line-height: 1.25; }
@@ -2475,13 +2482,38 @@ function tipLabel(b) {
   if (b.market === "BTTS") return b.selection === "Yes" ? "Both teams to score: Yes" : "Both teams to score: No";
   return `${b.selection} goals`;
 }
+// How the model has done against the bookmakers, red where it's behind: accuracy on every market
+// with odds (Stats, last 12 months), and the settled tips' closing-price record and profit
+function tipsOverview() {
+  const tile = (ok, label, value, note) =>
+    `<div class="stats-card ${ok == null ? "" : ok ? "good" : "bad"}"><div class="stats-label">${label}</div><div class="stats-value">${value}</div><div class="stats-note">${note}</div></div>`;
+  const tiles = [];
+  const st = state.stats?.ranges?.["365d"]?.all;
+  const ms = Object.values(st?.markets || {});
+  if (ms.length) {
+    const better = ms.filter((m) => m.model_ll < m.close_ll).length;
+    const n = Math.max(...ms.map((m) => m.n));
+    tiles.push(tile(better > ms.length / 2, "Accuracy v bookies",
+      better === ms.length ? `Better in all ${ms.length}` : better ? `Better in ${better} of ${ms.length}` : `Worse in all ${ms.length}`,
+      `markets, on ${n.toLocaleString()} matches with odds${st.market ? ` · right result: model ${pct(st.market.model_correct)}, bookies ${pct(st.market.market_correct)}` : ""}`));
+  }
+  const settled = onePerPick(state.bets?.bets || []).filter((b) => b.result === "win" || b.result === "loss");
+  const s = summarise(settled);
+  tiles.push(tile(s.beat == null ? null : s.beat >= 0.5, "Beat the closing price",
+    s.beat == null ? "–" : pct(s.beat), s.beat == null ? "Needs settled tips" : `of ${s.settled} settled tips. Over 50% is the sign of a real edge`));
+  tiles.push(tile(s.settled ? s.profit >= 0 : null, "Tips profit",
+    s.settled ? `${s.profit >= 0 ? "+" : "−"}${gbp(Math.abs(s.profit))}` : "–",
+    s.settled ? `${s.wins} of ${s.settled} won · return ${(s.roi > 0 ? "+" : "") + (100 * s.roi).toFixed(1)}%` : "No settled tips yet"));
+  return `<div class="tips-overview">${tiles.join("")}</div>`;
+}
+
 function renderTips() {
   const body = $("#tips-body");
   const stake = betStake(), book = state.bets?.rules?.bookmaker || "Bet365";
   const now = Date.now();
   const tips = onePerPick(state.bets?.bets || []).filter((b) => !b.result && new Date(b.kickoff) > now)
     .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff) || a.fixture - b.fixture || a.id - b.id);
-  const intro = `<div class="stats-note" style="margin-bottom:10px">${gbp(stake)} on each at ${escapeHtml(book)}, at these odds or better. More tips can appear up to 75 minutes before kickoff, after late team news.</div>`;
+  const intro = tipsOverview() + `<div class="stats-note" style="margin-bottom:10px">${gbp(stake)} on each at ${escapeHtml(book)}, at these odds or better. More tips can appear up to 75 minutes before kickoff, after late team news.</div>`;
   if (!tips.length) { body.innerHTML = intro + `<div class="empty-state">No tips right now. New ones are added the night before and shortly before kickoff.</div>`; return; }
   // by day, then competition (the Matches tab's order), then match; days and competitions fold
   const days = [];
