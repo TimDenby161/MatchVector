@@ -3579,6 +3579,8 @@ function clubMatchesTab() {
   const LIMIT = state.club.allResults ? Infinity : 40;
   const thisYear = String(new Date().getFullYear());
   const results = rows.map((m, i) => ({ m, move: clubMove(rows, i, data.start) })).reverse();
+  const view = (state.club.matchView === "results" || (!upcoming.length && results.length)) ? "results" : "fixtures";
+  state.club.matchView = view;
   const result = ({ m, move }) => {
     const home = m.home !== 0;
     const card = {
@@ -3603,13 +3605,17 @@ function clubMatchesTab() {
     </div>`;
   };
   if (!upcoming.length && !results.length) return `<div class="empty-state">No matches for this club yet.</div>`;
+  const toggle = `<div class="stats-controls" style="margin-top:0">
+    <div class="seg">${[["fixtures", `Fixtures${upcoming.length ? ` (${upcoming.length})` : ""}`], ["results", `Results${results.length ? ` (${results.length})` : ""}`]].map(([k, label]) =>
+      `<button type="button" data-club-match-view="${k}" aria-pressed="${k === view}">${escapeHtml(label)}</button>`).join("")}</div>
+  </div>`;
   return `
-    ${upcoming.length ? `<div class="modal-section" style="margin-top:0">Fixtures</div><div class="card-list">${upcoming.map(fixture).join("")}</div>
-      <div class="page-note">Projected score and win chance from the model.</div>` : ""}
-    ${results.length ? `<div class="club-section"${upcoming.length ? "" : ' style="margin-top:0"'}><div class="modal-section">Results · Elo change</div>
-      <div class="card-list" id="club-results">${results.slice(0, LIMIT).map(result).join("")}</div>
+    ${toggle}
+    ${view === "fixtures" ? (upcoming.length ? `<div class="card-list">${upcoming.map(fixture).join("")}</div>
+      <div class="page-note">Projected score and win chance from the model.</div>` : `<div class="empty-state">No upcoming fixtures for this club.</div>`) : ""}
+    ${view === "results" ? (results.length ? `<div class="card-list" id="club-results">${results.slice(0, LIMIT).map(result).join("")}</div>
       ${results.length > LIMIT ? `<button type="button" class="show-all" data-club-more>Show all ${results.length.toLocaleString()}</button>` : ""}
-      <div class="page-note">Elo: the club's Elo rating after the match; the change is how far that match moved it.</div></div>` : ""}`;
+      <div class="page-note">Elo: the club's Elo rating after the match; the change is how far that match moved it.</div>` : `<div class="empty-state">No results for this club yet.</div>`) : ""}`;
 }
 
 
@@ -3742,6 +3748,8 @@ $("#club-body").addEventListener("click", (e) => {
     document.querySelectorAll("#chart-ranges [data-range]").forEach((x) => x.setAttribute("aria-pressed", String(x === range)));
     return drawRankChart();
   }
+  const matchView = e.target.closest("[data-club-match-view]");
+  if (matchView) { state.club.matchView = matchView.dataset.clubMatchView; state.club.allResults = false; return renderClubTab(); }
   if (e.target.closest("[data-club-more]")) { state.club.allResults = true; renderClubTab(); }
 });
 
