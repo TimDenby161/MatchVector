@@ -870,7 +870,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
     starting XI average rank by line [GK, DEF, MID, FWD] (null outside the line-up leagues)]; plus 12-month home/away goal
     averages, the current manager and the home kit colours. starts: this season's matches with a
     line-up (games), each player's starts by position in them, each match's starters (xi) and
-    competition (xi_league), and per player his starts, substitute appearances and minutes in
+    competition (xi_league) and formation (xi_formation), and per player his starts, substitute appearances and minutes in
     them over the last 12 months (mins, out of mins_matches).
     Loaded only when the page opens.
     """
@@ -914,9 +914,9 @@ def export_clubs(conn, out_dir=OUT_DIR):
             starts[team]["players"].setdefault(str(player), {})[role] = n
     # the same starts match by match (oldest first): [[player, role, player, role, ...], ...], so the
     # club page can see who has started in a position since an injured player last did
-    xis, xi_league = defaultdict(dict), defaultdict(dict)
-    for team, fid, league, player, role in conn.execute(current + """
-            select fp.team_id, fp.fixture_id, f.league_id, fp.player_id, fp.role from (select fixture_id, team_id, player_id, role from fixture_players where started and role is not null
+    xis, xi_league, xi_formation = defaultdict(dict), defaultdict(dict), defaultdict(dict)
+    for team, fid, league, formation, player, role in conn.execute(current + """
+            select fp.team_id, fp.fixture_id, f.league_id, ff.formation, fp.player_id, fp.role from (select fixture_id, team_id, player_id, role from fixture_players where started and role is not null
                   union all select fixture_id, team_id, player_id, role from fixture_lineups where role is not null) fp join fixtures f using (fixture_id)
             join cur on cur.team_id = fp.team_id and cur.s = f.season
             join fixture_formations ff on ff.fixture_id = fp.fixture_id and ff.team_id = fp.team_id
@@ -924,10 +924,12 @@ def export_clubs(conn, out_dir=OUT_DIR):
             order by f.kickoff, fp.fixture_id""", args):
         xis[team].setdefault(fid, []).extend([player, role])
         xi_league[team][fid] = league
+        xi_formation[team][fid] = formation
     for team, by_fixture in xis.items():
         if team in starts:
             starts[team]["xi"] = list(by_fixture.values())
             starts[team]["xi_league"] = list(xi_league[team].values())   # each match's competition
+            starts[team]["xi_formation"] = list(xi_formation[team].values())   # and formation
     # minutes over the last 12 months (league matches with player data): the club's matches, and
     # per player [starts, minutes in them, substitute appearances, minutes in those], for the
     # club page's expected minutes (how long a starter usually lasts, who comes off the bench)

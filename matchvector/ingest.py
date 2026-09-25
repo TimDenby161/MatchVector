@@ -541,6 +541,12 @@ def sync_lineup_coaches(api, conn, batch_size=20):
         conn.commit()
 
 
+def _person(name):
+    """(surname, first initial) of a coach's name, so "P. Cook" and "Paul Cook" match."""
+    parts = (name or "").lower().replace(".", " ").split()
+    return (parts[-1], parts[0][0]) if parts else None
+
+
 def sync_coaches(api, conn):
     """Current manager of every club in this season's per-match player leagues (/coachs?team=,
     one call per club) into team_coaches, with the date he started there (for the club page's
@@ -576,7 +582,12 @@ def sync_coaches(api, conn):
             continue
         mine = [s for s in spells if s[1].get("id") == lineup_coach.get(team)]
         start, c = max(mine or spells, key=lambda s: s[0])
-        before = next((k for k, coach in lineups.get(team, []) if coach != c.get("id")), None)
+        # the API can list one man twice at a club (Chesterfield's Paul Cook as "P. Cook" since
+        # 2022 and "Paul Cook" since 2025): his spell starts at the first of them
+        same = [s for s in spells if _person(s[1].get("name")) == _person(c.get("name"))]
+        start = min((s[0] for s in same if s[0]), default=start)
+        ids = {s[1].get("id") for s in same}
+        before = next((k for k, coach in lineups.get(team, []) if coach not in ids), None)
         if mine and before is not None:
             took_over = (before + timedelta(days=1)).date().isoformat()
             start = max(start, took_over) if start else took_over

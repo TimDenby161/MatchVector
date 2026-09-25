@@ -3220,7 +3220,13 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   if (!squad.length) return null;
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
   // only the positions in the formations the club has used (all of them if none are known)
-  const used = new Set(clubFormationRows(data).filter((m) => m.formation).flatMap((m) => formationRoles(m.formation)));
+  // a formation used only once this season (a one-off 4-4-2) is left out of the predictions,
+  // unless no formation has been used more than once
+  const formationCount = new Map();
+  for (const m of clubFormationRows(data)) if (m.formation) formationCount.set(m.formation, (formationCount.get(m.formation) || 0) + 1);
+  const oneOff = new Set([...formationCount.values()].some((n) => n > 1)
+    ? [...formationCount].filter(([, n]) => n === 1).map(([f]) => f) : []);
+  const used = new Set([...formationCount.keys()].filter((f) => !oneOff.has(f)).flatMap(formationRoles));
   // one box per position; DM and CM share one central-midfield box over both lines (the line-up
   // grid can't tell a holder from a box-to-box midfielder in a pair), his best rank of the two
   const boxes = PITCH_SPOTS.filter(([r]) => r !== "DM" && r !== "CM").map(([r, x, y]) =>
@@ -3249,7 +3255,10 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   // Over this season's matches of that kind, blended with all its matches in proportion
   // k : 1 (k = matches of that kind), so a rotated League Cup side lifts the reserves for the next
   // cup tie and a league match leans on the league regulars.
-  const xi = st?.xi || [], xiLeague = st?.xi_league || [];
+  const xiFormation = st?.xi_formation || [];
+  const keep = (_, k) => !oneOff.has(xiFormation[k]);
+  const xi = (st?.xi || []).filter(keep), xiLeague = (st?.xi_league || []).filter(keep);
+  const seasonXi = xi;                                  // projectedIn's own xi is one kind of competition
   const compGroup = (lg) => {
     const c = state.data.competitions[lg];
     return !c ? "cup" : c.type === "League" ? "league" : c.country === "World" ? "europe" : "cup";
@@ -3287,7 +3296,7 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
       for (let i = 0; i < m.length; i += 2) if (m[i] === id && roles.includes(m[i + 1]) === inBox) t++;
       return t;
     }, 0);
-    const season = st?.xi || [];                         // a start there in any competition counts
+    const season = seasonXi;                             // a start there in any competition counts
     const regular = ps.filter(({ p }) => roles.some((x) => canPlay(p).has(x))
       || (startsIn(p.id, true, season) && startsIn(p.id, false, season) <= season.length / 2));
     const pool = regular.length ? regular : ps;
