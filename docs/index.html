@@ -3239,10 +3239,12 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   // The share each available player is expected to start in this box: his own starts there this
   // season, plus a cut of the starts of players now injured or gone. That missing share goes to
   // the players who have started there since the last of them did (Konsa for Mosquera, Timber
-  // for White), then to the others by their starts, then the best ranked with room; nobody over
-  // 100%. Only players who really play there take it (his main position or 180+ starting minutes
-  // there in a year): a one-off cup start somewhere new (Zubimendi at right-back in a rotated
-  // League Cup side) keeps its own few % but doesn't inherit anyone's.
+  // for White), then to the others by rank (each 3 points lower halves it), each start there
+  // this season adding one more share, so a better player is likelier (Randall over Duffy for
+  // Koroma); nobody over 100%. Only players who really play there take it (his main position,
+  // 180+ starting minutes there in a year, or a start there this season by a player who isn't a
+  // regular starter elsewhere): a one-off cup start somewhere new (Zubimendi at right-back in a
+  // rotated League Cup side) keeps its own few % but doesn't inherit anyone's.
   // It's worked out for the next match's kind of competition: league, European or domestic cup.
   // Over this season's matches of that kind, blended with all its matches in proportion
   // k : 1 (k = matches of that kind), so a rotated League Cup side lifts the reserves for the next
@@ -3281,7 +3283,13 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
       for (let i = 0; i < m.length; i += 2) if (roles.includes(m[i + 1]) && (out.has(m[i]) || !atClub.has(m[i]))) last = k;
     });
     if (last < 0) return { share, changed: false };   // short only because the formation varies
-    const regular = ps.filter(({ p }) => roles.some((x) => canPlay(p).has(x)));
+    const startsIn = (id, inBox, matches = xi) => matches.reduce((t, m) => {
+      for (let i = 0; i < m.length; i += 2) if (m[i] === id && roles.includes(m[i + 1]) === inBox) t++;
+      return t;
+    }, 0);
+    const season = st?.xi || [];                         // a start there in any competition counts
+    const regular = ps.filter(({ p }) => roles.some((x) => canPlay(p).has(x))
+      || (startsIn(p.id, true, season) && startsIn(p.id, false, season) <= season.length / 2));
     const pool = regular.length ? regular : ps;
     const room = (id) => 100 - share.get(id);
     const hand = (weights) => {                          // share out what's left by these weights
@@ -3294,7 +3302,8 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
     for (const m of xi.slice(last + 1)) for (let i = 0; i < m.length; i += 2)
       if (roles.includes(m[i + 1])) since.set(m[i], (since.get(m[i]) || 0) + 1);
     hand(pool.map(({ p }) => [p.id, since.get(p.id) || 0]));
-    hand(pool.map(({ p }) => [p.id, actual.get(p.id)]));
+    const top = Math.max(...pool.map((d) => d.rank));
+    hand(pool.map(({ p, rank }) => [p.id, 2 ** ((rank - top) / 3) * (1 + startsIn(p.id, true))]));
     for (const { p } of pool) { if (left <= 0.5) break; const g = Math.min(room(p.id), left); share.set(p.id, share.get(p.id) + g); left -= g; }
     return { share, changed: true };
   };
