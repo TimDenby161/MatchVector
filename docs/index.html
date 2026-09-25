@@ -453,8 +453,7 @@
   #tips-body .comp-group { margin-top: 10px; }
   .tip-pick + .tip-pick { border-top: 1px solid var(--gridline); padding-top: 5px; margin-top: 5px; }
   .tip-pick { align-items: center; }
-  .tip-score { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-  #tips-body .match-probs { margin: 6px 0 8px; }
+  .tip-picks { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 4px; }
   .tip-left { display: flex; align-items: center; min-width: 0; }
   .tip-left .sel { display: block; line-height: 1.25; }
   .tip-badges { display: inline-flex; gap: 3px; margin-right: 8px; vertical-align: -4px; flex: none; }
@@ -1600,24 +1599,17 @@ function statusTag(m) {
   return "";
 }
 
-function matchCard(m) {
+// A match row's top: time and round, both clubs with badge and rank, and the score (or the
+// projected goals and likely score); right = what goes top right. Shared by Matches and Tips.
+function matchHead(m, right = "") {
   const finished = FINISHED.has(m.status) && m.hg != null;
-  const rated = finished && m.rating;
-  const cls = rated ? ` rated acc-${m.rating}` : "";
-  const badge = rated
-    ? `<span class="rating-badge badge-${m.rating}" title="${m.rating}/5 ${RATING_LABELS[m.rating]}">${m.rating}/5</span>` : "";
-  const detail = rated ? `<div class="rating-detail" hidden>
-      <div class="factor"><span class="factor-name">Overall</span><span class="factor-score">${m.rating}/5 ${RATING_LABELS[m.rating]}</span></div>
-      ${FACTORS.map(([k, label, w]) => `<div class="factor"><span class="factor-name">${label} <span class="factor-weight">${w}</span></span><span class="factor-score">${m[k]}/5</span></div>`).join("")}
-    </div>` : "";
   const round = m.round ? ` · ${escapeHtml(m.round.replace(/^Regular Season - /, "Round "))}` : "";
   const hRank = finished ? m.home_rank : state.rankByTeam.get(m.home)?.current ?? m.home_rank;
   const aRank = finished ? m.away_rank : state.rankByTeam.get(m.away)?.current ?? m.away_rank;
   return `
-    <div class="match-card${cls}">
       <div class="match-card-top">
         <span class="match-meta">${escapeHtml(fmtTime(m.kickoff))}${round}</span>
-        <span class="card-top-right">${badge}${statusTag(m)}</span>
+        <span class="card-top-right">${right}</span>
       </div>
       <div class="match-teams">
         <div class="match-team">
@@ -1629,7 +1621,22 @@ function matchCard(m) {
           <div class="mt-name"><img class="club-logo" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away)}</div>
           ${rankChip(aRank)}
         </div>
-      </div>
+      </div>`;
+}
+
+function matchCard(m) {
+  const finished = FINISHED.has(m.status) && m.hg != null;
+  const rated = finished && m.rating;
+  const cls = rated ? ` rated acc-${m.rating}` : "";
+  const badge = rated
+    ? `<span class="rating-badge badge-${m.rating}" title="${m.rating}/5 ${RATING_LABELS[m.rating]}">${m.rating}/5</span>` : "";
+  const detail = rated ? `<div class="rating-detail" hidden>
+      <div class="factor"><span class="factor-name">Overall</span><span class="factor-score">${m.rating}/5 ${RATING_LABELS[m.rating]}</span></div>
+      ${FACTORS.map(([k, label, w]) => `<div class="factor"><span class="factor-name">${label} <span class="factor-weight">${w}</span></span><span class="factor-score">${m[k]}/5</span></div>`).join("")}
+    </div>` : "";
+  return `
+    <div class="match-card${cls}">
+      ${matchHead(m, `${badge}${statusTag(m)}`)}
       ${probBar(m)}
       ${m.p_over25 != null && !(FINISHED.has(m.status) && m.hg != null) ? `<div class="market-line">Over 2.5 goals <b>${Math.round(m.p_over25 * 100)}%</b> · Both teams score <b>${Math.round(m.p_btts * 100)}%</b></div>` : ""}
       ${m.home_xi != null && m.away_xi != null ? `<div class="market-line" title="Average player rank (0-100) of the ${FINISHED.has(m.status) ? "starting" : "predicted"} XI; brackets = average of each side's last 5 starting XIs${m.home_lines && m.away_lines ? `. By line: ${escapeHtml(teamName(m.home))} ${linesText(m.home_lines)}; ${escapeHtml(teamName(m.away))} ${linesText(m.away_lines)}` : ""}">${FINISHED.has(m.status) ? "Starting" : "Predicted"} XI rating <b>${Math.round(m.home_xi)}</b>${m.home_recent_xi != null ? ` (${Math.round(m.home_recent_xi)})` : ""} · <b>${Math.round(m.away_xi)}</b>${m.away_recent_xi != null ? ` (${Math.round(m.away_recent_xi)})` : ""}</div>` : ""}
@@ -2487,20 +2494,19 @@ function renderTips() {
   const folded = state.tipsCollapsed;
   const caret = (key) => `<span class="comp-group-caret">${folded.has(key) ? "&#9656;" : "&#9662;"}</span>`;
   const group = (list, key) => { const m = new Map(); for (const b of list) { const k = b[key]; if (!m.has(k)) m.set(k, []); m.get(k).push(b); } return m; };
-  // the model's projection for the match, as on the Matches tab: likely score and win chances
+  // the top of each card is the match as on the Matches tab (badges, ranks, projected and likely
+  // score, win chances), then the tips
   const byId = new Map(state.data.matches.map((m) => [m.id, m]));
-  const projection = (fid) => {
-    const m = byId.get(fid);
-    if (!m || m.p_home == null) return "";
-    return `${m.likely ? `<div class="tip-score">Predicted score <b>${escapeHtml(m.likely)}</b></div>` : ""}${probBar(m)}`;
-  };
-  const matchCard = (bs) => `
-    <div class="bet-row">
-      <div class="bet-top"><span>${escapeHtml(fmtTime(bs[0].kickoff))}</span>${bs.length > 1 ? `<span>${bs.length} bets · ${gbp(stake * bs.length)}</span>` : ""}</div>
-      <div class="bet-match">${escapeHtml(bs[0].home)} v ${escapeHtml(bs[0].away)}</div>
-      ${projection(bs[0].fixture)}
+  const matchCard = (bs) => {
+    const m = byId.get(bs[0].fixture);
+    const count = bs.length > 1 ? `<span class="match-meta">${bs.length} bets · ${gbp(stake * bs.length)}</span>` : "";
+    const head = m ? matchHead(m, count) + probBar(m)
+      : `<div class="bet-top"><span>${escapeHtml(fmtTime(bs[0].kickoff))}</span>${count}</div>
+         <div class="bet-match">${escapeHtml(bs[0].home)} v ${escapeHtml(bs[0].away)}</div>`;
+    return `<div class="match-card">${head}<div class="tip-picks">
       ${bs.map((b) => `<div class="tip-pick"><span class="tip-left">${betBadges(b)}<span><span class="sel">${escapeHtml(tipLabel(b))}</span><span class="win">${gbp(stake)} to win ${gbp(stake * (b.odds - 1))}</span></span></span><span class="odds">${b.odds.toFixed(2)}</span></div>`).join("")}
-    </div>`;
+    </div></div>`;
+  };
   body.innerHTML = intro + days.map((d) => {
     const comps = group(d.tips, "league");
     const ordered = [...comps.keys()].sort((a, b) => orderOf(a) - orderOf(b) || compLabel(a).localeCompare(compLabel(b)));
