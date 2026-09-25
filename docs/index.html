@@ -879,8 +879,9 @@
      since the side column scrolls), picks shown as removable chips */
   #who-filter { order: 0; margin-bottom: 10px; }
   #who-filter[hidden] { display: none; }
-  .who-field { margin-bottom: 6px; }
-  .who-input { width: 100%; }
+  .who-field + .who-field { margin-top: 5px; }
+  .who-input { width: 100%; margin-bottom: 0; }
+  .who-chips { margin-top: 6px; }
   .who-menu { margin-top: 4px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain;
     border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); padding: 3px; }
   .who-menu[hidden] { display: none; }
@@ -935,8 +936,9 @@
     :is(#table-side, #match-side, #stats-side, #bet-side) .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
     #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
-    #pos-filter { order: 3; margin: 0 0 14px; }
-    #who-filter { order: 3; margin: 0 0 14px; }
+    #pos-filter { order: 3; margin: 0 0 10px; }
+    #who-filter { order: 3; margin: 0 0 10px; }
+    .who-input { padding: 7px 10px; font-size: 13px; }
     #table-filters { order: 4; margin: 0; }
     /* Side menu: plain rows, counts on the right, groups slide open */
     .side-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
