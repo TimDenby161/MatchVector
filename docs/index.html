@@ -2927,8 +2927,7 @@ async function renderMatchLineups(m, panel) {
     if (!xi) return `<div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No predicted XI for this team.</div>`;
     return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(xi, data, { note: "" })}</div>`;
   };
-  panel.innerHTML = `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`
-    + `<div class="page-note">Predicted line-ups use the pre-match XI model. Start chance and expected minutes are shown when the browser has to estimate from recent line-ups, current squad ratings and listed absences.</div>`;
+  panel.innerHTML = `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`;
 }
 
 // ------------------------------------------------------------------ club page
