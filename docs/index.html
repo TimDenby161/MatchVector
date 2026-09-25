@@ -410,7 +410,6 @@
   .modal-overlay[hidden] { display: none; }
   .modal-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
     padding: 14px 16px; max-width: 420px; width: 100%; max-height: 82vh; overflow-y: auto; }
-  #team-modal.lineup-modal .modal-card { max-width: 760px; }
   .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
     font-weight: 700; font-size: 15px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
   .modal-close { appearance: none; border: none; background: transparent; color: var(--text-muted);
@@ -805,6 +804,7 @@
   .sq-tile .rel-chip { font-size: 15px; padding: 4px 8px; min-width: 44px; }
   .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fixture-lineup-panel { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); cursor: default; }
   .fixture-lineups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
   .fixture-lineups .club-section { margin-top: 0; }
   .fixture-lineups .pitch.pp-pitch { max-width: 300px; }
@@ -2908,12 +2908,8 @@ function xiBlock(teamId) {
       <span class="team-row-opp">${playerLink(pid, name)}</span><span class="team-row-res">${rankChipSmall(rank)}</span></div>`).join("")}`;
 }
 
-async function openMatchLineups(m) {
-  $("#team-modal").classList.add("lineup-modal");
-  $("#team-modal-title").innerHTML = `${clubLink(m.home, teamName(m.home))} v ${clubLink(m.away, teamName(m.away))}`;
-  $("#team-modal-sub").textContent = `${compLabel(m.league)} · ${fmtDay(m.kickoff)} · ${fmtTime(m.kickoff)}`;
-  $("#team-modal-body").innerHTML = `<div class="empty-state">Loading predicted line-ups…</div>`;
-  $("#team-modal").hidden = false;
+async function renderMatchLineups(m, panel) {
+  panel.innerHTML = `<div class="empty-state">Loading predicted line-ups…</div>`;
   const exact = state.players?.fixtureXi?.[String(m.id)] || {};
   const [homeData, awayData] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
   if (!exact[String(m.home)] || !exact[String(m.away)]) {
@@ -2938,7 +2934,7 @@ async function openMatchLineups(m) {
     if (!xi) return `<div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No predicted XI for this team.</div>`;
     return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(xi, data, { note: "" })}</div>`;
   };
-  $("#team-modal-body").innerHTML = chance + `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`
+  panel.innerHTML = chance + `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`
     + `<div class="page-note">Predicted line-ups use the pre-match XI model. Start chance and expected minutes are shown when the browser has to estimate from recent line-ups, current squad ratings and listed absences.</div>`;
 }
 
@@ -3893,7 +3889,6 @@ window.addEventListener("resize", () => { if (state.club && $("#chart-wrap")?.of
 
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
-  $("#team-modal").classList.remove("lineup-modal");
   const r = state.rankByTeam.get(teamId);
   $("#team-modal-title").innerHTML = `${escapeHtml(teamName(teamId))} <a class="team-link" style="font-size:12px;color:var(--series-blue);margin-left:6px" href="${clubHref(teamId)}">Club page ›</a>`;
   $("#team-modal-sub").textContent = r ? compLabel(r.league) : "";
@@ -4910,6 +4905,7 @@ function setTableView(view) {
 
 $("#matches-list").addEventListener("click", (e) => {
   if (e.target.closest("a")) return;
+  if (e.target.closest(".fixture-lineup-panel")) return;
   const ratedCard = e.target.closest(".match-card.rated");
   if (ratedCard) {
     const d = ratedCard.querySelector(".rating-detail");
@@ -4919,7 +4915,14 @@ $("#matches-list").addEventListener("click", (e) => {
   const lineupCard = e.target.closest(".match-card.lineup-card");
   if (lineupCard) {
     const m = state.data.matches.find((x) => x.id === Number(lineupCard.dataset.fixture));
-    if (m) openMatchLineups(m);
+    if (!m) return;
+    const existing = lineupCard.querySelector(".fixture-lineup-panel");
+    document.querySelectorAll("#matches-list .fixture-lineup-panel").forEach((p) => p.remove());
+    if (existing) return;
+    const panel = document.createElement("div");
+    panel.className = "fixture-lineup-panel";
+    lineupCard.appendChild(panel);
+    renderMatchLineups(m, panel);
     return;
   }
   const go = e.target.closest("[data-goto]");
