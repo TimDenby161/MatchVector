@@ -349,7 +349,9 @@ def export_stats(conn, out_dir=OUT_DIR):
     log.info("Exported prediction stats for %d finished fixtures", len(rows))
 
 
-BET_HISTORY_DAYS = 120
+# Paper money shown on the Bets tab: a flat stake per bet out of a starting bank
+BET_BANK_GBP = 1000
+BET_STAKE_GBP = 10
 
 
 def _summary(bets):
@@ -435,8 +437,8 @@ def export_injuries(conn, out_dir=OUT_DIR):
 
 
 def export_bets(conn, out_dir=OUT_DIR):
-    """Paper bets and their running results for the site's Bets tab (docs/data/bets.json)."""
-    now = datetime.now(timezone.utc)
+    """Every paper bet and its result for the site's Bets tab (docs/data/bets.json), all of them
+    so the bank there runs from the first bet."""
     rows = conn.execute(
         """select b.bet_id, b.strategy, b.fixture_id, b.kickoff, b.league_id, b.market, b.selection,
                   b.model_prob, b.fair_prob, b.odds_taken, bk.name, b.edge, b.closing_odds, b.clv,
@@ -445,8 +447,7 @@ def export_bets(conn, out_dir=OUT_DIR):
            from paper_bets b join fixtures f using (fixture_id)
            join teams h on h.team_id = f.home_team_id join teams a on a.team_id = f.away_team_id
            left join bookmakers bk on bk.bookmaker_id = b.bookmaker_id
-           where b.kickoff >= %s or b.settled_at is null
-           order by b.kickoff desc, b.bet_id""", [now - timedelta(days=BET_HISTORY_DAYS)]).fetchall()
+           order by b.kickoff desc, b.bet_id""").fetchall()
     bets = [{
         "id": r[0], "strategy": r[1], "fixture": r[2], "kickoff": r[3].isoformat(), "league": r[4],
         "market": r[5], "selection": r[6], "model_prob": _r(r[7], 3), "fair_prob": _r(r[8], 3),
@@ -470,7 +471,7 @@ def export_bets(conn, out_dir=OUT_DIR):
     # No generation timestamp, so the file only changes (and gets committed) when bets do
     (out_dir / "bets.json").write_text(json.dumps({
         "last_change": last.isoformat() if last else None,
-        "rules": {"min_edge": 0.03, "max_odds": 10.0, "stake": 1, "cautious_rule": CAUTIOUS_RULE},
+        "rules": {"min_edge": 0.03, "max_odds": 10.0, "stake": 1, "stake_gbp": BET_STAKE_GBP, "bank": BET_BANK_GBP, "cautious_rule": CAUTIOUS_RULE},
         "summary": summary, "bets": bets,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d paper bets", len(bets))

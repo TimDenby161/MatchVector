@@ -1060,6 +1060,7 @@
       <button type="button" class="filter-chip" data-market="OU45" aria-pressed="false">O/U 4.5</button>
       <button type="button" class="filter-chip" data-market="BTTS" aria-pressed="false">Both score</button>
     </div>
+    <select id="bet-league" class="date-input" aria-label="League" style="margin-bottom:10px"></select>
     <div id="bets-body"></div>
   </section>
 
@@ -1118,7 +1119,7 @@ const state = {
   matchFilter: "all", tableFilter: "all", date: null,
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
-  bets: null, betStrategy: "all", betMarket: "all", betView: "all",
+  bets: null, betStrategy: "all", betMarket: "all", betView: "all", betLeague: "all",
   players: null, tableView: "clubs", playerSort: null, playerYears: storedFlag("playerYears"), ageMin: null, ageMax: null,
 };
 
@@ -2314,26 +2315,27 @@ function marketsTable(ms) {
 const MARKET_LABELS = { "1X2": "Result", OU15: "Over/Under 1.5", OU25: "Over/Under 2.5", OU35: "Over/Under 3.5", OU45: "Over/Under 4.5", BTTS: "Both teams score" };
 const SEL_LABELS = { Home: "Home win", Draw: "Draw", Away: "Away win", Yes: "Both score", No: "Not both score" };
 
-// Paper bet tags (betting.bet_tags): what kind of disagreement each bet is
-const TAG_LABELS = { cup: "Cup / Europe", big5: "Big five", league: "Other league", promoted: "Promoted / relegated club",
-  thin_data: "Thin data", streak: "Streak", favourite: "Favourite", outsider: "Outsider", gap10: "10+ point gap" };
-const TAG_TIPS = {
-  cup: "A cup or European game", big5: "Premier League, La Liga, Serie A, Bundesliga or Ligue 1", league: "Any other league",
-  promoted: "Either club is in a different league from last season", thin_data: "Under 25 games of data (home side at home + away side away, last 12 months)",
-  streak: "One side's Form is 30+ points further from its Rating than the other's: a hot or cold run",
-  favourite: "The bookmakers' most likely outcome", outsider: "Not the bookmakers' most likely outcome",
-  gap10: "The model's chance is 10+ points above the bookmakers'" };
+// Paper money: every bet is a flat £ stake out of a starting bank (rules in bets.json)
+const betStake = () => state.bets?.rules?.stake_gbp ?? 10;
+const betBank = () => state.bets?.rules?.bank ?? 1000;
+function gbp(x, sign = false) {
+  if (x == null) return "–";
+  const v = `£${Math.abs(x).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (!sign) return (x < 0 ? "−" : "") + v;
+  return `<span class="${x > 0 ? "pos" : x < 0 ? "neg" : ""}">${x > 0 ? "+" : x < 0 ? "−" : ""}${v}</span>`;
+}
 
 function summarise(bets) {
+  const stake = betStake();
   const settled = bets.filter((b) => b.result === "win" || b.result === "loss");
   const clvs = settled.map((b) => b.clv).filter((c) => c != null);
-  const profit = settled.reduce((a, b) => a + b.profit, 0);
+  const profit = stake * settled.reduce((a, b) => a + b.profit, 0);
+  const staked = stake * settled.length;
+  const pending = bets.filter((b) => !b.result).length;
   return {
-    placed: bets.length, settled: settled.length, pending: bets.filter((b) => !b.result).length,
-    wins: settled.filter((b) => b.result === "win").length, profit,
-    roi: settled.length ? profit / settled.length : null,
-    avgOdds: settled.length ? settled.reduce((a, b) => a + b.odds, 0) / settled.length : null,
-    clv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null,
+    placed: bets.length, settled: settled.length, pending, atRisk: stake * pending,
+    wins: settled.filter((b) => b.result === "win").length, profit, staked,
+    roi: staked ? profit / staked : null,
     beat: clvs.length ? clvs.filter((c) => c > 0).length / clvs.length : null,
   };
 }
@@ -2344,75 +2346,82 @@ function signed(x, d = 1, suffix = "") {
   return `<span class="${cls}">${x > 0 ? "+" : ""}${x.toFixed(d)}${suffix}</span>`;
 }
 
+// League dropdown: leagues that have bets, busiest first
+function renderBetLeagues() {
+  const counts = {};
+  for (const b of state.bets?.bets || []) counts[b.league] = (counts[b.league] || 0) + 1;
+  const ids = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || compLabel(a).localeCompare(compLabel(b)));
+  if (state.betLeague !== "all" && !counts[state.betLeague]) state.betLeague = "all";
+  $("#bet-league").innerHTML = `<option value="all">All leagues</option>` + ids.map((id) =>
+    `<option value="${id}"${id === state.betLeague ? " selected" : ""}>${escapeHtml(compLabel(id))} (${counts[id]})</option>`).join("");
+}
+
 function renderBets() {
   const body = $("#bets-body");
   if (!state.bets) { body.innerHTML = `<div class="empty-state">No paper bets yet.</div>`; return; }
+  renderBetLeagues();
+  const stake = betStake(), bank = betBank();
   const scope = state.bets.bets.filter((b) =>
     (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
-    (state.betMarket === "all" || b.market === state.betMarket));
-  const all = state.betView === "cautious" ? scope.filter((b) => b.cautious) : scope;
+    (state.betMarket === "all" || b.market === state.betMarket) &&
+    (state.betView === "all" || b.cautious));
+  const all = scope.filter((b) => state.betLeague === "all" || String(b.league) === state.betLeague);
   const s = summarise(all);
   const card = (label, value, note = "") =>
     `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
   const rules = state.bets.rules;
-  const markets = ["1X2", "OU15", "OU25", "OU35", "OU45", "BTTS"].map((mk) => {
+  const tableRow = (label, x, attr = "") => `<tr${attr}><td>${label}</td><td>${x.settled}${x.pending ? ` <span class="dim">+${x.pending}</span>` : ""}</td>
+    <td>${x.settled ? `${x.wins}/${x.settled}` : "–"}</td><td>${x.settled ? gbp(x.profit, true) : "–"}</td>
+    <td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td></tr>`;
+  const head = (first) => `<thead><tr><th>${first}</th><th>Bets</th><th>Won</th><th>Profit</th><th>Return</th></tr></thead>`;
+  // By league on the other filters, so leagues compare side by side; tap one to filter
+  const byLeague = {};
+  for (const b of scope) (byLeague[b.league] = byLeague[b.league] || []).push(b);
+  const leagueRows = Object.entries(byLeague).map(([id, bs]) => [id, summarise(bs)])
+    .sort((a, b) => b[1].settled - a[1].settled || b[1].placed - a[1].placed)
+    .map(([id, x]) => tableRow(escapeHtml(compLabel(id)), x,
+      ` data-league="${id}" style="cursor:pointer${id === state.betLeague ? ";font-weight:700" : ""}"`)).join("");
+  const marketRows = ["1X2", "OU15", "OU25", "OU35", "OU45", "BTTS"].map((mk) => {
     const x = summarise(all.filter((b) => b.market === mk));
-    if (!x.placed) return "";
-    return `<tr><td>${MARKET_LABELS[mk]}</td><td>${x.settled}</td><td>${signed(x.profit, 1)}</td>
-      <td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td><td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td></tr>`;
+    return x.placed ? tableRow(MARKET_LABELS[mk], x) : "";
   }).join("");
-  // All bets vs the cautious view, on the strategy / market filters above
-  const views = [["All bets", scope], ["Cautious", scope.filter((b) => b.cautious)]].map(([label, bs]) => {
-    const x = summarise(bs);
-    return `<tr><td>${label}</td><td>${x.placed}</td><td>${x.settled}</td><td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td>
-      <td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td><td>${x.beat == null ? "–" : pct(x.beat)}</td></tr>`;
-  }).join("");
-  const tagRows = Object.keys(TAG_LABELS).map((t) => {
-    const x = summarise(all.filter((b) => (b.tags || []).includes(t)));
-    if (!x.placed) return "";
-    return `<tr><td>${TAG_LABELS[t]}</td><td>${x.placed}</td><td>${x.settled}</td><td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td>
-      <td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td><td>${x.beat == null ? "–" : pct(x.beat)}</td></tr>`;
-  }).join("");
+  // Bank after each settled bet, oldest first, on the filters above
+  const settled = all.filter((b) => b.result).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff) || a.id - b.id);
+  const bankAfter = {};
+  let running = bank;
+  for (const b of settled) { running += stake * (b.profit || 0); bankAfter[b.id] = running; }
+  settled.reverse();
   const row = (b) => {
-    const when = new Date(b.kickoff);
-    const res = b.result === "win" ? `<span class="pos">Won ${signed(b.profit, 2)}</span>`
-      : b.result === "loss" ? `<span class="neg">Lost −1.00</span>`
-      : b.result === "void" ? "Void" : "Pending";
-    const clv = b.clv != null ? ` · CLV ${signed(100 * b.clv, 1, "%")} (closed ${b.closing_odds?.toFixed(2) ?? "–"})` : "";
+    const res = b.result === "win" ? `<span class="pos">Won +${gbp(stake * b.profit)}</span>`
+      : b.result === "loss" ? `<span class="neg">Lost −${gbp(stake)}</span>`
+      : b.result === "void" ? "Void, stake back" : `<span class="dim">To win ${gbp(stake * (b.odds - 1))}</span>`;
     return `<div class="bet-row ${b.result || ""}">
       <div class="bet-top"><span>${escapeHtml(fmtDay(b.kickoff))} ${escapeHtml(fmtTime(b.kickoff))} · ${escapeHtml(compLabel(b.league))}</span><span>${b.strategy === "early" ? "Night before" : "Pre-kickoff"}</span></div>
       <div class="bet-match">${escapeHtml(b.home)} v ${escapeHtml(b.away)}${b.score ? ` <span style="color:var(--text-muted)">(${escapeHtml(b.score)})</span>` : ""}</div>
-      <div class="bet-pick"><span>${escapeHtml(SEL_LABELS[b.selection] || b.selection)} @ <b>${b.odds.toFixed(2)}</b> <span style="color:var(--text-muted);font-size:11px">${escapeHtml(b.bookmaker || "")}</span></span><span>${res}</span></div>
-      <div class="bet-sub">Model ${Math.round(100 * b.model_prob)}% · bookmakers ${b.fair_prob != null ? Math.round(100 * b.fair_prob) + "%" : "–"} · edge ${signed(100 * b.edge, 1, "%")}${clv}</div>
-      ${(b.tags || []).length ? `<div class="bet-tags">${b.tags.map((t) => `<span class="bet-tag${(t === "streak" || (t === "outsider" && b.market === "1X2")) ? " warn" : ""}" title="${escapeHtml(TAG_TIPS[t] || "")}">${escapeHtml(TAG_LABELS[t] || t)}</span>`).join("")}</div>` : ""}
+      <div class="bet-pick"><span>${gbp(stake)} on ${escapeHtml(SEL_LABELS[b.selection] || b.selection)} @ <b>${b.odds.toFixed(2)}</b> <span style="color:var(--text-muted);font-size:11px">${escapeHtml(b.bookmaker || "")}</span></span><span>${res}</span></div>
+      <div class="bet-sub">Model ${Math.round(100 * b.model_prob)}% · bookmakers ${b.fair_prob != null ? Math.round(100 * b.fair_prob) + "%" : "–"}${b.closing_odds != null ? ` · closed ${b.closing_odds.toFixed(2)}` : ""}${bankAfter[b.id] != null ? ` · bank ${gbp(bankAfter[b.id])}` : ""}</div>
     </div>`;
   };
   const pending = all.filter((b) => !b.result).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-  const settled = all.filter((b) => b.result);
   body.innerHTML = `
     <div class="stats-grid">
-      ${card("Settled bets", s.settled.toLocaleString(), `${s.pending} pending · ${s.wins} won`)}
-      ${card("Profit", s.settled ? signed(s.profit, 1) + '<span style="font-size:13px;color:var(--text-muted)"> units</span>' : "–", "1 unit flat stake per bet")}
-      ${card("Return (ROI)", s.roi == null ? "–" : signed(100 * s.roi, 1, "%"), s.avgOdds ? `Average odds ${s.avgOdds.toFixed(2)}` : "")}
-      ${card("Beat the closing price", s.beat == null ? "–" : pct(s.beat), s.clv == null ? "Needs settled bets" : `Average CLV ${(s.clv > 0 ? "+" : "") + (100 * s.clv).toFixed(1)}%`)}
+      ${card("Bank", gbp(bank + s.profit), `Started with ${gbp(bank)}${s.pending ? ` · ${gbp(s.atRisk)} on ${s.pending} pending` : ""}`)}
+      ${card("Profit", s.settled ? gbp(s.profit, true) : "–", s.staked ? `${gbp(s.staked)} staked · return ${(s.roi > 0 ? "+" : "") + (100 * s.roi).toFixed(1)}%` : `${gbp(stake)} on every bet`)}
+      ${card("Won", s.settled ? `${s.wins}<span style="font-size:14px;color:var(--text-muted)"> of ${s.settled}</span>` : "–", s.settled ? `${pct(s.wins / s.settled)} of settled bets` : "Needs settled bets")}
+      ${card("Beat the closing price", s.beat == null ? "–" : pct(s.beat), "Took better odds than the last price before kickoff: the early sign of a real edge")}
     </div>
-    <div class="stats-card" style="margin-bottom:12px">
+    ${leagueRows ? `<div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">By league</div>
+      <table class="calib-table">${head("League")}<tbody>${leagueRows}</tbody></table>
+      <div class="stats-note">Tap a league to see only its bets. Bets = settled <span class="dim">+ pending</span>. For how accurate the predictions are in a league, pick it on the Stats tab.</div>
+    </div>` : ""}
+    ${marketRows ? `<div class="stats-card" style="margin-bottom:12px">
       <div class="stats-label">By market</div>
-      ${markets ? `<table class="calib-table"><thead><tr><th>Market</th><th>Settled</th><th>Profit</th><th>ROI</th><th>CLV</th></tr></thead><tbody>${markets}</tbody></table>` : `<div class="stats-note">No bets yet.</div>`}
-      <div class="stats-note">Paper bets only, no money. The model bets when its chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. "Beat the closing price" (CLV) is the early sign of a real edge. Profit needs roughly 1,000+ settled bets before it means much.</div>
-    </div>
-    <div class="stats-card" style="margin-bottom:12px">
-      <div class="stats-label">All bets vs cautious</div>
-      <table class="calib-table"><thead><tr><th>View</th><th>Placed</th><th>Settled</th><th>ROI</th><th>CLV</th><th>Beat close</th></tr></thead><tbody>${views}</tbody></table>
-      <div class="stats-note">Cautious ${escapeHtml(state.bets.rules.cautious_rule || "")}: the kinds of disagreement the model lost most often in the first check. It's the same bets, prices and timing, so the two compare exactly. Judge it on CLV first; ROI needs hundreds of bets.</div>
-    </div>
-    ${tagRows ? `<div class="stats-card" style="margin-bottom:12px">
-      <div class="stats-label">By kind of disagreement</div>
-      <table class="calib-table"><thead><tr><th>Tag</th><th>Placed</th><th>Settled</th><th>ROI</th><th>CLV</th><th>Beat close</th></tr></thead><tbody>${tagRows}</tbody></table>
-      <div class="stats-note">A bet can have several tags. Tags use what was known before kickoff. Hover a tag on a bet for what it means.</div>
+      <table class="calib-table">${head("Market")}<tbody>${marketRows}</tbody></table>
+      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. A bet is placed when the model's chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
     </div>` : ""}
     ${pending.length ? `<div class="modal-section">Upcoming (${pending.length})</div><div class="bets-list">${pending.map(row).join("")}</div>` : ""}
-    ${settled.length ? `<div class="modal-section">Settled</div><div class="bets-list">${settled.slice(0, 150).map(row).join("")}</div>` : ""}
+    ${settled.length ? `<div class="modal-section">Settled (${settled.length})</div><div class="bets-list">${settled.slice(0, 300).map(row).join("")}</div>` : ""}
     ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}`;
 }
 
@@ -3865,6 +3874,13 @@ for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#
     renderBets();
   });
 }
+$("#bet-league").addEventListener("change", (e) => { state.betLeague = e.target.value; renderBets(); });
+$("#bets-body").addEventListener("click", (e) => {
+  const tr = e.target.closest("[data-league]");
+  if (!tr) return;
+  state.betLeague = state.betLeague === tr.dataset.league ? "all" : tr.dataset.league;
+  renderBets();
+});
 $("#stats-ranges").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-range]");
   if (!btn) return;
