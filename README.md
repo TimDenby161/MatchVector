@@ -352,6 +352,19 @@ These were tested and not adopted:
   - Soft-bookmaker betting without the model was also tested: bet at one bookmaker when its price beats the other bookmakers' fair consensus, or Pinnacle's. That gave 5–36 bets per bookmaker with ranges of about ±100%, so it's inconclusive.
   - Taking the best price across all 13 bookmakers is the real lever. The margin falls from about 8% at one bookmaker to 3.1% (result), 3.3% (over/under 2.5) and 5.1% (both teams score). Paper bets already use the best price. The best prices summed under 100% (an arbitrage) in 24 result markets (4.7%), 8 over/under 2.5 and 4 both-teams-score markets. Each bookmaker's price is stored at a different moment, though, so some of these are snapshot timing rather than prices on offer together.
   - Next: the opening-price comparison (from matches collected before kickoff, 24 September on) will show whether any bookmaker is slow to move. That's the usual way to beat an individual bookmaker.
+- **What the disagreements have in common** (the 82 matches where the model and the closing consensus differed by 10+ points on the result).
+  - They're most common where the model knows least:
+
+    | Kind of match | Share with a 10+ disagreement |
+    |---|---|
+    | Cups and European games | 29% |
+    | A promoted or relegated club | 28% |
+    | Under 25 recent games of data between the two sides | 28% |
+    | Other leagues | 13% |
+
+  - The new parts (home edge, line-ups, attack/defence) barely drive them. Correlation with the gap was 0.12 at most.
+  - Who was right: the model was better in 40% of them overall. It did worst when a side's Form was far from its Rating (30%, when either side's Form was 30+ points above or below its Rating), with a promoted or relegated club (37%), and when it backed an outsider (38%). When its pick was the bookmakers' favourite, it broke even (46%, log loss −0.003). Cups and European games were the only kind it won on average (50%, −0.058, 22 matches).
+  - A split-sample test found nothing that predicts the good ones yet. Across 500 random halves, the best kind of disagreement on one half scored −0.064, but on the other half it scored +0.031 (bookmakers better), and the model won the other half in only 36% of splits. With 82 disagreements, any pattern found is mostly noise. The same test needs a few hundred more.
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
 
