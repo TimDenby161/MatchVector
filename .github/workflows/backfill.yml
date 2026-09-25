@@ -29,6 +29,9 @@ jobs:
       API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       API_DAILY_RESERVE: "200"
+      THECORNERFC_MODE: production
+      THECORNERFC_READ_ONLY: "false"
+      THECORNERFC_NO_API: "false"
       LEAGUES: ${{ inputs.leagues }}
       SEASONS: ${{ inputs.seasons }}
     steps:
@@ -52,8 +55,10 @@ jobs:
 
       - name: Pull the leagues' history from API-Football
         run: |
+          python -m thecornerfc.workflow_inputs "$LEAGUES" "$SEASONS" > /tmp/backfill-inputs.env
+          source /tmp/backfill-inputs.env
           for target in leagues teams fixtures standings stats odds; do
-            python -m thecornerfc sync "$target" --leagues $LEAGUES --seasons $SEASONS
+            python -m thecornerfc sync "$target" --leagues "${LEAGUE_ARGS[@]}" --seasons "${SEASON_ARGS[@]}"
           done
 
       - name: Re-rank and re-predict

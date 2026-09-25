@@ -22,6 +22,15 @@ from .db import connect, init_schema
 
 TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "players", "injuries",
            "player_minutes", "player_careers", "retired", "squads", "coaches", "lineup_coaches", "colors", "cup_lineups"]
+DB_WRITE_COMMANDS = {"init-db", "rank", "predict", "player-ratings", "matchday", "nightly", "sync"}
+API_COMMANDS = {"status", "matchday", "nightly", "sync"}
+
+
+def _guard_command(args):
+    if args.command in API_COMMANDS:
+        config.require_api_access(args.command)
+    if args.command in DB_WRITE_COMMANDS:
+        config.require_db_write(args.command)
 
 
 def main(argv=None):
@@ -47,6 +56,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    _guard_command(args)
 
     if args.command == "status":
         info = ApiFootball().get("status")

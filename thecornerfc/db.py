@@ -9,12 +9,19 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 def connect():
     if not config.DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is not set (see .env.example)")
+        raise RuntimeError("DATABASE_URL or READ_ONLY_DATABASE_URL is not set (see .env.example)")
     # prepare_threshold=None keeps it compatible with Supabase's pgbouncer poolers.
-    return psycopg.connect(config.DATABASE_URL, prepare_threshold=None)
+    conn = psycopg.connect(config.DATABASE_URL, prepare_threshold=None)
+    if config.READ_ONLY:
+        try:
+            conn.read_only = True
+        except AttributeError:
+            conn.execute("set session characteristics as transaction read only")
+    return conn
 
 
 def init_schema(conn):
+    config.require_db_write("init-db")
     conn.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.commit()
 
@@ -26,6 +33,7 @@ def upsert(conn, table, rows, key_cols, update_cols=None, touch_updated_at=True)
     """
     if not rows:
         return 0
+    config.require_db_write(f"upsert into {table}")
     cols = list(rows[0].keys())
     if update_cols is None:
         update_cols = [c for c in cols if c not in key_cols]

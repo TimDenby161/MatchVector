@@ -4,10 +4,61 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _bool_env(name, default):
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+class SafetyError(RuntimeError):
+    """Raised when a local safety guard blocks a dangerous action."""
+
+
+MODE = os.getenv("THECORNERFC_MODE", "local").strip().lower()
+GITHUB_ACTIONS = _bool_env("GITHUB_ACTIONS", False)
+READ_ONLY = _bool_env("THECORNERFC_READ_ONLY", MODE != "production")
+NO_API = _bool_env("THECORNERFC_NO_API", MODE != "production")
+LOCAL_OVERRIDE = os.getenv("THECORNERFC_LOCAL_OVERRIDE", "")
+LOCAL_OVERRIDE_TOKEN = "I_UNDERSTAND_THIS_CAN_WRITE_PRODUCTION_DATA_AND_USE_API_QUOTA"
+
 API_BASE_URL = "https://v3.football.api-sports.io"
 API_KEY = os.getenv("API_FOOTBALL_KEY")
-DATABASE_URL = os.getenv("DATABASE_URL")
+READ_ONLY_DATABASE_URL = os.getenv("READ_ONLY_DATABASE_URL")
+DATABASE_URL = READ_ONLY_DATABASE_URL if READ_ONLY else os.getenv("DATABASE_URL")
 API_DAILY_RESERVE = int(os.getenv("API_DAILY_RESERVE", "200"))
+
+
+def _local_override_allowed():
+    return LOCAL_OVERRIDE == LOCAL_OVERRIDE_TOKEN
+
+
+def require_db_write(action):
+    if READ_ONLY:
+        raise SafetyError(
+            f"{action} requires database writes, but THECORNERFC_READ_ONLY is enabled. "
+            "Use a read-only command locally, or set THECORNERFC_READ_ONLY=false plus "
+            f"THECORNERFC_LOCAL_OVERRIDE={LOCAL_OVERRIDE_TOKEN!r} if you really intend local writes."
+        )
+    if not GITHUB_ACTIONS and not _local_override_allowed():
+        raise SafetyError(
+            f"{action} can write production data. Local writes require "
+            f"THECORNERFC_LOCAL_OVERRIDE={LOCAL_OVERRIDE_TOKEN!r}."
+        )
+
+
+def require_api_access(action):
+    if NO_API:
+        raise SafetyError(
+            f"{action} requires API-Football access, but THECORNERFC_NO_API is enabled. "
+            "This prevents accidental quota use during local development."
+        )
+    if not GITHUB_ACTIONS and not _local_override_allowed():
+        raise SafetyError(
+            f"{action} can consume API-Football quota. Local API access requires "
+            f"THECORNERFC_LOCAL_OVERRIDE={LOCAL_OVERRIDE_TOKEN!r}."
+        )
 
 # API-Football league ids. Play-offs are included in each league's fixtures.
 LEAGUES = {

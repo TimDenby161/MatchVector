@@ -16,6 +16,37 @@ python -m thecornerfc init-db   # creates the tables in Supabase
 
 For `DATABASE_URL`, go to the Supabase dashboard, click **Connect**, and copy the **Session pooler** string. The direct connection only works over IPv6.
 
+## Local development safety
+
+Local runs default to safe mode through `.env`:
+
+```bash
+THECORNERFC_MODE=local
+THECORNERFC_READ_ONLY=true
+THECORNERFC_NO_API=true
+READ_ONLY_DATABASE_URL=postgresql://readonly_user:...@.../postgres
+```
+
+In this mode the app can read the latest production Supabase data, run read-only analysis, export `docs/data` locally and preview the static site, but it refuses database-write commands and refuses API-Football access before making network requests. Use a genuinely read-only Supabase/Postgres role for `READ_ONLY_DATABASE_URL`; the application also sets read-only transactions, but database permissions are the real safety net.
+
+Command safety:
+
+| Command | Local safe mode? | Needs DB writes? | Needs API-Football? |
+|---|---:|---:|---:|
+| `python -m thecornerfc export` | Yes | No | No |
+| Static website preview from `docs/` | Yes | No | No |
+| Read-only SQL/evaluation scripts using `connect()` | Yes | No | No |
+| `python -m thecornerfc status` | Blocked | No | Yes |
+| `python -m thecornerfc sync ...` | Blocked | Yes | Yes |
+| `python -m thecornerfc nightly` | Blocked | Yes | Yes |
+| `python -m thecornerfc matchday` | Blocked | Yes | Yes |
+| `python -m thecornerfc init-db` | Blocked | Yes | No |
+| `python -m thecornerfc rank` | Blocked | Yes | No |
+| `python -m thecornerfc predict` | Blocked | Yes | No |
+| `python -m thecornerfc player-ratings` | Blocked | Yes | No |
+
+Intentional local writes or API calls require all relevant safety flags to be turned off and `THECORNERFC_LOCAL_OVERRIDE=I_UNDERSTAND_THIS_CAN_WRITE_PRODUCTION_DATA_AND_USE_API_QUOTA`. GitHub Actions sets production mode explicitly, so the scheduled production pipelines continue to use the production Supabase credential and API-Football key.
+
 ## Syncing
 
 ```bash
@@ -52,6 +83,8 @@ The GitHub Actions workflow [`.github/workflows/nightly.yml`](.github/workflows/
 
 - `API_FOOTBALL_KEY`
 - `DATABASE_URL`: use the Supabase **Session pooler** string.
+
+**Publication safety.** The nightly workflow only exports and commits `docs/data` after the full critical nightly pipeline succeeds. A failed ingestion/ranking/prediction run leaves the workflow red and keeps the last committed public export in place. The static export is generated in a temporary directory, validated, then swapped into `docs/data`; invalid JSON, missing critical files or a major data collapse stop publication before the live export is replaced.
 
 **Adding a league.** Add its API-Football id to `config.LEAGUES`, and set a starting rank for it with `update leagues set starting_rank = … where league_id = …` once the league row exists. The next nightly run spots that the league has no fixtures yet and pulls every season in `config.DEFAULT_SEASONS`, then keeps it up to date. To get it sooner, run the **Backfill leagues** workflow ([`.github/workflows/backfill.yml`](.github/workflows/backfill.yml)) with the new ids. It pulls every season's teams, fixtures, standings, match stats and odds, then re-ranks and republishes the site.
 

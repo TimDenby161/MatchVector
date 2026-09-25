@@ -7,6 +7,8 @@ import html
 import json
 import logging
 import math
+import shutil
+import tempfile
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +24,21 @@ OUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "data"
 PAST_DAYS = 21       # recent results shown on the site
 FUTURE_DAYS = 60     # upcoming fixtures shown on the site
 FORM_GAMES = 6       # rank change over this many recent games = "form"
+CRITICAL_JSON_FILES = (
+    "matches.json", "rankings.json", "stats.json", "bets.json",
+    "injuries.json", "players.json", "player_seasons.json",
+)
+CRITICAL_DETAIL_DIRS = ("players", "clubs", "leagues")
+MIN_MAJOR_ROWS = {
+    "rankings.json": ("rankings", 50),
+    "players.json": ("players", 50),
+    "player_seasons.json": ("players", 50),
+}
+COLLAPSE_RATIO = 0.5
+
+
+class ExportValidationError(RuntimeError):
+    """Raised when a staged website export is unsafe to publish."""
 
 
 def market_probabilities(conn):
@@ -50,6 +67,128 @@ def _xi_lines(vals):
 
 
 def export_site_data(conn, out_dir=OUT_DIR):
+    """Build, validate and publish the static site export without clobbering old data."""
+    _publish_export(lambda staged: _write_site_data(conn, staged), out_dir)
+
+
+def _publish_export(build, out_dir=OUT_DIR):
+    out_dir = Path(out_dir)
+    parent = out_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staged = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}-staged-", dir=parent))
+    try:
+        build(staged)
+        validate_export(staged, previous_dir=out_dir if out_dir.exists() else None)
+        _replace_export(staged, out_dir)
+        staged = None
+    finally:
+        if staged and staged.exists():
+            shutil.rmtree(staged, ignore_errors=True)
+
+
+def _replace_export(staged, out_dir):
+    backup = None
+    if out_dir.exists():
+        backup = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}-old-", dir=out_dir.parent))
+        backup.rmdir()
+        out_dir.rename(backup)
+    try:
+        staged.rename(out_dir)
+    except Exception:
+        if backup and backup.exists() and not out_dir.exists():
+            backup.rename(out_dir)
+        raise
+    finally:
+        if backup and backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+
+
+def validate_export(out_dir, previous_dir=None):
+    out_dir = Path(out_dir)
+    if not out_dir.is_dir():
+        raise ExportValidationError(f"Export directory does not exist: {out_dir}")
+
+    parsed = {}
+    for rel in CRITICAL_JSON_FILES:
+        path = out_dir / rel
+        if not path.exists():
+            raise ExportValidationError(f"Missing critical export file: {rel}")
+        if path.stat().st_size == 0:
+            raise ExportValidationError(f"Critical export file is empty: {rel}")
+        parsed[rel] = _read_json(path)
+
+    for path in out_dir.rglob("*.json"):
+        _read_json(path)
+
+    for rel, (key, minimum) in MIN_MAJOR_ROWS.items():
+        value = parsed[rel].get(key)
+        if not isinstance(value, list):
+            raise ExportValidationError(f"{rel} does not contain a list at {key!r}")
+        if len(value) < minimum:
+            raise ExportValidationError(
+                f"{rel} has only {len(value)} {key} rows; expected at least {minimum}")
+
+    for rel in CRITICAL_DETAIL_DIRS:
+        detail_dir = out_dir / rel
+        if not detail_dir.is_dir():
+            raise ExportValidationError(f"Missing critical export directory: {rel}")
+        if not any(detail_dir.glob("*.json")):
+            raise ExportValidationError(f"Critical export directory is empty: {rel}")
+
+    previous_dir = Path(previous_dir) if previous_dir else None
+    if previous_dir and previous_dir.is_dir():
+        _check_row_collapse(out_dir, previous_dir)
+
+
+def _read_json(path):
+    try:
+        with path.open(encoding="utf-8") as fh:
+            return json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ExportValidationError(f"Invalid JSON in {path}: {exc}") from exc
+
+
+def _write_json_file(path, payload, *, ensure_ascii=True):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, separators=(",", ":"), ensure_ascii=ensure_ascii)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as fh:
+        fh.write(text)
+        tmp = Path(fh.name)
+    try:
+        tmp.replace(path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _check_row_collapse(out_dir, previous_dir):
+    for rel, (key, _) in MIN_MAJOR_ROWS.items():
+        old_path = previous_dir / rel
+        new_path = out_dir / rel
+        if not old_path.exists():
+            continue
+        old_value = _read_json(old_path).get(key)
+        new_value = _read_json(new_path).get(key)
+        if not isinstance(old_value, list) or not isinstance(new_value, list) or not old_value:
+            continue
+        if len(new_value) < len(old_value) * COLLAPSE_RATIO:
+            raise ExportValidationError(
+                f"{rel} collapsed from {len(old_value)} to {len(new_value)} {key} rows")
+
+    for rel in CRITICAL_DETAIL_DIRS:
+        old_dir = previous_dir / rel
+        new_dir = out_dir / rel
+        if not old_dir.is_dir() or not new_dir.is_dir():
+            continue
+        old_count = sum(1 for _ in old_dir.glob("*.json"))
+        new_count = sum(1 for _ in new_dir.glob("*.json"))
+        if old_count >= 10 and new_count < old_count * COLLAPSE_RATIO:
+            raise ExportValidationError(
+                f"{rel}/ collapsed from {old_count} to {new_count} JSON files")
+
+
+def _write_site_data(conn, out_dir=OUT_DIR):
     now = datetime.now(timezone.utc)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -458,10 +597,10 @@ def export_injuries(conn, out_dir=OUT_DIR):
     for entry in teams.values():
         for row in entry["players"]:
             row.append(season_rank.get(row[0]))
-    (out_dir / "injuries.json").write_text(json.dumps({
+    _write_json_file(out_dir / "injuries.json", {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "fields": ["player", "name", "type", "reason", "missed", "season_rank"], "teams": teams,
-    }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
+    }, ensure_ascii=False)
     log.info("Exported injury lists for %d clubs", len(teams))
 
 
@@ -500,11 +639,11 @@ def export_bets(conn, out_dir=OUT_DIR):
     }
     last = max([r[16] for r in rows] + [r[17] for r in rows if r[17]], default=None)
     # No generation timestamp, so the file only changes (and gets committed) when bets do
-    (out_dir / "bets.json").write_text(json.dumps({
+    _write_json_file(out_dir / "bets.json", {
         "last_change": last.isoformat() if last else None,
         "rules": {"min_edge": MIN_EDGE, "max_odds": MAX_ODDS, "bookmaker": "Bet365", "stake": 1, "stake_gbp": BET_STAKE_GBP, "bank": BET_BANK_GBP, "cautious_rule": CAUTIOUS_RULE},
         "summary": summary, "bets": bets,
-    }, separators=(",", ":")), encoding="utf-8")
+    })
     log.info("Exported %d paper bets", len(bets))
 
 

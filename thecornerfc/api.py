@@ -16,6 +16,7 @@ class ApiFootball:
     """Thin API-Football v3 client with per-minute and daily quota handling."""
 
     def __init__(self, api_key=None, daily_reserve=None, min_interval=0.25):
+        config.require_api_access("API-Football request")
         api_key = api_key or config.API_KEY
         if not api_key:
             raise RuntimeError("API_FOOTBALL_KEY is not set (see .env.example)")

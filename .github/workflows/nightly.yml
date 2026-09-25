@@ -20,6 +20,9 @@ jobs:
       API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       API_DAILY_RESERVE: "200"
+      THECORNERFC_MODE: production
+      THECORNERFC_READ_ONLY: "false"
+      THECORNERFC_NO_API: "false"
     steps:
       - uses: actions/checkout@v4
 
@@ -42,13 +45,12 @@ jobs:
       - name: Sync API-Football into Supabase
         run: python -m thecornerfc nightly
 
-      # Runs even if one competition failed above, so the site still gets fresh data
+      # Publication only happens after a fully successful critical pipeline run.
+      # If nightly fails, the workflow stays red and the last committed docs/data remains live.
       - name: Export website data
-        if: success() || failure()
         run: python -m thecornerfc export
 
       - name: Commit website data
-        if: success() || failure()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898183+github-actions[bot]@users.noreply.github.com"
