@@ -3317,10 +3317,20 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   };
   const nextLabel = nextMatch ? SHORT_NAMES[nextMatch.league] || state.data.competitions[nextMatch.league]?.name || "" : "";
   // Each box: who's in it, how many usually start there and the expected shares from history
-  const shown = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map((b) => {
+  const visible = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r)));
+  // who can play in a box, and anyone who has started there this season
+  const fits = (p, b) => b.roles.some((x) => canPlay(p).has(x)) || startPct(p, b.roles);
+  // a squad player with no box (his position isn't in this season's formations: a wing-back when
+  // the club plays a back four) goes in the nearest one it does use, so everyone is on the pitch
+  const NEAR = { LWB: ["LB", "LM", "CB"], RWB: ["RB", "RM", "CB"], LB: ["LWB", "CB"], RB: ["RWB", "CB"],
+                 LW: ["LM", "AM", "ST"], RW: ["RM", "AM", "ST"], LM: ["LW", "CM", "AM"], RM: ["RW", "CM", "AM"],
+                 AM: ["CM", "LW", "RW", "ST"], DM: ["CM", "CB"], CM: ["CM", "AM"], ST: ["AM", "LW", "RW"], CB: ["LB", "RB", "CM"] };
+  const labels = new Set(visible.map((b) => b.label));
+  const fallback = new Map(squad.filter((p) => !visible.some((b) => fits(p, b)))
+    .map((p) => [p.id, (NEAR[p.position] || []).find((l) => labels.has(l)) || (labels.has("CM") ? "CM" : null)]));
+  const shown = visible.map((b) => {
     const n = usual(b.roles);
-    // who can play there, and anyone who has started there this season
-    const ps = squad.filter((p) => b.roles.some((x) => canPlay(p).has(x)) || startPct(p, b.roles))
+    const ps = squad.filter((p) => fits(p, b) || fallback.get(p.id) === b.label)
       .map((p) => ({ p, rank: Math.max(...b.roles.map((x) => rankAt(p, x) ?? -1)) }))
       .map((d) => ({ ...d, rank: d.rank >= 0 ? d.rank : d.p.rank }))
       .sort((x, y) => y.rank - x.rank);
