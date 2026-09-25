@@ -1299,34 +1299,82 @@ function tableCountries() {
     .map(([name, ids]) => ({ name, leagues: ids.sort((a, b) => a - b), region: COUNTRY_FIRST.includes(name) ? null : regionOf(name) }))
     .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 }
-// ---- European cups: the clubs in each competition's league phase this season, from its league file
+// ---- Cups on the Rankings menu, from each competition's league file. European cups ("e:"):
+// the clubs in the league phase. Domestic cups ("k:"): the clubs still in.
 const EURO_CUPS = [2, 3, 848];
+const DOMESTIC_CUPS = [45, 48, 46, 47, 181, 185];
+const CUP_DONE = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
+// Clubs still in a knockout cup: everyone drawn so far, less the losers of settled ties. A tie is
+// every leg between the same two clubs in a round: aggregate, then the shoot-out where its score
+// is known. A level tie (a replay to come) or a shoot-out without a score is settled by which
+// club turns up later against someone else. Group matches knock nobody out; once knockout ties
+// follow the group stage, the group clubs not in them are out. Clubs yet to enter (the Premier
+// League in the FA Cup, say) aren't in the file, so aren't counted.
+function cupTeamsLeft(lg) {
+  const fx = rowsToObjects(lg.fixture_fields, lg.fixtures).filter((f) => !OFF.has(f.status));
+  const isGroup = (f) => /group/i.test(f.round || "");
+  const out = new Set();
+  const groupFx = fx.filter(isGroup), koFx = fx.filter((f) => !isGroup(f));
+  if (groupFx.length) {
+    const groupEnd = groupFx.reduce((m, f) => f.kickoff > m ? f.kickoff : m, "");
+    const after = koFx.filter((f) => f.kickoff > groupEnd);
+    if (after.length) {
+      const through = new Set(after.flatMap((f) => [f.home, f.away]));
+      for (const f of groupFx) for (const t of [f.home, f.away]) if (!through.has(t)) out.add(t);
+    }
+  }
+  const ties = new Map();
+  for (const f of koFx) {
+    const key = `${f.round}|${Math.min(f.home, f.away)}|${Math.max(f.home, f.away)}`;
+    if (!ties.has(key)) ties.set(key, []);
+    ties.get(key).push(f);
+  }
+  const playsLater = (t, opp, after) => koFx.some((f) => f.kickoff > after && (f.home === t || f.away === t) && f.home !== opp && f.away !== opp);
+  for (const legs of ties.values()) {
+    if (!legs.every((f) => CUP_DONE.has(f.status) && f.hg != null)) continue;
+    const a = legs[0].home, b = legs[0].away, last = legs[legs.length - 1];
+    const goals = (t) => legs.reduce((n, f) => n + (f.home === t ? f.hg : f.ag), 0);
+    let loser = goals(a) > goals(b) ? b : goals(b) > goals(a) ? a : null;
+    if (loser == null && last.pen_h != null && last.pen_a != null && last.pen_h !== last.pen_a)
+      loser = last.pen_h > last.pen_a ? last.away : last.home;
+    if (loser == null) {
+      const aOn = playsLater(a, b, last.kickoff), bOn = playsLater(b, a, last.kickoff);
+      if (aOn !== bOn) loser = aOn ? b : a;
+    }
+    if (loser != null) out.add(loser);
+  }
+  return new Set(fx.flatMap((f) => [f.home, f.away]).filter((t) => !out.has(t)));
+}
 function loadEuroCups() {
   if (state.euroLoading) return state.euroLoading;
-  state.euroLoading = Promise.all(EURO_CUPS.map((lid) =>
+  const ids = [...EURO_CUPS, ...DOMESTIC_CUPS];
+  state.euroLoading = Promise.all(ids.map((lid) =>
     fetch(`data/leagues/${lid}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null)))
     .then((files) => {
-      state.euro = new Map(EURO_CUPS.map((lid, i) => {
+      state.euro = new Map(ids.map((lid, i) => {
         const lg = files[i];
         if (!lg) return [lid, new Set()];
+        if (DOMESTIC_CUPS.includes(lid)) return [lid, cupTeamsLeft(lg)];
         // the league phase once it has a table; before that everyone drawn in the competition
         const teams = lg.table.length ? lg.table.map((r) => r[2]) : lg.fixtures.flatMap((f) => [f[3], f[4]]);
         return [lid, new Set(teams)];
       }));
-      if (state.rankings) { renderTableFilters(); if (state.tableFilter.startsWith("e:")) renderTable(); }
+      if (state.rankings) { renderTableFilters(); if (isCupFilter(state.tableFilter)) renderTable(); }
     });
   return state.euroLoading;
 }
-// the clubs for an "e:" filter ("e:all" = all three cups), or null while loading
+const isCupFilter = (f) => f.startsWith("e:") || f.startsWith("k:");
+// the clubs for a cup filter ("e:all" / "k:all" = every cup in the group), or null while loading
 function euroTeams(f) {
   if (!state.euro) return null;
-  if (f === "e:all") return new Set(EURO_CUPS.flatMap((lid) => [...state.euro.get(lid)]));
+  const group = f === "e:all" ? EURO_CUPS : f === "k:all" ? DOMESTIC_CUPS : null;
+  if (group) return new Set(group.flatMap((lid) => [...state.euro.get(lid)]));
   return state.euro.get(Number(f.slice(2))) || new Set();
 }
 // League ids for the current filter: null = all (a European cup filter picks clubs, not leagues)
 function tableLeagueIds() {
   const f = state.tableFilter;
-  if (f === "all" || f.startsWith("e:")) return null;
+  if (f === "all" || isCupFilter(f)) return null;
   if (f.startsWith("c:")) return tableCountries().find((c) => c.name === f.slice(2))?.leagues || [];
   if (f.startsWith("r:")) return tableCountries().filter((c) => c.region === f.slice(2)).flatMap((c) => c.leagues);
   return [Number(f)];
@@ -1351,7 +1399,7 @@ function renderTableFilters() {
       : state.rankings.filter((r) => teams.has(r.team)).length;
   };
   const countOf = (value) => value === "all" ? total
-    : value.startsWith("e:") ? euroCount(value)
+    : isCupFilter(value) ? euroCount(value)
     : value.startsWith("c:") ? sum(countries.find((c) => c.name === value.slice(2))?.leagues || [])
     : value.startsWith("r:") ? sum(countries.filter((c) => c.region === value.slice(2)).flatMap((c) => c.leagues))
     : counts.get(Number(value)) || 0;
@@ -1359,6 +1407,8 @@ function renderTableFilters() {
     all: "All leagues", country: (c) => `All ${c} clubs`, region: (r) => `All clubs in ${r}`,
     euro: "Clubs in this season's Champions League, Europa League or Conference League",
     cup: (name) => `Clubs in the ${name} league phase`,
+    domestic: "Clubs still in a domestic cup (clubs yet to enter aren't counted)",
+    domesticCup: (name) => `Clubs still in the ${name} (clubs yet to enter aren't counted)`,
   });
   renderMoreFilters();
 }
@@ -1397,17 +1447,23 @@ function renderFilterMenu(wrap, f, countries, countOf, titles) {
       chip(`e:${lid}`, escapeHtml(leagueName(lid)), titles.cup(leagueName(lid)))).join(""))}</div>`;
   const euroRow = f.startsWith("e:") ? `<div class="league-row">${EURO_CUPS.map((lid) =>
     chip(`e:${lid}`, escapeHtml(leagueName(lid)), "")).join("")}</div>` : "";
+  const cupsGroup = titles.domestic ? `<div class="cgroup${f.startsWith("k:") ? " open" : ""}">${chip("k:all", "Domestic cups", titles.domestic, caret,
+    `cchip${f.startsWith("k:") && f !== "k:all" ? " has-active" : ""}`)}${list(DOMESTIC_CUPS.map((lid) =>
+      chip(`k:${lid}`, escapeHtml(leagueName(lid)), titles.domesticCup(leagueName(lid)))).join(""))}</div>` : "";
+  const cupsRow = titles.domestic && f.startsWith("k:") ? `<div class="league-row">${DOMESTIC_CUPS.map((lid) =>
+    chip(`k:${lid}`, escapeHtml(leagueName(lid)), "")).join("")}</div>` : "";
   const leagueRow = activeCountry && activeCountry.leagues.length > 1
     ? `<div class="league-row">${activeCountry.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), "")).join("")}</div>` : "";
   const scrolled = wrap.querySelector(".cgroups")?.scrollLeft || 0;
   wrap.innerHTML = `<div class="cgroups">
       ${chip("all", "All", titles.all)}
       ${euroGroup}
+      ${cupsGroup}
       <div class="sep"></div>
       ${countries.filter((c) => !c.region).map(countryGroup).join("")}
       <div class="sep"></div>
       ${regionGroups.join("")}
-    </div>${euroRow}${regionRow}${leagueRow}`;
+    </div>${euroRow}${cupsRow}${regionRow}${leagueRow}`;
   bindFilterHover(wrap);
   // Phones: each chip row swipes sideways; keep the row where it was and the selection in view
   wrap.querySelector(".cgroups").scrollLeft = scrolled;
@@ -1445,7 +1501,8 @@ function compCountries(ids) {
 function filterLeagueIds(f, countries) {
   if (f === "all") return null;
   if (f === "e:all") return EURO_CUPS;
-  if (f.startsWith("e:")) return [Number(f.slice(2))];
+  if (f === "k:all") return DOMESTIC_CUPS;
+  if (f.startsWith("e:") || f.startsWith("k:")) return [Number(f.slice(2))];
   if (f.startsWith("c:")) return countries.find((c) => c.name === f.slice(2))?.leagues || [];
   if (f.startsWith("r:")) return countries.filter((c) => c.region === f.slice(2)).flatMap((c) => c.leagues);
   return [Number(f)];
@@ -1905,7 +1962,7 @@ function renderPlayers() {
   const all = tableFilterIsWide();
   let rows = q ? state.players.list.filter((p) => playerSearchMatch(p, q))
                : state.clubs?.size ? state.players.list
-               : state.tableFilter.startsWith("e:") ? state.players.list.filter((p) => euroTeams(state.tableFilter)?.has(p.team))
+               : isCupFilter(state.tableFilter) ? state.players.list.filter((p) => euroTeams(state.tableFilter)?.has(p.team))
                : ids === null ? state.players.list : state.players.list.filter((p) => ids.includes(p.league));
   rows = rows.filter(playerVisible);
   // Sort: a season rank ("s2026", the current season by default; highest first) or age
@@ -2075,9 +2132,9 @@ function renderTable() {
   // league and cup-only sides)
   const active = state.rankings.filter((r) => r.in_league);
   let rows = ids === null ? active : active.filter((r) => ids.includes(r.league));
-  if (state.tableFilter.startsWith("e:")) {
+  if (isCupFilter(state.tableFilter)) {
     const teams = euroTeams(state.tableFilter);
-    if (!teams) { loadEuroCups(); wrap.innerHTML = `<div class="empty-state">Loading the European cups…</div>`; return; }
+    if (!teams) { loadEuroCups(); wrap.innerHTML = `<div class="empty-state">Loading the cups…</div>`; return; }
     rows = state.rankings.filter((r) => teams.has(r.team));
   }
   if (q) rows = clubSearchRows(q);
