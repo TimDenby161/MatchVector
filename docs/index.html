@@ -1315,10 +1315,12 @@ function flagLink(c) {
 }
 const natLink = (nat) => nat ? `<a class="nat-link" href="#/nation/${encodeURIComponent(nat)}">${escapeHtml(nat)}</a>` : "";
 
+// The Matches tab leaves out postponed games (they come back under their new date once rescheduled)
+const matchesTab = () => state.matchesTab ||= state.data.matches.filter((m) => m.status !== "PST");
 // Today if anything is on, otherwise the nearest upcoming day with matches
 function defaultDate() {
   const today = localDateStr(new Date());
-  const days = [...new Set(state.data.matches.map((m) => localDateStr(new Date(m.kickoff))))].sort();
+  const days = [...new Set(matchesTab().map((m) => localDateStr(new Date(m.kickoff))))].sort();
   if (days.includes(today)) return today;
   return days.find((d) => d > today) || days[days.length - 1] || today;
 }
@@ -1798,7 +1800,7 @@ function matchRounds(lid) {
   const cache = state.roundsCache ||= new Map();
   if (cache.has(lid)) return cache.get(lid);
   const byKey = new Map();
-  for (const m of state.data.matches) {
+  for (const m of matchesTab()) {
     if (m.league !== lid) continue;
     let key = m.round || "", label = roundName(key);
     if (!key || /^Group /.test(key)) {
@@ -1895,12 +1897,12 @@ function renderMatches(menu = true) {
   $("#date-prev").disabled = $("#date-next").disabled = false;
   const ids = matchLeagueIds();
   const day = state.date;
-  const shown = state.data.matches
+  const shown = matchesTab()
     .filter((m) => !ids || ids.includes(m.league))
     .filter((m) => localDateStr(new Date(m.kickoff)) === day);
 
   if (!shown.length) {
-    const upcoming = state.data.matches
+    const upcoming = matchesTab()
       .filter((m) => (!ids || ids.includes(m.league)) && localDateStr(new Date(m.kickoff)) > day)[0];
     container.innerHTML = `<div class="empty-state">No matches on ${escapeHtml(fmtDay(parseDateInput(day)))}.${upcoming
       ? `<br><br><button type="button" class="filter-chip" data-goto="${localDateStr(new Date(upcoming.kickoff))}">Next: ${escapeHtml(fmtDay(upcoming.kickoff))}</button>` : ""}</div>`;
@@ -4321,7 +4323,7 @@ $("#match-filters").addEventListener("click", (e) => {
   if (lid != null && matchRounds(lid).length) return setRound(nextRound(lid));
   // nothing in this filter on the day shown: go to its next day with fixtures (or its last, once it's over)
   const ids = matchLeagueIds();
-  const days = [...new Set(state.data.matches.filter((m) => !ids || ids.includes(m.league))
+  const days = [...new Set(matchesTab().filter((m) => !ids || ids.includes(m.league))
     .map((m) => localDateStr(new Date(m.kickoff))))].sort();
   if (days.length && !days.includes(state.date)) {
     state.date = days.find((d) => d > state.date) || days[days.length - 1];
