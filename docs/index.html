@@ -217,6 +217,9 @@
   .squad-badge { display: inline-flex; align-items: center; justify-content: center; gap: 2px;
     min-width: 28px; height: 18px; padding: 0 4px; border-radius: 6px;
     background: var(--chip-bg); color: var(--text-secondary); font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .squad-badge.good { background: color-mix(in srgb, var(--status-good) 18%, transparent); color: var(--status-good); }
+  .squad-badge.same { background: color-mix(in srgb, var(--status-warning) 22%, transparent); color: var(--status-warning); }
+  .squad-badge.bad { background: color-mix(in srgb, var(--status-critical) 16%, transparent); color: var(--status-critical); }
   .squad-badge .ico { font-size: 10px; line-height: 1; }
   /* phones: no room beside the name, so the badge sits just above it */
   @media (max-width: 480px) {
@@ -229,11 +232,12 @@
   }
   .team-link:hover, .team-link:focus-visible { text-decoration: underline; }
   .club-score {
-    display: block; width: fit-content; margin-top: 3px; padding: 2px 6px; border-radius: 6px;
+    display: inline-block; width: fit-content; padding: 2px 6px; border-radius: 6px;
     background: color-mix(in srgb, var(--series-blue) 16%, transparent); color: var(--series-blue);
     font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 700;
   }
-  .match-team.away .club-score { margin-left: auto; }
+  .score-badges { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+  .match-team.away .score-badges { justify-content: flex-end; }
   .match-score { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; }
   .score-row { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; white-space: nowrap; }
   .vs-text { color: var(--text-muted); font-size: 12px; font-weight: 600; }
@@ -1820,12 +1824,12 @@ function matchHead(m, right = "") {
       <div class="match-teams">
         <div class="match-team">
           <div class="mt-name"><img class="club-logo" data-club="${m.home}" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home, m.home_name)}<span class="team-squad-badges" data-squad-team="home"></span></div>
-          ${rankChip(hRank)}
+          <div class="score-badges">${rankChip(hRank)}<span data-squad-overall="home"></span></div>
         </div>
         ${scoreCentre(m)}
         <div class="match-team away">
           <div class="mt-name"><img class="club-logo" data-club="${m.away}" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away, m.away_name)}<span class="team-squad-badges" data-squad-team="away"></span></div>
-          ${rankChip(aRank)}
+          <div class="score-badges"><span data-squad-overall="away"></span>${rankChip(aRank)}</div>
         </div>
       </div>`;
 }
@@ -1937,11 +1941,15 @@ async function fillSquadLine(el) {
   const [h, a] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
   const sh = h && squadStrength(m.home, h, m), sa = a && squadStrength(m.away, a, m);
   if (!sh || !sa) return;
-  const badge = (icon, value, label) => `<span class="squad-badge" title="${label}: ${Math.round(value)}"><span class="ico">${icon}</span>${Math.round(value)}</span>`;
-  const html = (s) => badge("🛡️", s.defence, "Defence") + badge("⚔️", s.attack, "Attack") + badge("⚽", s.strength, "Overall");
+  const badge = (icon, value, label, cls = "") => `<span class="squad-badge${cls ? ` ${cls}` : ""}" title="${label}: ${Math.round(value)}"><span class="ico">${icon}</span>${Math.round(value)}</span>`;
+  const trend = (value, normal) => normal == null ? "" : Math.round(value) > Math.round(normal) ? "good" : Math.round(value) < Math.round(normal) ? "bad" : "same";
+  const nameHtml = (s) => badge("🛡️", s.defence, "Defence") + badge("⚔️", s.attack, "Attack");
+  const overallHtml = (s, normal) => badge("⚽", s.strength, normal == null ? "Overall squad rating" : `Overall squad rating; normal ${Math.round(normal)}`, trend(s.strength, normal));
   const card = el.closest(".match-card");
-  card.querySelector('[data-squad-team="home"]').innerHTML = html(sh);
-  card.querySelector('[data-squad-team="away"]').innerHTML = html(sa);
+  card.querySelector('[data-squad-team="home"]').innerHTML = nameHtml(sh);
+  card.querySelector('[data-squad-team="away"]').innerHTML = nameHtml(sa);
+  card.querySelector('[data-squad-overall="home"]').innerHTML = overallHtml(sh, m.home_recent_xi);
+  card.querySelector('[data-squad-overall="away"]').innerHTML = overallHtml(sa, m.away_recent_xi);
 }
 function observeSquadLines() {
   document.querySelectorAll("#matches-list .squad-line[hidden]:not([data-watched])").forEach((el) => {
