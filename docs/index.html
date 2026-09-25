@@ -1724,7 +1724,7 @@ function scoreCentre(m) {
   if (m.home_xg == null) return `<div class="match-score"><div class="score-row"><span class="vs-text">vs</span></div></div>`;
   return `<div class="match-score">
       <div class="score-row"><span class="proj-box">${m.home_xg.toFixed(1)}</span><span class="vs-text">vs</span><span class="proj-box">${m.away_xg.toFixed(1)}</span></div>
-      ${m.likely ? `<div class="score-sub">likely ${escapeHtml(m.likely)}</div>` : ""}
+      ${m.likely ? `<div class="score-sub" title="Most likely score">${escapeHtml(m.likely)}</div>` : ""}
     </div>`;
 }
 
