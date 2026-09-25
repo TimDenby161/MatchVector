@@ -41,7 +41,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # Local copy of big historical query results (matchvector/cache.py): only weeks that
+      # Local copy of big historical query results (thecornerfc/cache.py): only weeks that
       # changed since the last run are downloaded from the database
       - name: Restore query cache
         uses: actions/cache/restore@v4
@@ -53,14 +53,14 @@ jobs:
       - name: Pull the leagues' history from API-Football
         run: |
           for target in leagues teams fixtures standings stats odds; do
-            python -m matchvector sync "$target" --leagues $LEAGUES --seasons $SEASONS
+            python -m thecornerfc sync "$target" --leagues $LEAGUES --seasons $SEASONS
           done
 
       - name: Re-rank and re-predict
         run: |
-          python -m matchvector rank
-          python -m matchvector predict
-          python -m matchvector export
+          python -m thecornerfc rank
+          python -m thecornerfc predict
+          python -m thecornerfc export
 
       - name: Commit website data
         run: |

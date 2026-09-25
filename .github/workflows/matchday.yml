@@ -31,7 +31,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Pre-kickoff odds, injuries, late paper bets, settle
-        run: python -m matchvector matchday
+        run: python -m thecornerfc matchday
 
       - name: Commit bets and injury data if it changed
         run: |

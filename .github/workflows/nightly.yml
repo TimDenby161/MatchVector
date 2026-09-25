@@ -30,7 +30,7 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # Local copy of big historical query results (matchvector/cache.py): only weeks that
+      # Local copy of big historical query results (thecornerfc/cache.py): only weeks that
       # changed since the last run are downloaded from the database
       - name: Restore query cache
         uses: actions/cache/restore@v4
@@ -40,12 +40,12 @@ jobs:
           restore-keys: db-cache-
 
       - name: Sync API-Football into Supabase
-        run: python -m matchvector nightly
+        run: python -m thecornerfc nightly
 
       # Runs even if one competition failed above, so the site still gets fresh data
       - name: Export website data
         if: success() || failure()
-        run: python -m matchvector export
+        run: python -m thecornerfc export
 
       - name: Commit website data
         if: success() || failure()

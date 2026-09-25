@@ -1,4 +1,4 @@
--- MatchVector schema for API-Football data (Supabase / Postgres).
+-- The Corner FC schema for API-Football data (Supabase / Postgres).
 -- Idempotent: safe to re-run.
 
 create table if not exists leagues (
@@ -441,7 +441,7 @@ alter table players add column if not exists current_rank numeric(4,1);
 alter table players add column if not exists rank_position text;
 alter table players add column if not exists rank_minutes int;
 
--- Club ranking (see matchvector/ranking.py). Rebuilt from scratch on every run.
+-- Club ranking (see thecornerfc/ranking.py). Rebuilt from scratch on every run.
 -- Every team starts from leagues.starting_rank of the first league it plays in.
 alter table leagues add column if not exists starting_rank numeric;
 
@@ -501,7 +501,7 @@ alter table team_rankings add column if not exists home_rating double precision;
 alter table team_rankings add column if not exists away_rating double precision;
 
 -- Projected score and win/draw/loss chances for upcoming fixtures (see
--- matchvector/predictions.py). Rebuilt nightly after the rankings.
+-- thecornerfc/predictions.py). Rebuilt nightly after the rankings.
 create table if not exists fixture_predictions (
     fixture_id        int primary key,
     kickoff           timestamptz,
@@ -526,9 +526,9 @@ create table if not exists fixture_predictions (
 -- from pre-match ranks and goal averages (what the current model would have said)
 alter table fixture_predictions add column if not exists source text not null default 'live';
 -- 1 (terrible) - 5 (excellent) grade of the projection once the match is finished, plus the
--- five 0-5 factor scores it is weighted from (see matchvector/rating.py)
+-- five 0-5 factor scores it is weighted from (see thecornerfc/rating.py)
 -- Missing-player strength from the injury lists (1.0 = one ever-present player), see
--- matchvector/injuries.py; null where there's no injury list
+-- thecornerfc/injuries.py; null where there's no injury list
 alter table fixture_predictions add column if not exists home_missing double precision;
 alter table fixture_predictions add column if not exists away_missing double precision;
 alter table fixture_predictions add column if not exists p_over25 double precision;
@@ -559,7 +559,7 @@ join teams h on h.team_id = p.home_team_id
 join teams a on a.team_id = p.away_team_id
 order by p.kickoff;
 
--- Paper bets placed by the model (see matchvector/betting.py): never real money.
+-- Paper bets placed by the model (see thecornerfc/betting.py): never real money.
 create table if not exists paper_bets (
     bet_id          bigserial primary key,
     strategy        text not null,       -- 'early' (night before) or 'late' (just before kickoff)

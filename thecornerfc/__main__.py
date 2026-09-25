@@ -1,16 +1,16 @@
-"""MatchVector data sync CLI.
+"""The Corner FC data sync CLI.
 
-    python -m matchvector init-db
-    python -m matchvector status
-    python -m matchvector sync all
-    python -m matchvector sync fixtures --leagues 39 40 --seasons 2024 2025
-    python -m matchvector sync stats --limit 2000
-    python -m matchvector sync odds
-    python -m matchvector nightly        # refresh everything that changes (scheduled task)
-    python -m matchvector rank           # recalculate club rankings from every fixture
-    python -m matchvector predict        # projected scores / W-D-L for upcoming fixtures
-    python -m matchvector export         # JSON for the website in docs/data
-    python -m matchvector matchday       # pre-kickoff odds/injuries, late paper bets, settle
+    python -m thecornerfc init-db
+    python -m thecornerfc status
+    python -m thecornerfc sync all
+    python -m thecornerfc sync fixtures --leagues 39 40 --seasons 2024 2025
+    python -m thecornerfc sync stats --limit 2000
+    python -m thecornerfc sync odds
+    python -m thecornerfc nightly        # refresh everything that changes (scheduled task)
+    python -m thecornerfc rank           # recalculate club rankings from every fixture
+    python -m thecornerfc predict        # projected scores / W-D-L for upcoming fixtures
+    python -m thecornerfc export         # JSON for the website in docs/data
+    python -m thecornerfc matchday       # pre-kickoff odds/injuries, late paper bets, settle
 """
 import argparse
 import logging
@@ -25,7 +25,7 @@ TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "player
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="matchvector")
+    parser = argparse.ArgumentParser(prog="thecornerfc")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("init-db", help="Create tables in the database")

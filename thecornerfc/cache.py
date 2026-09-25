@@ -20,8 +20,9 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-CACHE_DIR = Path(os.getenv("MATCHVECTOR_CACHE_DIR",
-                           Path(__file__).resolve().parent.parent / ".cache"))
+CACHE_DIR = Path(os.getenv("THE_CORNER_FC_CACHE_DIR")
+                 or os.getenv("MATCHVECTOR_CACHE_DIR")
+                 or Path(__file__).resolve().parent.parent / ".cache")
 WEEK = "(date_trunc('week', {} at time zone 'UTC'))::date"
 
 
