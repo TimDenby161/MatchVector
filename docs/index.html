@@ -268,6 +268,9 @@
   .club-card-extra { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
     display: flex; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
   .club-card-extra b { color: var(--text-secondary); }
+  .match-card.club-res-w { background: color-mix(in srgb, var(--status-good) 12%, var(--surface-1)); border-left: 4px solid var(--status-good); }
+  .match-card.club-res-d { background: color-mix(in srgb, #dfff00 18%, var(--surface-1)); border-left: 4px solid #c4df00; }
+  .match-card.club-res-l { background: color-mix(in srgb, var(--status-critical) 12%, var(--surface-1)); border-left: 4px solid var(--status-critical); }
   .vs-market { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
   .vs-market .hd { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; text-align: right; }
   .vs-market .num { text-align: right; font-weight: 700; }
@@ -3592,10 +3595,12 @@ function clubMatchesTab() {
       away_name: home ? clubOpp(m.opponent) : teamName(id),
       hg: home ? m.gf : m.ga,
       ag: home ? m.ga : m.gf,
+      home_xg: m.xgf == null ? null : home ? m.xgf : m.xga,
+      away_xg: m.xgf == null ? null : home ? m.xga : m.xgf,
       home_rank: home ? m.rank : null,
       away_rank: home ? null : m.rank,
     };
-    return `<div class="match-card">
+    return `<div class="match-card ${resClass(m).replace("res-", "club-res-")}">
       ${matchHead(card)}
       ${m.xi_lines ? `<div class="market-line" title="Average player rank (0-100) by line">Starting XI ${linesText(m.xi_lines)}</div>` : ""}
       <div class="club-card-extra">
