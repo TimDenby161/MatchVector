@@ -453,6 +453,8 @@
   #tips-body .comp-group { margin-top: 10px; }
   .tip-pick + .tip-pick { border-top: 1px solid var(--gridline); padding-top: 5px; margin-top: 5px; }
   .tip-pick { align-items: center; }
+  .tip-score { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  #tips-body .match-probs { margin: 6px 0 8px; }
   .tip-left { display: flex; align-items: center; min-width: 0; }
   .tip-left .sel { display: block; line-height: 1.25; }
   .tip-badges { display: inline-flex; gap: 3px; margin-right: 8px; vertical-align: -4px; flex: none; }
@@ -2485,10 +2487,18 @@ function renderTips() {
   const folded = state.tipsCollapsed;
   const caret = (key) => `<span class="comp-group-caret">${folded.has(key) ? "&#9656;" : "&#9662;"}</span>`;
   const group = (list, key) => { const m = new Map(); for (const b of list) { const k = b[key]; if (!m.has(k)) m.set(k, []); m.get(k).push(b); } return m; };
+  // the model's projection for the match, as on the Matches tab: likely score and win chances
+  const byId = new Map(state.data.matches.map((m) => [m.id, m]));
+  const projection = (fid) => {
+    const m = byId.get(fid);
+    if (!m || m.p_home == null) return "";
+    return `${m.likely ? `<div class="tip-score">Predicted score <b>${escapeHtml(m.likely)}</b></div>` : ""}${probBar(m)}`;
+  };
   const matchCard = (bs) => `
     <div class="bet-row">
       <div class="bet-top"><span>${escapeHtml(fmtTime(bs[0].kickoff))}</span>${bs.length > 1 ? `<span>${bs.length} bets · ${gbp(stake * bs.length)}</span>` : ""}</div>
       <div class="bet-match">${escapeHtml(bs[0].home)} v ${escapeHtml(bs[0].away)}</div>
+      ${projection(bs[0].fixture)}
       ${bs.map((b) => `<div class="tip-pick"><span class="tip-left">${betBadges(b)}<span><span class="sel">${escapeHtml(tipLabel(b))}</span><span class="win">${gbp(stake)} to win ${gbp(stake * (b.odds - 1))}</span></span></span><span class="odds">${b.odds.toFixed(2)}</span></div>`).join("")}
     </div>`;
   body.innerHTML = intro + days.map((d) => {
