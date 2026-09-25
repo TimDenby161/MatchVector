@@ -1816,6 +1816,7 @@ function matchCard(m) {
       ${m.m_home != null ? probBar(m, "p", "Model") + probBar(m, "m", "Bookmakers") : probBar(m)}
       ${m.p_over25 != null && !(FINISHED.has(m.status) && m.hg != null) ? `<div class="market-line">Over 2.5 goals <b>${Math.round(m.p_over25 * 100)}%</b> · Both teams score <b>${Math.round(m.p_btts * 100)}%</b></div>` : ""}
       ${m.home_xi != null && m.away_xi != null ? `<div class="market-line" title="Average player rank (0-100) of the ${FINISHED.has(m.status) ? "starting" : "predicted"} XI; brackets = average of each side's last 5 starting XIs${m.home_lines && m.away_lines ? `. By line: ${escapeHtml(teamName(m.home))} ${linesText(m.home_lines)}; ${escapeHtml(teamName(m.away))} ${linesText(m.away_lines)}` : ""}">${FINISHED.has(m.status) ? "Starting" : "Predicted"} XI rating <b>${Math.round(m.home_xi)}</b>${m.home_recent_xi != null ? ` (${Math.round(m.home_recent_xi)})` : ""} · <b>${Math.round(m.away_xi)}</b>${m.away_recent_xi != null ? ` (${Math.round(m.away_recent_xi)})` : ""}</div>` : ""}
+      ${!FINISHED.has(m.status) && !LIVE.has(m.status) ? `<div class="market-line squad-line" data-fixture="${m.id}" hidden></div>` : ""}
       ${m.home_missing != null || m.away_missing != null ? `<div class="market-line" title="Players listed injured, suspended or doubtful, weighted by their share of their team's recent minutes (1.0 = one ever-present player)">Missing players <b>${(m.home_missing ?? 0).toFixed(1)}</b> · <b>${(m.away_missing ?? 0).toFixed(1)}</b></div>` : ""}
       ${detail}
     </div>`;
@@ -1890,6 +1891,33 @@ function stepRound(delta) {
   if (r) setRound(r.key);
 }
 
+// Squad lines on match cards: both clubs' files load when the card comes into view
+const squadObserver = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) {        // (watches the card: the line is hidden until filled)
+    squadObserver.unobserve(e.target);
+    const line = e.target.querySelector(".squad-line");
+    if (line) fillSquadLine(line);
+  }
+}, { rootMargin: "200px" }) : null;
+async function fillSquadLine(el) {
+  const m = state.data.matches.find((x) => x.id === Number(el.dataset.fixture));
+  if (!m || !state.players) return;
+  state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+  const [h, a] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
+  const sh = h && squadStrength(m.home, h, m), sa = a && squadStrength(m.away, a, m);
+  if (!sh || !sa) return;
+  const f = (v) => `<b>${Math.round(v)}</b>`;
+  el.title = "The expected squad (predicted line-up and bench minutes): attack and defence weight each position's rating by how much it attacks or defends; strength is everyone's rating weighted by expected minutes";
+  el.innerHTML = `Attack ${f(sh.attack)}–${f(sa.attack)} · Defence ${f(sh.defence)}–${f(sa.defence)} · Strength ${f(sh.strength)}–${f(sa.strength)}`;
+  el.hidden = false;
+}
+function observeSquadLines() {
+  document.querySelectorAll("#matches-list .squad-line[hidden]:not([data-watched])").forEach((el) => {
+    el.dataset.watched = "1";
+    squadObserver ? squadObserver.observe(el.closest(".match-card")) : fillSquadLine(el);
+  });
+}
+new MutationObserver(observeSquadLines).observe($("#matches-list"), { childList: true, subtree: true });
 function renderMatches(menu = true) {
   const container = $("#matches-list");
   $("#date-input").value = state.date;
@@ -2881,11 +2909,7 @@ async function openClubPage(id) {
   showPage();
   const body = $("#club-body");
   body.innerHTML = `<div class="empty-state">Loading ${escapeHtml(teamName(id))}…</div>`;
-  let club = clubCache.get(id);
-  if (!club) {
-    club = await fetch(`data/clubs/${id}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
-    if (club) { club.rows = rowsToObjects(club.fields, club.matches); clubCache.set(id, club); }
-  }
+  const club = await loadClub(id);
   state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
   state.club = { id, data: club, range: state.club?.range || "1y" };
   renderClubPage();
@@ -3040,6 +3064,37 @@ function clubNextCard() {
 }
 
 // ---- Predicted XI: the next match, the XI on the pitch and as a list
+// A club's expected squad for a match, from clubDepth's expected minutes: strength = the minutes-
+// weighted average position rank of everyone expected to play (bench minutes too); attack and
+// defence weight each position by how much it attacks or defends
+const SQUAD_WEIGHTS = {             // [attack, defence]
+  GK: [0, 1], CB: [0.1, 1], LB: [0.3, 0.8], RB: [0.3, 0.8], LWB: [0.4, 0.6], RWB: [0.4, 0.6],
+  CM: [0.5, 0.6], LM: [0.8, 0.3], RM: [0.8, 0.3], AM: [1, 0.2], LW: [1, 0.15], RW: [1, 0.15], ST: [1, 0.1],
+};
+function squadStrength(teamId, data, match) {
+  const d = clubDepth(teamId, data, match);
+  if (!d) return null;
+  const sum = { all: [0, 0], att: [0, 0], def: [0, 0] };
+  for (const b of d.shown) {
+    const [wa, wd] = SQUAD_WEIGHTS[b.label] || [0.5, 0.5];
+    for (const { p, rank } of b.ps) {
+      const m = d.xMins.get(`${b.label}:${p.id}`) || 0;
+      sum.all[0] += rank * m; sum.all[1] += m;
+      sum.att[0] += rank * m * wa; sum.att[1] += m * wa;
+      sum.def[0] += rank * m * wd; sum.def[1] += m * wd;
+    }
+  }
+  const avg = ([a, b]) => b ? a / b : null;
+  return sum.all[1] ? { strength: avg(sum.all), attack: avg(sum.att), defence: avg(sum.def) } : null;
+}
+// A club's file (cached), for club pages and match cards
+async function loadClub(id) {
+  if (clubCache.has(id)) return clubCache.get(id);
+  const club = await fetch(`data/clubs/${id}.json`, { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+  if (club) club.rows = rowsToObjects(club.fields, club.matches);
+  clubCache.set(id, club);
+  return club;
+}
 // Start chance colour: 80%+ green, 60-80 yellow, 40-60 orange, under 40 red
 const startTier = (c) => (c = Math.round(c)) >= 80 ? 4 : c >= 60 ? 3 : c >= 40 ? 2 : 1;   // as shown, rounded
 // The predicted XI from the overview's start chances: each position's usual number of starters,
@@ -3141,8 +3196,8 @@ function formationRoles(f) {
   return [...out];
 }
 // This season's matches: the formations the overview pitch takes its positions from
-function clubFormationRows() {
-  const rows = state.club?.data?.rows || [];
+function clubFormationRows(data = state.club?.data) {
+  const rows = data?.rows || [];
   if (!rows.length) return [];
   const { seasonOf } = clubSeasons(rows);
   const season = seasonOf(rows[rows.length - 1]);
@@ -3153,21 +3208,23 @@ function canPlay(p) {
   if (!rows) return playsAt(p);
   return new Set([p.position, ...rows.filter(([r, m]) => r !== "SUB" && m >= DEPTH_MINUTES).map(([r]) => r)]);
 }
-function clubDepth(teamId) {
+// data: the club's file (default: the open club page's); match: the fixture to work it out for
+// (default: the club's next), which sets the kind of competition it leans on
+function clubDepth(teamId, data = state.club?.data, match = null) {
   const out = new Set((clubInjuries(teamId)?.players || []).map(([pid]) => pid));   // injured: in their own box
   const atClub = new Set((state.players?.list || []).filter((p) => p.team === teamId).map((p) => p.id));
   const squad = (state.players?.list || []).filter((p) => p.team === teamId && !out.has(p.id));
   if (!squad.length) return null;
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
   // only the positions in the formations the club has used (all of them if none are known)
-  const used = new Set(clubFormationRows().filter((m) => m.formation).flatMap((m) => formationRoles(m.formation)));
+  const used = new Set(clubFormationRows(data).filter((m) => m.formation).flatMap((m) => formationRoles(m.formation)));
   // one box per position; DM and CM share one central-midfield box over both lines (the line-up
   // grid can't tell a holder from a box-to-box midfielder in a pair), his best rank of the two
   const boxes = PITCH_SPOTS.filter(([r]) => r !== "DM" && r !== "CM").map(([r, x, y]) =>
     ({ label: r, roles: [r], row: y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1, col: x < 35 ? 3 : x < 65 ? 2 : 1 }));
   boxes.push({ label: "CM", roles: ["DM", "CM"], row: "3 / span 2", col: 2 });
   // his share of the club's matches this season (with a line-up) that he started in this box
-  const st = state.club.data?.starts;
+  const st = data?.starts;
   const startPct = (p, roles) => {
     const n = roles.reduce((a, r) => a + (st?.players?.[String(p.id)]?.[r] || 0), 0);
     return st?.games && n ? Math.round(100 * n / st.games) : null;
@@ -3192,7 +3249,7 @@ function clubDepth(teamId) {
     const c = state.data.competitions[lg];
     return !c ? "cup" : c.type === "League" ? "league" : c.country === "World" ? "europe" : "cup";
   };
-  const nextMatch = clubUpcoming(teamId)[0];
+  const nextMatch = match || clubUpcoming(teamId)[0];
   const nextGroup = nextMatch ? compGroup(nextMatch.league) : null;
   const groupXi = nextGroup ? xi.filter((_, k) => compGroup(xiLeague[k]) === nextGroup) : [];
   const wGroup = groupXi.length / (groupXi.length + 1);
