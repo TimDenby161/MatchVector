@@ -1718,9 +1718,8 @@ function scoreCentre(m) {
   const live = LIVE.has(m.status) && m.hg != null;
   if (finished || live) {
     const pens = m.pen_h != null ? `<div class="score-sub">pens ${m.pen_h}–${m.pen_a}</div>` : "";
-    const label = m.source === "backfill" ? "recon" : "proj";
-    const tip = m.source === "backfill" ? "Reconstructed afterwards from pre-match data" : "Projected before kickoff";
-    const proj = m.home_xg != null ? `<div class="score-sub" title="${tip}">${label} ${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}</div>` : "";
+    const tip = m.source === "backfill" ? "Projected score, reconstructed afterwards from pre-match data" : "Projected score, before kickoff";
+    const proj = m.home_xg != null ? `<div class="score-sub" title="${tip}">${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}</div>` : "";
     return `<div class="match-score"><div class="score-row"><span class="final-box">${m.hg}</span><span class="vs-text">–</span><span class="final-box">${m.ag}</span></div>${pens}${proj}</div>`;
   }
   if (m.home_xg == null) return `<div class="match-score"><div class="score-row"><span class="vs-text">vs</span></div></div>`;
