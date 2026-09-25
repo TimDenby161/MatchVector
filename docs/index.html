@@ -853,7 +853,7 @@
   .pp-spot.hollow .pp-pos { color: inherit; }
   .pp-section { margin-bottom: 16px; }
   /* Overview: a narrow next-match card to the left of the pitch */
-  .ov-top { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+  .ov-top { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
   .ov-top .pp-section { margin: 0; }
   .ov-top .next-card { margin: 0; padding: 9px 10px; }
   .ov-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -861,11 +861,15 @@
     margin-top: 6px; font-size: 12px; }
   .form-row .rel-chip { min-width: 0; padding: 2px 0; font-size: 11px; }
   .form-row .club-logo { width: 16px; height: 16px; }
-  .next5-row { display: grid; grid-template-columns: 40px 16px 14px 16px minmax(0, 1fr); align-items: center; gap: 8px;
+  .next5-row { display: grid; grid-template-columns: 38px 16px 10px 16px repeat(3, minmax(0, 1fr)); align-items: center; gap: 5px;
     margin-top: 6px; font-size: 12px; }
   .next5-row .club-logo { width: 16px; height: 16px; }
   .next5-date { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .next5-comp { width: 16px; height: 16px; object-fit: contain; }
+  .next5-num { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .next5-num.strong { font-weight: 700; color: var(--text-primary); }
+  .next5-hdr { margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+  .next5-hdr span { text-align: right; }
   .form-ha { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; }
   .form-move { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
   .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
@@ -2944,17 +2948,23 @@ function clubOverviewTab() {
     </div>` : "";
   const upcoming = clubUpcoming(id).slice(0, 5);
   const nextCard = upcoming.length ? `<div class="next-card form-card">
-      <div class="next-top"><span class="next-label">Next games</span><span>Win chance</span></div>
+      <div class="next-top"><span class="next-label">Next games</span></div>
+      <div class="next5-row next5-hdr"><span></span><span></span><span></span><span></span><span title="Projected goals">Goals</span><span title="Clean sheet chance">CS</span><span title="Win chance">Win</span></div>
       ${upcoming.map((m) => {
         const home = m.home === id, opp = home ? m.away : m.home;
         const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
+        // projected goals for and against; clean sheet = the chance the opponent scores none
+        const gf = m.home_xg != null ? (home ? m.home_xg : m.away_xg) : null, ga = m.home_xg != null ? (home ? m.away_xg : m.home_xg) : null;
+        const cs = ga != null ? Math.round(100 * Math.exp(-ga)) : null;
         const comp = SHORT_NAMES[m.league] || state.data.competitions[m.league]?.name || "";
         return `<div class="next5-row" title="${escapeHtml(`${fmtDay(m.kickoff)} ${fmtTime(m.kickoff)} · ${home ? "v" : "@"} ${teamName(opp)} · ${compLabel(m.league)}`)}">
           <span class="next5-date">${escapeHtml(fmtShortDate(m.kickoff))}</span>
           <img class="club-logo" src="${teamLogo(opp)}" alt="${escapeHtml(teamName(opp))}" loading="lazy" onerror="this.style.visibility='hidden'">
           <span class="form-ha">${home ? "H" : "A"}</span>
           <img class="next5-comp" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(comp)}" title="${escapeHtml(comp)}" loading="lazy" onerror="this.style.visibility='hidden'">
-          <span class="form-move">${win != null ? `${win}%` : ""}</span></div>`;
+          <span class="next5-num">${gf != null ? gf.toFixed(1) : ""}</span>
+          <span class="next5-num">${cs != null ? `${cs}%` : ""}</span>
+          <span class="next5-num strong">${win != null ? `${win}%` : ""}</span></div>`;
       }).join("")}
     </div>` : "";
   const side = injuredCard(id) + nextCard + formCard, pitch = depthPitch(id);   // the next match is on the Predicted XI tab
@@ -2974,7 +2984,8 @@ function injuredCard(id) {
   const when = inj.upcoming ? "Next match" : `Latest list · ${past ? `${past.home ? "v" : "@"} ${escapeHtml(clubOpp(past.opponent))}, ` : ""}${escapeHtml(fmtShortDate(inj.kickoff))}`;
   return `<div class="next-card inj-card">
     <div class="next-top"><span class="next-label">Injured &amp; Suspended</span><span>${when}</span></div>
-    ${inj.players.map(([pid, name, type, reason, missed, seasonRank]) => `<div class="inj-row">
+    ${inj.players.map((row) => [row, playerById(row[0])?.rank ?? row[5] ?? -1]).sort((a, b) => b[1] - a[1]).map(([row]) => row)
+      .map(([pid, name, type, reason, missed, seasonRank]) => `<div class="inj-row">
       <div class="inj-top"><span class="inj-name" title="${escapeHtml(`${name}: missed his club's last ${missed} match${missed === 1 ? "" : "es"}`)}"><span class="inj-surname">${playerById(pid) ? playerLink(pid, shortName(name)) : escapeHtml(shortName(name))}</span>${missed ? `<span class="inj-missed">&nbsp;– ${missed}</span>` : ""}</span>
         ${(playerById(pid)?.rank ?? seasonRank) != null ? rankChipSmall(playerById(pid)?.rank ?? seasonRank) : `<span class="rel-chip rating-none" title="No rating: no minutes in the leagues with player data">–</span>`}</div>
       ${type === "Questionable" ? `<span class="inj-reason doubt">Doubtful</span>`
