@@ -212,6 +212,15 @@
   .match-teams { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; gap: 8px; }
   .match-team { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
   .match-team.away { text-align: right; }
+  /* badge by the name, on the outside edge of each side */
+  .mt-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .match-team.away .mt-name { flex-direction: row-reverse; }
+  .mt-name .club-logo { width: 20px; height: 20px; flex: none; }
+  /* phones: no room beside the name, so the badge sits just above it */
+  @media (max-width: 480px) {
+    .mt-name, .match-team.away .mt-name { flex-direction: column; align-items: flex-start; gap: 3px; }
+    .match-team.away .mt-name { align-items: flex-end; }
+  }
   .team-link {
     appearance: none; border: none; background: transparent; padding: 0; cursor: pointer;
     font: inherit; color: inherit; text-align: inherit; overflow-wrap: anywhere;
@@ -1598,12 +1607,12 @@ function matchCard(m) {
       </div>
       <div class="match-teams">
         <div class="match-team">
-          ${clubLink(m.home)}
+          <div class="mt-name"><img class="club-logo" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home)}</div>
           ${rankChip(hRank)}
         </div>
         ${scoreCentre(m)}
         <div class="match-team away">
-          ${clubLink(m.away)}
+          <div class="mt-name"><img class="club-logo" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away)}</div>
           ${rankChip(aRank)}
         </div>
       </div>
