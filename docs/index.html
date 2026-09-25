@@ -874,6 +874,7 @@
   .next5-hdr { margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
   .next5-hdr span { text-align: right; }
   .form-ha { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; }
+  .form-xg.est { color: var(--text-muted); font-style: italic; }
   .form-xg { font-size: 11px; text-align: center; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .form-hdr { margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
   .form-hdr span:nth-child(5) { text-align: center; text-transform: none; } .form-hdr span:nth-child(6) { text-align: right; }
@@ -2962,7 +2963,8 @@ function clubOverviewTab() {
         <img class="club-logo" data-club="${m.opponent}" src="${teamLogo(m.opponent)}" alt="${escapeHtml(clubOpp(m.opponent))}" loading="lazy" onerror="this.style.visibility='hidden'">
         <span class="form-ha">${m.home === 2 ? "N" : m.home ? "H" : "A"}</span>
         <img class="next5-comp" data-league="${m.league}" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(compLabel(m.league))}" title="${escapeHtml(compLabel(m.league))}" loading="lazy" onerror="this.style.visibility='hidden'">
-        <span class="form-xg" title="Expected goals: for – against">${m.xgf != null && m.xga != null ? `${m.xgf.toFixed(1)}–${m.xga.toFixed(1)}` : "–"}</span>
+        <span class="form-xg${m.xg_est ? " est" : ""}" title="${m.xg_est ? "Estimated from shots (API-Football has no xG for this match): for – against" : "Expected goals: for – against"}">${
+          m.xgf != null && m.xga != null ? `${m.xg_est ? "≈" : ""}${m.xgf.toFixed(1)}–${m.xga.toFixed(1)}` : "–"}</span>
         <span class="form-move">${moveHtml(move)}</span></div>`).join("")}
     </div>` : "";
   const upcoming = clubUpcoming(id).slice(0, 5);

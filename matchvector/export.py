@@ -811,6 +811,17 @@ def export_player_pages(conn, out_dir=OUT_DIR):
 
 
 CLUB_ACTIVE_DAYS = 400
+# xG estimated from shots where API-Football gives none (most cup and European matches): a
+# least-squares fit over two years of team matches with both (35,664 of them, September 2026),
+# xG = 0.12 per shot inside the box + 0.002 per shot outside it + 0.101 per shot on target
+# - 0.022 per blocked shot + 0.026. R^2 0.62, typical error 0.4 goals a team a match.
+XG_FROM_SHOTS = (0.12, 0.002, 0.101, -0.022, 0.026)
+
+
+def _xg_from_shots(inside, outside, on_target, blocked):
+    a, b, c, d, e = XG_FROM_SHOTS
+    return max(0.0, a * inside + b * outside + c * on_target + d * (blocked or 0) + e)
+
 # Finished matches at a neutral ground: in a city where neither club played its league home games
 # that season (2+ of them) and not at either's league ground by name (the API's venue names and
 # cities vary: Bayern's league games are at "Fußball Arena München", its cup games at "Allianz
@@ -916,6 +927,23 @@ def export_clubs(conn, out_dir=OUT_DIR):
         if team in starts:
             starts[team].setdefault("mins", {})[str(player)] = [n_start, m_start, n_sub, m_sub]
     match_xg = {r[0]: (r[9], r[10]) for r in finished_fixtures(conn)}   # fixture -> (home xG, away xG)
+    # estimates from shots for matches without xG: {(fixture, team): xG}
+    shot_xg = {(f, t): _xg_from_shots(i, o, on, bl) for f, t, i, o, on, bl in cached_rows(conn, "shots_without_xg", f"""
+            select {WEEK.format('f.kickoff')} as part, s.fixture_id, s.team_id, s.shots_inside_box,
+                   s.shots_outside_box, s.shots_on_goal, s.blocked_shots
+            from fixture_team_stats s join fixtures f using (fixture_id)
+            where s.expected_goals is null and s.shots_inside_box is not null
+              and s.shots_outside_box is not null and s.shots_on_goal is not null""",
+            order_by="fixture_id, team_id")}
+
+    def xg_pair(fid, team, opp, is_home):
+        """(xG for, xG against, estimated?) for the club in this match."""
+        h, a = match_xg.get(fid, (None, None))
+        f_, a_ = (h, a) if is_home else (a, h)
+        if f_ is not None and a_ is not None:
+            return _r(f_, 2), _r(a_, 2), 0
+        ef, ea = shot_xg.get((fid, team)), shot_xg.get((fid, opp))
+        return (_r(ef, 2), _r(ea, 2), 1) if ef is not None and ea is not None else (None, None, 0)
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn, *_ in club_rows:
@@ -924,7 +952,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
         rows.append([kickoff.date().isoformat(), round(rank_after, 1), opp, 2 if fid in neutral else 1 if is_home else 0,
                      gf, ga, league,
                      formations.get((fid, team)), _r(att, 1), _r(dfn, 1), xi_lines.get((fid, team)),
-                     *[_r(x, 2) for x in (match_xg.get(fid, (None, None)) if is_home else match_xg.get(fid, (None, None))[::-1])]])
+                     *xg_pair(fid, team, opp, is_home)])
     stats = {t: [_r(x) for x in rest] for t, *rest in conn.execute(
         "select team_id, hg, ha, ag, aa from team_rankings where team_id = any(%s)", [list(active)])}
     club_dir = out_dir / "clubs"
@@ -938,7 +966,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
         opponents = {m[2] for m in h["matches"]}
         payload = {"id": team, "start": h["start"],
                    "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation",
-                              "attack", "defence", "xi_lines", "xgf", "xga"],
+                              "attack", "defence", "xi_lines", "xgf", "xga", "xg_est"],
                    "matches": h["matches"], "goal_averages": stats.get(team), "coach": coaches.get(team),
                    "colors": colors.get(team), "starts": starts.get(team),
                    "teams": {o: names.get(o) for o in opponents}}
