@@ -384,7 +384,8 @@ def export_injuries(conn, out_dir=OUT_DIR):
     refreshes it too.
 
     missed: how many of the club's played matches in a row he has been on its list, back from its
-    latest (matches with no list for the club, e.g. cups, are skipped).
+    latest (matches with no list for the club, e.g. cups, are skipped). season_rank: his latest
+    season rank, for players off the current players list.
     """
     teams = {}
     for team, fid, kickoff, upcoming, player, name, kind, reason in conn.execute(
@@ -429,9 +430,18 @@ def export_injuries(conn, out_dir=OUT_DIR):
         lists = [ps for _, ps in sorted(listed[int(team)].values(), key=lambda x: x[0], reverse=True)]
         for row in entry["players"]:
             row.append(next((k for k, ps in enumerate(lists) if row[0] not in ps), len(lists)))
+    # a rank for players off the current list (no recent minutes): his latest season rank
+    ids = [row[0] for entry in teams.values() for row in entry["players"]]
+    season_rank = {p: float(r) for p, r in conn.execute(
+        """select distinct on (player_id) player_id, season_rank from player_season_ranks
+           where player_id = any(%s) and season_rank is not null and minutes > 0
+           order by player_id, season desc""", [ids])}
+    for entry in teams.values():
+        for row in entry["players"]:
+            row.append(season_rank.get(row[0]))
     (out_dir / "injuries.json").write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "fields": ["player", "name", "type", "reason", "missed"], "teams": teams,
+        "fields": ["player", "name", "type", "reason", "missed", "season_rank"], "teams": teams,
     }, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
     log.info("Exported injury lists for %d clubs", len(teams))
 

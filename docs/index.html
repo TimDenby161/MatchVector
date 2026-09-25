@@ -529,6 +529,8 @@
   .pl-hero-nat .dim-sep { color: var(--text-muted); font-weight: 500; }
   .pl-hero-rank { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px;
     padding: 10px 8px; border-radius: 12px; }
+  .hero-ranks { display: flex; gap: 8px; }
+  .pl-hero-rank .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; opacity: .8; }
   .pl-hero-rank .val { font-size: 28px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
   .page-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
   .page-tabs::-webkit-scrollbar { display: none; }
@@ -2885,6 +2887,8 @@ function renderClubPage() {
   const place = r ? state.rankings.filter((x) => x.lt > r.lt).length + 1 : null;
   const share = place ? place / state.rankings.length : 1;
   const tier = share <= 0.05 ? 4 : share <= 0.2 ? 3 : share <= 0.5 ? 2 : 1;
+  const formShare = r ? (state.rankings.filter((x) => x.current > r.current).length + 1) / state.rankings.length : 1;
+  const formTier = formShare <= 0.05 ? 4 : formShare <= 0.2 ? 3 : formShare <= 0.5 ? 2 : 1;
   const tab = state.clubTab || "overview";
   $("#club-body").innerHTML = `
     <div class="pl-hero">
@@ -2895,8 +2899,12 @@ function renderClubPage() {
         ${r ? `<div class="pl-hero-club pl-hero-nat"><a class="pl-meta nat-link" href="#" data-rank-team="${id}" title="Open the Rankings at this club">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</a>
           <span class="dim-sep">·</span><span class="pl-meta">${r.played} matches</span></div>` : ""}
       </div>
-      ${r ? `<div class="pl-hero-rank rel-${tier}" title="Rating: the long-term Elo rating (LT ALGO), its long-term level, from every match since 2020">
-        <span class="val">${Math.round(r.lt)}</span></div>` : ""}
+      ${r ? `<div class="hero-ranks">
+        <div class="pl-hero-rank rel-${tier}" title="Rating: the long-term Elo rating (LT ALGO), its long-term level, from every match since 2020">
+          <span class="val">${Math.round(r.lt)}</span><span class="lbl">Rating</span></div>
+        <div class="pl-hero-rank rel-${formTier}" title="Form: the Elo rating now, after the latest match">
+          <span class="val">${Math.round(r.current)}</span><span class="lbl">Form</span></div>
+      </div>` : ""}
     </div>
     <div class="page-tabs" role="tablist">${CLUB_TABS.map(([k, label]) =>
       `<button type="button" role="tab" data-ctab="${k}" aria-selected="${k === tab}">${label}</button>`).join("")}</div>
@@ -2913,14 +2921,11 @@ function renderClubTab() {
 }
 
 // ---- Overview: injured and suspended players and recent form (newest first) beside the squad by
-// position, then the key numbers
+// position
 function clubOverviewTab() {
   const { id, data } = state.club;
-  const r = state.rankByTeam.get(id);
-  const tile = (label, value, sub = "") => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div>${sub ? `<div class="team-stat-sub">${sub}</div>` : ""}</div>`;
   const rows = data?.rows || [];
   const form = rows.slice(-10).map((m, k, arr) => ({ m, move: clubMove(rows, rows.length - arr.length + k, data.start) })).reverse();
-  const ga = data?.goal_averages;
   const formCard = form.length ? `<div class="next-card form-card">
       <div class="next-top"><span class="next-label">Recent form</span><span>Elo change</span></div>
       ${form.map(({ m, move }) => `<div class="form-row" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)}${m.home === 2 ? " (neutral)" : ""} · ${compLabel(m.league)}`)}">
@@ -2931,17 +2936,7 @@ function clubOverviewTab() {
     </div>` : "";
   const side = injuredCard(id) + formCard, pitch = depthPitch(id);   // the next match is on the Predicted XI tab
   return `
-    ${side && pitch ? `<div class="ov-top"><div class="ov-side">${side}</div>${pitch}</div>` : side + pitch}
-    ${r ? `<div class="club-section"><div class="modal-section">Elo rating</div><div class="team-stats compact" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-      ${tile("Rating", Math.round(r.lt))}${tile("Form", Math.round(r.current))}
-      ${tile("Trend", formHtml(r.trend) || "–")}
-    </div>${r.attack != null ? `<div class="team-stats compact" style="margin-top:8px">
-      ${tile("Attack", Math.round(r.attack))}${tile("Defence", Math.round(r.defence))}
-      ${tile("Home", Math.round(r.home))}${tile("Away", Math.round(r.away))}
-    </div><div class="page-note">${SIDES_NOTE}</div>` : ""}</div>` : ""}
-    ${ga ? `<div class="club-section"><div class="modal-section">Goals per game · last 12 months</div><div class="team-stats compact">
-      ${tile("Home", ga[0].toFixed(2), `conceded ${ga[1].toFixed(2)}`)}${tile("Away", ga[2].toFixed(2), `conceded ${ga[3].toFixed(2)}`)}
-    </div></div>` : ""}`;
+    ${side && pitch ? `<div class="ov-top"><div class="ov-side">${side}</div>${pitch}</div>` : side + pitch}`;
 }
 
 const BAN_REASONS = new Set(["Red Card", "Yellow Cards", "Suspended"]);
@@ -2956,9 +2951,9 @@ function injuredCard(id) {
   const when = inj.upcoming ? "Next match" : `Latest list · ${past ? `${past.home ? "v" : "@"} ${escapeHtml(clubOpp(past.opponent))}, ` : ""}${escapeHtml(fmtShortDate(inj.kickoff))}`;
   return `<div class="next-card inj-card">
     <div class="next-top"><span class="next-label">Injured &amp; Suspended</span><span>${when}</span></div>
-    ${inj.players.map(([pid, name, type, reason, missed]) => `<div class="inj-row">
+    ${inj.players.map(([pid, name, type, reason, missed, seasonRank]) => `<div class="inj-row">
       <div class="inj-top"><span class="inj-name" title="${escapeHtml(`${name}: missed his club's last ${missed} match${missed === 1 ? "" : "es"}`)}"><span class="inj-surname">${playerById(pid) ? playerLink(pid, shortName(name)) : escapeHtml(shortName(name))}</span>${missed ? `<span class="inj-missed">&nbsp;– ${missed}</span>` : ""}</span>
-        ${playerById(pid) ? rankChipSmall(playerById(pid).rank) : ""}</div>
+        ${(playerById(pid)?.rank ?? seasonRank) != null ? rankChipSmall(playerById(pid)?.rank ?? seasonRank) : `<span class="rel-chip rating-none" title="No rating: no minutes in the leagues with player data">–</span>`}</div>
       ${type === "Questionable" ? `<span class="inj-reason doubt">Doubtful</span>`
         : type === "Suspended" || BAN_REASONS.has(reason) ? `<span class="inj-reason susp">${escapeHtml(reason === "Suspended" ? reason : `Suspended · ${reason}`)}</span>` : ""}</div>`).join("")}
   </div>`;
@@ -3009,8 +3004,7 @@ function clubXiTab() {
 // Overview pitch: in each position, the squad's players who can play there (their main position,
 // or 2+ full matches' worth of starting minutes there over the last 12 months; until the
 // position minutes have loaded, the 25% rule of the position filter), best first by their rank in
-// that position, all of them. Only the positions in the formations used since the manager took
-// over (the Formations tab). Keeper at the top, strikers at the bottom (attacking down the
+// that position, all of them. Only the positions in the formations used this season. Keeper at the top, strikers at the bottom (attacking down the
 // page, so the left-sided positions are on the right). Laid out as a grid of lines so long lists push the pitch taller
 // instead of overlapping.
 const DEPTH_MINUTES = 180;
@@ -3039,12 +3033,10 @@ function formationRoles(f) {
   });
   return [...out];
 }
-// The matches the Formations tab leads with: since the manager took over, else this season
+// This season's matches: the formations the overview pitch takes its positions from
 function clubFormationRows() {
   const rows = state.club?.data?.rows || [];
   if (!rows.length) return [];
-  const since = state.club.data.coach?.since;
-  if (since) return rows.filter((m) => m.date >= since);
   const { seasonOf } = clubSeasons(rows);
   const season = seasonOf(rows[rows.length - 1]);
   return rows.filter((m) => seasonOf(m) === season);
