@@ -257,6 +257,11 @@
   .prob-labels .prob-home { color: var(--series-blue); }
   .prob-labels .prob-draw { color: var(--text-muted); }
   .prob-labels .prob-away { color: var(--series-orange); }
+  .match-probs.labelled { display: grid; grid-template-columns: 76px 1fr; column-gap: 8px; align-items: center; }
+  .match-probs.labelled .prob-bar { grid-column: 2; }
+  .match-probs.labelled .prob-labels { grid-column: 2; }
+  .match-probs.labelled .prob-name { grid-row: 1 / span 2; font-size: 11px; font-weight: 600; color: var(--text-muted); }
+  .match-probs.labelled + .match-probs.labelled { margin-top: 4px; }
   .match-card.rated { cursor: pointer; }
   .market-line { margin-top: 4px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: center; }
   .market-line b { color: var(--text-secondary); font-weight: 700; }
@@ -1629,11 +1634,13 @@ function rankChip(rank) {
   return Number.isFinite(rank) ? `<span class="club-score" title="Elo rating">${Math.round(rank).toLocaleString()}</span>` : "";
 }
 
-function probBar(m) {
-  if (m.p_home == null) return "";
-  const h = Math.round(m.p_home * 100), d = Math.round(m.p_draw * 100), a = 100 - h - d;
+// The win-chance bar: the model's by default, or the bookmakers' (key "m", margin removed).
+// A label puts a name to the left, so a model and a bookmakers bar line up one above the other.
+function probBar(m, key = "p", label = "") {
+  if (m[`${key}_home`] == null) return "";
+  const h = Math.round(m[`${key}_home`] * 100), d = Math.round(m[`${key}_draw`] * 100), a = 100 - h - d;
   return `
-    <div class="match-probs">
+    <div class="match-probs${label ? " labelled" : ""}">${label ? `<span class="prob-name">${label}</span>` : ""}
       <div class="prob-bar">
         <span class="prob-home" style="width:${h}%"></span>
         <span class="prob-draw" style="width:${d}%"></span>
@@ -2600,7 +2607,7 @@ function renderTips() {
   const matchCard = (bs) => {
     const m = byId.get(bs[0].fixture);
     const count = bs.length > 1 ? `<span class="match-meta">${bs.length} bets · ${gbp(stake * bs.length)}</span>` : "";
-    const head = m ? matchHead(m, count) + probBar(m)
+    const head = m ? matchHead(m, count) + (m.m_home != null ? probBar(m, "p", "Model") + probBar(m, "m", "Bookmakers") : probBar(m))
       : `<div class="bet-top"><span>${escapeHtml(fmtTime(bs[0].kickoff))}</span>${count}</div>
          <div class="bet-match">${escapeHtml(bs[0].home)} v ${escapeHtml(bs[0].away)}</div>`;
     return `<div class="match-card">${head}<div class="tip-picks">
