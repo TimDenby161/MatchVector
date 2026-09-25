@@ -782,6 +782,9 @@
   .pl-hero .club-logo-lg { width: 60px; height: 60px; }
   a.xi-spot { text-decoration: none; min-width: 58px; padding: 3px 5px 4px; }
   a.xi-spot:hover { background: rgba(255,255,255,0.26); }
+  .sc-4 { color: var(--status-good); font-weight: 700; } .sc-3 { color: var(--status-warning); font-weight: 700; }
+  .sc-2 { color: var(--series-orange); font-weight: 700; } .sc-1 { color: var(--status-critical); font-weight: 700; }
+  .pitch .sc-4 { color: #3ecf5a; } .pitch .sc-3 { color: #f0c43a; } .pitch .sc-2 { color: #f08a5a; } .pitch .sc-1 { color: #f07878; }
   .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .squad-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 7px 0; font-size: 13px; }
@@ -3037,6 +3040,8 @@ function clubNextCard() {
 }
 
 // ---- Predicted XI: the next match, the XI on the pitch and as a list
+// Start chance colour: 80%+ green, 60-80 yellow, 40-60 orange, under 40 red
+const startTier = (c) => (c = Math.round(c)) >= 80 ? 4 : c >= 60 ? 3 : c >= 40 ? 2 : 1;   // as shown, rounded
 // The predicted XI from the overview's start chances: each position's usual number of starters,
 // one position per player, filled from the surest picks down
 function predictedXi(teamId) {
@@ -3064,7 +3069,7 @@ function clubXiTab() {
   const row = ({ b, p, rank, chance, mins }) => `<div class="squad-row">
       <img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
       <div class="sq-main"><div class="sq-name">${playerLink(p.id, p.name)}</div>
-        <div class="sq-sub">${escapeHtml(b.label)} · ${Math.round(chance)}% to start · ${mins}′${p.age != null ? ` · ${p.age}` : ""}${p.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""}</div></div>
+        <div class="sq-sub">${escapeHtml(b.label)} · <span class="sc-${startTier(chance)}">${Math.round(chance)}% to start</span> · ${mins}′${p.age != null ? ` · ${p.age}` : ""}${p.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""}</div></div>
       <div>${rankChipSmall(rank)}</div>
     </div>`;
   return `
@@ -3095,7 +3100,7 @@ function xiPitch(xi) {
       return `<a class="pp-spot xi-spot rel-${rankTier(rank)}" href="#/player/${p.id}" style="left:${x}%;top:${y}%"
           title="${escapeHtml(`${p.name} · ${b.label} · rank ${rank.toFixed(1)} · ${Math.round(chance)}% to start · ${mins}′ expected`)}">
         <span class="pp-rank">${Math.round(rank)}</span><span class="pp-name">${escapeHtml(shortName(p.name))}</span>
-        <span class="pp-meta">${Math.round(chance)}% · ${mins}′</span></a>`;
+        <span class="pp-meta"><span class="sc-${startTier(chance)}">${Math.round(chance)}%</span> · ${mins}′</span></a>`;
     });
   }).join("");
   const avg = xi.reduce((t, c) => t + c.rank, 0) / xi.length;
