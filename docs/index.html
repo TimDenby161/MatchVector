@@ -2909,7 +2909,7 @@ function renderClubPage() {
       <div class="pl-hero-main">
         <h2>${escapeHtml(teamName(id))}</h2>
         ${comp ? `<div class="pl-hero-club">${flagLink(comp.country)}<span class="pl-league">${leagueLink(r.league)}</span></div>` : ""}
-        ${r ? `<div class="pl-hero-club pl-hero-nat"><a class="pl-meta nat-link" href="#" data-rank-team="${id}" title="Open the Rankings at this club">#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs</a>
+        ${r ? `<div class="pl-hero-club pl-hero-nat"><a class="pl-meta nat-link" href="#" data-rank-team="${id}" title="#${place.toLocaleString()} of ${state.rankings.length.toLocaleString()} clubs · open the Rankings at this club">#${place.toLocaleString()}</a>
           <span class="dim-sep">·</span><span class="pl-meta">${r.played} matches</span></div>` : ""}
       </div>
       ${r ? `<div class="hero-ranks">
