@@ -875,10 +875,31 @@
     .ov-top .next-meta { flex-direction: row; flex-wrap: wrap; gap: 1px 10px; }
   }
   #age-filter[hidden] { display: none; }
-  /* Club and nationality filter: type-ahead inputs, picks shown as removable chips */
+  /* Club and nationality filter: type-ahead inputs with our own list under each (in the flow,
+     since the side column scrolls), picks shown as removable chips */
   #who-filter { order: 0; margin-bottom: 10px; }
   #who-filter[hidden] { display: none; }
-  .who-input { width: 100%; margin-bottom: 6px; }
+  .who-field { margin-bottom: 6px; }
+  .who-input { width: 100%; }
+  .who-menu { margin-top: 4px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); padding: 3px; }
+  .who-menu[hidden] { display: none; }
+  .who-opt { display: flex; align-items: center; gap: 7px; width: 100%; appearance: none; border: 0; background: none;
+    font: 500 12.5px/1.25 inherit; font-family: inherit; color: var(--text-primary); text-align: left;
+    padding: 5px 7px; border-radius: 6px; cursor: pointer; }
+  .who-opt:hover, .who-opt.active { background: var(--chip-bg); }
+  .who-opt .club-logo { width: 16px; height: 16px; }
+  .who-opt .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who-opt .sub { flex: none; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+  .who-opt .tick { flex: none; width: 12px; color: var(--series-blue); font-weight: 700; }
+  .who-opt[aria-selected="true"] { color: var(--series-blue); }
+  .who-league { font-weight: 600; }
+  .who-league .caret { flex: none; color: var(--text-muted); font-size: 10px; transform: rotate(-90deg); transition: transform .12s; }
+  .who-league[aria-expanded="true"] .caret { transform: none; }
+  .who-clubs { margin: 0 0 3px 14px; padding-left: 4px; border-left: 1px solid var(--gridline); }
+  .who-empty { padding: 6px 7px; font-size: 12px; color: var(--text-muted); }
+  .who-chip .club-logo { width: 14px; height: 14px; }
+  .who-chip .flag { width: 15px; height: 11px; }
   .who-chips { display: flex; flex-wrap: wrap; gap: 5px; }
   .who-chips:empty { display: none; }
   .who-chip { display: inline-flex; align-items: center; gap: 5px; appearance: none; font: 500 12px/1.2 inherit;
@@ -1058,12 +1079,18 @@
         <div id="who-filter" hidden>
           <div class="pos-head"><span>Club &amp; nationality</span>
             <button type="button" class="pos-clear" data-who-clear hidden>Clear</button></div>
-          <input type="search" id="club-input" class="table-search who-input" list="club-options"
-                 placeholder="Add a club" aria-label="Filter by club" autocomplete="off">
-          <datalist id="club-options"></datalist>
-          <input type="search" id="nat-input" class="table-search who-input" list="nat-options"
-                 placeholder="Add a nationality" aria-label="Filter by nationality" autocomplete="off">
-          <datalist id="nat-options"></datalist>
+          <div class="who-field">
+            <input type="search" id="club-input" class="table-search who-input" data-kind="club" role="combobox"
+                   aria-expanded="false" aria-controls="club-menu" aria-autocomplete="list"
+                   placeholder="Add a club" aria-label="Filter by club" autocomplete="off">
+            <div class="who-menu" id="club-menu" role="listbox" aria-label="Clubs" hidden></div>
+          </div>
+          <div class="who-field">
+            <input type="search" id="nat-input" class="table-search who-input" data-kind="nat" role="combobox"
+                   aria-expanded="false" aria-controls="nat-menu" aria-autocomplete="list"
+                   placeholder="Add a nationality" aria-label="Filter by nationality" autocomplete="off">
+            <div class="who-menu" id="nat-menu" role="listbox" aria-label="Nationalities" hidden></div>
+          </div>
           <div class="who-chips" id="who-chips"></div>
         </div>
         <div class="filters-wrap side-filters" id="table-filters"></div>
@@ -2249,7 +2276,10 @@ function playerVisible(p) {
 }
 // ---- Club and nationality (Players view): pick one or more of each; they combine with the
 // other filters, and a club pick shows that club's players whatever league is selected
-function whoOptions() {          // {clubs: label -> team id, nats: sorted names}, built once
+// Built once: clubs {id, name (league added where two share a name), league}, clubs by league
+// (in the league menu's order), and nationalities; each with a key for accent-free matching
+const whoKey = (s) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+function whoOptions() {
   if (!state.whoCache && state.players) {
     const league = new Map(), names = new Map();
     for (const p of state.players.list) if (p.team && !league.has(p.team)) league.set(p.team, p.league);
@@ -2257,13 +2287,23 @@ function whoOptions() {          // {clubs: label -> team id, nats: sorted names
       const n = teamName(t);
       names.set(n, (names.get(n) || 0) + 1);
     }
-    const clubs = new Map();
-    for (const [t, lg] of league) {
-      const n = teamName(t);
-      clubs.set(names.get(n) > 1 ? `${n} (${SHORT_NAMES[lg] || state.data.competitions[lg]?.name || lg})` : n, t);
+    const lgName = (lg) => SHORT_NAMES[lg] || state.data.competitions[lg]?.name || compLabel(lg);
+    const clubs = [...league].map(([id, lg]) => {
+      const n = teamName(id), name = names.get(n) > 1 ? `${n} (${lgName(lg)})` : n;
+      return { id, name, league: lg, key: whoKey(name) };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    const order = tableCountries().flatMap((c) => c.leagues);
+    const pos = (lg) => { const i = order.indexOf(Number(lg)); return i === -1 ? order.length : i; };
+    const byLeague = new Map();
+    for (const c of clubs) {
+      if (!byLeague.has(c.league)) byLeague.set(c.league, []);
+      byLeague.get(c.league).push(c);
     }
-    const nats = [...new Set(state.players.list.map((p) => p.nationality).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-    state.whoCache = { clubs: new Map([...clubs].sort((a, b) => a[0].localeCompare(b[0]))), nats };
+    const leagues = [...byLeague].map(([id, list]) => ({ id, name: lgName(id), clubs: list }))
+      .sort((a, b) => pos(a.id) - pos(b.id) || a.name.localeCompare(b.name));
+    const nats = [...new Set(state.players.list.map((p) => p.nationality).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b)).map((name) => ({ name, key: whoKey(name) }));
+    state.whoCache = { clubs, byId: new Map(clubs.map((c) => [c.id, c])), leagues, nats };
   }
   return state.whoCache;
 }
@@ -2271,51 +2311,122 @@ function renderWhoFilter() {
   const box = $("#who-filter");
   box.hidden = state.tableView !== "players" || !state.players;
   if (box.hidden) return;
-  const { clubs, nats } = whoOptions();
-  if (!state.whoFilled) {
-    $("#club-options").innerHTML = [...clubs.keys()].map((n) => `<option value="${escapeHtml(n)}"></option>`).join("");
-    $("#nat-options").innerHTML = nats.map((n) => `<option value="${escapeHtml(n)}"></option>`).join("");
-    state.whoFilled = true;
-  }
+  const { byId } = whoOptions();
   state.clubs ||= new Set();
   state.nats ||= new Set();
-  const label = new Map([...clubs].map(([n, t]) => [t, n]));
   $("#who-chips").innerHTML =
     [...state.clubs].map((t) => `<button type="button" class="who-chip" data-club="${t}" title="Remove">
-       <span class="kind">Club</span>${escapeHtml(label.get(t) || teamName(t))}<span class="x" aria-hidden="true">×</span></button>`).join("")
+       <img class="club-logo" src="${teamLogo(t)}" alt="" loading="lazy" onerror="this.remove()">${escapeHtml(byId.get(t)?.name || teamName(t))}<span class="x" aria-hidden="true">×</span></button>`).join("")
     + [...state.nats].map((n) => `<button type="button" class="who-chip" data-nat="${escapeHtml(n)}" title="Remove">
-       <span class="kind">Nat</span>${escapeHtml(n)}<span class="x" aria-hidden="true">×</span></button>`).join("");
+       ${flagImg(n) || `<span class="kind">Nat</span>`}${escapeHtml(n)}<span class="x" aria-hidden="true">×</span></button>`).join("");
   box.querySelector("[data-who-clear]").hidden = !state.clubs.size && !state.nats.size;
+  for (const input of box.querySelectorAll(".who-input")) if (!$(`#${input.dataset.kind}-menu`).hidden) renderWhoMenu(input);
 }
 function whoChanged() {
   renderWhoFilter();
   renderTable();
   renderTableFilters();
 }
-function addWho(input) {         // called as the user types: add once the text matches an option
-  const v = input.value.trim();
-  if (!v) return;
-  const { clubs, nats } = whoOptions();
-  if (input.id === "club-input") {
-    const t = clubs.get(v) ?? [...clubs].find(([n]) => n.toLowerCase() === v.toLowerCase())?.[1];
-    if (t == null) return;
-    state.clubs.add(t);
-  } else {
-    const n = nats.find((x) => x.toLowerCase() === v.toLowerCase());
-    if (!n) return;
-    state.nats.add(n);
-  }
-  input.value = "";
-  whoChanged();
+// The list under a box. Empty box: clubs by league (each league opens its clubs) or every
+// nationality. Typing: whatever has the text anywhere in its name, starts of names first.
+const WHO_MAX = 60;
+function whoMatches(items, q) {
+  const rank = (k) => k.startsWith(q) ? 0 : k.includes(` ${q}`) || k.includes(`-${q}`) ? 1 : 2;
+  return items.filter((x) => x.key.includes(q)).map((x) => [rank(x.key), x])
+    .sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name)).slice(0, WHO_MAX).map(([, x]) => x);
 }
-for (const id of ["#club-input", "#nat-input"]) {
-  // picking from the dropdown fires input with no typing inputType; typed text waits for Enter
-  // (so "Inter" isn't taken while typing "Inter Miami")
-  $(id).addEventListener("input", (e) => {
-    if (!e.inputType || e.inputType === "insertReplacementText") addWho(e.target);
+function renderWhoMenu(input) {
+  const kind = input.dataset.kind, menu = $(`#${kind}-menu`);
+  const q = whoKey(input.value.trim());
+  const { clubs, leagues, nats } = whoOptions();
+  const opt = (attrs, on, inner) => `<button type="button" class="who-opt" role="option" tabindex="-1" ${attrs}
+    aria-selected="${on}"><span class="tick" aria-hidden="true">${on ? "✓" : ""}</span>${inner}</button>`;
+  const clubOpt = (c, sub) => opt(`data-club="${c.id}"`, state.clubs.has(c.id),
+    `<img class="club-logo" src="${teamLogo(c.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="nm">${escapeHtml(c.name)}</span>${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ""}`);
+  const natOpt = (n) => opt(`data-nat="${escapeHtml(n.name)}"`, state.nats.has(n.name),
+    `${flagImg(n.name)}<span class="nm">${escapeHtml(n.name)}</span>`);
+  const lgName = new Map(leagues.map((l) => [l.id, l.name]));
+  let html;
+  if (kind === "club" && !q) {
+    html = leagues.map((l) => {
+      const open = state.whoLeague === l.id;
+      const country = state.data.competitions[l.id]?.country;
+      return `<button type="button" class="who-opt who-league" tabindex="-1" data-league="${l.id}" aria-expanded="${open}">
+          <span class="caret" aria-hidden="true">▾</span>${country ? flagImg(countryDisplay(country)) : ""}<span class="nm">${escapeHtml(l.name)}</span><span class="sub">${l.clubs.length}</span></button>`
+        + (open ? `<div class="who-clubs">${l.clubs.map((c) => clubOpt(c)).join("")}</div>` : "");
+    }).join("");
+  } else if (kind === "club") {
+    const found = whoMatches(clubs, q);
+    html = found.map((c) => clubOpt(c, lgName.get(c.league))).join("") || `<div class="who-empty">No club matches</div>`;
+  } else {
+    const found = q ? whoMatches(nats, q) : nats;
+    html = found.map(natOpt).join("") || `<div class="who-empty">No nationality matches</div>`;
+  }
+  const active = menu.querySelector(".who-opt.active");
+  const keep = active && [...active.attributes].find((a) => /^data-(club|nat|league)$/.test(a.name));
+  const top = menu.scrollTop;
+  menu.innerHTML = html;
+  menu.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  if (keep) menu.querySelector(`[${keep.name}="${CSS.escape(keep.value)}"]`)?.classList.add("active");
+  menu.scrollTop = top;
+}
+function closeWhoMenu(input) {
+  $(`#${input.dataset.kind}-menu`).hidden = true;
+  input.setAttribute("aria-expanded", "false");
+}
+// Pick or drop a club or nationality, or open or close a league
+function whoActivate(input, el) {
+  if (el.dataset.league) {
+    const id = Number(el.dataset.league);
+    state.whoLeague = state.whoLeague === id ? null : id;
+    return renderWhoMenu(input);
+  }
+  const set = el.dataset.club ? state.clubs : state.nats, v = el.dataset.club ? Number(el.dataset.club) : el.dataset.nat;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  if (input.value) {             // back to the whole list, from the top
+    input.value = "";
+    menuTop(input);
+    el.classList.remove("active");
+  }
+  whoChanged();       // redraws the open list too
+}
+const menuTop = (input) => { $(`#${input.dataset.kind}-menu`).scrollTop = 0; };
+function whoMove(input, step) {
+  const menu = $(`#${input.dataset.kind}-menu`);
+  const opts = [...menu.querySelectorAll(".who-opt")];
+  if (!opts.length) return;
+  const i = opts.findIndex((o) => o.classList.contains("active"));
+  const next = opts[i === -1 ? (step > 0 ? 0 : opts.length - 1) : Math.max(0, Math.min(opts.length - 1, i + step))];
+  opts.forEach((o) => o.classList.toggle("active", o === next));
+  next.scrollIntoView({ block: "nearest" });
+}
+for (const input of document.querySelectorAll("#who-filter .who-input")) {
+  const menu = $(`#${input.dataset.kind}-menu`);
+  input.addEventListener("focus", () => renderWhoMenu(input));
+  input.addEventListener("input", () => { menuTop(input); renderWhoMenu(input); });
+  input.addEventListener("blur", () => closeWhoMenu(input));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (menu.hidden) renderWhoMenu(input);
+      whoMove(input, e.key === "ArrowDown" ? 1 : -1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // the highlighted row, or the best match when typing
+      const el = menu.querySelector(".who-opt.active") || (input.value.trim() && menu.querySelector(".who-opt"));
+      if (el) whoActivate(input, el);
+    } else if (e.key === "Escape" && !menu.hidden) {
+      e.preventDefault();
+      closeWhoMenu(input);
+    }
   });
-  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") addWho(e.target); });
-  $(id).addEventListener("change", (e) => addWho(e.target));
+  // keep the focus in the box, so the list stays open for another pick
+  menu.addEventListener("mousedown", (e) => e.preventDefault());
+  menu.addEventListener("click", (e) => {
+    const el = e.target.closest(".who-opt");
+    if (el) whoActivate(input, el);
+  });
 }
 $("#who-filter").addEventListener("click", (e) => {
   if (e.target.closest("[data-who-clear]")) { state.clubs = new Set(); state.nats = new Set(); return whoChanged(); }
