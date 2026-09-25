@@ -764,6 +764,7 @@
   .dp-pct { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
   .dp-rank { text-align: right; }
   .dp-xmin { font-size: 10px; font-weight: 700; text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
+  .dp-xmin.zero { color: rgba(255,255,255,0.45); }
   a.dp-row:hover .dp-name { text-decoration: underline; }
   .dp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .dp-rank { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -3129,7 +3130,7 @@ function depthPitch(teamId) {
           + (xmin ? ` · xMins ${xmin}` : "");
         return `<a class="dp-row" href="#/player/${p.id}"${tip ? ` title="${escapeHtml(tip)}"` : ""}>
           <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
-          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin">${xmin ? `${xmin}′` : ""}</span></a>`;
+          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin${xmin ? "" : " zero"}">${xmin || 0}′</span></a>`;
       }).join(""); })()}
     </div>`;
   }).join("");
