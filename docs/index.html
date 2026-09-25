@@ -452,7 +452,12 @@
   .tip-day-body.collapsed { display: none; }
   #tips-body .comp-group { margin-top: 10px; }
   .tip-pick + .tip-pick { border-top: 1px solid var(--gridline); padding-top: 5px; margin-top: 5px; }
-  .tip-pick .win { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-left: 6px; white-space: nowrap; }
+  .tip-pick { align-items: center; }
+  .tip-left { display: flex; align-items: center; min-width: 0; }
+  .tip-left .sel { display: block; line-height: 1.25; }
+  .tip-badges { display: inline-flex; gap: 3px; margin-right: 8px; vertical-align: -4px; flex: none; }
+  .tip-badges .club-logo { width: 20px; height: 20px; margin: 0; }
+  .tip-pick .win { display: block; font-size: 11px; color: var(--text-muted); font-weight: 500; }
   .tip-pick { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
   .tip-pick .sel { font-size: 15px; font-weight: 700; }
   .tip-pick .odds { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -1453,10 +1458,18 @@ function renderStatsFilters() {
 function betCountries() {
   return state.betCountries ||= compCountries((state.bets?.bets || []).map((b) => b.league));
 }
-// Each pick bet once: when both runs chose it, the night-before bet (placed first) counts
+// Each kind of bet placed once per match (result, goal line, both teams score): when both runs
+// bet it, the night-before bet (placed first) counts
+const betKind = (b) => `${b.fixture}|${b.market.startsWith("OU") ? "OU" : b.market}`;
 function onePerPick(bets) {
-  const early = new Set(bets.filter((b) => b.strategy === "early").map((b) => `${b.fixture}|${b.market}|${b.selection}`));
-  return bets.filter((b) => b.strategy === "early" || !early.has(`${b.fixture}|${b.market}|${b.selection}`));
+  const early = new Set(bets.filter((b) => b.strategy === "early").map(betKind));
+  return bets.filter((b) => b.strategy === "early" || !early.has(betKind(b)));
+}
+// The badge of the team a bet backs, or both teams' for a draw or goals bet
+function betBadges(b) {
+  const img = (id) => id ? `<img class="club-logo" src="${teamLogo(id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : "";
+  const ids = b.market === "1X2" && b.selection !== "Draw" ? [b.selection === "Home" ? b.home_id : b.away_id] : [b.home_id, b.away_id];
+  return `<span class="tip-badges">${ids.map(img).join("")}</span>`;
 }
 // Bets on the strategy / market / cautious filters, before the competition menu
 function betScope() {
@@ -2421,7 +2434,7 @@ function renderBets() {
     return `<div class="bet-row ${b.result || ""}">
       <div class="bet-top"><span>${escapeHtml(fmtDay(b.kickoff))} ${escapeHtml(fmtTime(b.kickoff))} · ${escapeHtml(compLabel(b.league))}</span><span>${b.strategy === "early" ? "Night before" : "Pre-kickoff"}</span></div>
       <div class="bet-match">${escapeHtml(b.home)} v ${escapeHtml(b.away)}${b.score ? ` <span style="color:var(--text-muted)">(${escapeHtml(b.score)})</span>` : ""}</div>
-      <div class="bet-pick"><span>${gbp(stake)} on ${escapeHtml(SEL_LABELS[b.selection] || b.selection)} @ <b>${b.odds.toFixed(2)}</b> <span style="color:var(--text-muted);font-size:11px">${escapeHtml(b.bookmaker || "")}</span></span><span>${res}</span></div>
+      <div class="bet-pick"><span>${betBadges(b)}${gbp(stake)} on ${escapeHtml(SEL_LABELS[b.selection] || b.selection)} @ <b>${b.odds.toFixed(2)}</b> <span style="color:var(--text-muted);font-size:11px">${escapeHtml(b.bookmaker || "")}</span></span><span>${res}</span></div>
       <div class="bet-sub">Model ${Math.round(100 * b.model_prob)}% · bookmakers ${b.fair_prob != null ? Math.round(100 * b.fair_prob) + "%" : "–"}${b.closing_odds != null ? ` · closed ${b.closing_odds.toFixed(2)}` : ""}${bankAfter[b.id] != null ? ` · bank ${gbp(bankAfter[b.id])}` : ""}</div>
     </div>`;
   };
@@ -2440,7 +2453,7 @@ function renderBets() {
     ${marketRows ? `<div class="stats-card" style="margin-bottom:12px">
       <div class="stats-label">By market</div>
       <table class="calib-table">${head("Market")}<tbody>${marketRows}</tbody></table>
-      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. Each pick is bet once: if both the night-before and pre-kickoff runs chose it, All counts only the night-before bet. All bets are at ${escapeHtml(rules.bookmaker || "Bet365")}'s odds. A bet is placed when the model's chance × that price is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
+      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. A match gets at most one bet of each kind (result, goal line, both teams score): of several, the best is kept, judged as if the true chance were halfway between the model's and the bookmakers'. If both the night-before and pre-kickoff runs bet the same kind on a match, All counts only the night-before bet. All bets are at ${escapeHtml(rules.bookmaker || "Bet365")}'s odds. A bet is placed when the model's chance × that price is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
     </div>` : ""}
     ${settled.length ? `<div class="modal-section">Settled (${settled.length})</div><div class="bets-list">${settled.slice(0, 300).map(row).join("")}</div>` : ""}
     ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}
@@ -2476,7 +2489,7 @@ function renderTips() {
     <div class="bet-row">
       <div class="bet-top"><span>${escapeHtml(fmtTime(bs[0].kickoff))}</span>${bs.length > 1 ? `<span>${bs.length} bets · ${gbp(stake * bs.length)}</span>` : ""}</div>
       <div class="bet-match">${escapeHtml(bs[0].home)} v ${escapeHtml(bs[0].away)}</div>
-      ${bs.map((b) => `<div class="tip-pick"><span><span class="sel">${escapeHtml(tipLabel(b))}</span><span class="win">${gbp(stake)} to win ${gbp(stake * (b.odds - 1))}</span></span><span class="odds">${b.odds.toFixed(2)}</span></div>`).join("")}
+      ${bs.map((b) => `<div class="tip-pick"><span class="tip-left">${betBadges(b)}<span><span class="sel">${escapeHtml(tipLabel(b))}</span><span class="win">${gbp(stake)} to win ${gbp(stake * (b.odds - 1))}</span></span></span><span class="odds">${b.odds.toFixed(2)}</span></div>`).join("")}
     </div>`;
   body.innerHTML = intro + days.map((d) => {
     const comps = group(d.tips, "league");

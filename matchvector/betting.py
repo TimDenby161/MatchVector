@@ -7,7 +7,8 @@ No real money. Two strategies are tracked separately:
 A bet is placed on any selection where model_prob * Bet365's price - 1 is at least MIN_EDGE
 (prices above MAX_ODDS are skipped): Bet365 (BOOKMAKER) is the only bookmaker bet with, so only
 its prices are taken. The fair (margin-free) chances still average every bookmaker. Each selection is bet at most once per
-strategy, 1 unit flat stake. Settlement uses the 90-minute score, like bookmakers.
+strategy, 1 unit flat stake. A match gets at most one bet of each kind (result, goal line, both
+teams score; see GROUP): of several candidates the best is kept (pick_best). Settlement uses the 90-minute score, like bookmakers.
 
 Closing line value: clv = odds_taken * closing fair probability - 1. Consistently positive CLV
 is the standard early sign of a real edge, long before profit is statistically meaningful.
@@ -61,6 +62,17 @@ MARKETS = {
     "BTTS": (8, ("Yes", "No"), lambda p: (p["p_btts"], 1 - p["p_btts"])),
 }
 SELECTION_MARKET = {(bet, sel): m for m, (bet, sels, _) in MARKETS.items() for sel in sels}
+# One bet per match of each kind: a draw and an away win, or Under 1.5 and Under 4.5, are the same
+# bet placed twice rather than separate ones
+GROUP = {"1X2": "1X2", "OU15": "OU", "OU25": "OU", "OU35": "OU", "OU45": "OU", "BTTS": "BTTS"}
+
+
+def pick_score(model_prob, fair_prob, odd):
+    """How good a candidate is, to choose between bets of one kind on a match: the return if the
+    true chance is halfway between the model's and the bookmakers'. Plain edge would favour the
+    bets where the model disagrees most with the market, which are the least reliable."""
+    p = model_prob if fair_prob is None else (model_prob + fair_prob) / 2
+    return p * odd - 1
 
 
 def load_prices(conn, fixture_ids):
@@ -206,6 +218,16 @@ def place_bets(conn, strategy, within):
                 if edge >= MIN_EDGE and odd <= MAX_ODDS:
                     rows.append([strategy, fid, league_id, kickoff, market, sel, prob,
                                  fair.get(sel), odd, bm, edge, fair])
+    # one bet per match of each kind, and none where this strategy already bet that kind
+    taken = {(fid, GROUP[m]) for fid, m in conn.execute(
+        "select fixture_id, market from paper_bets where strategy = %s and fixture_id = any(%s)",
+        [strategy, list({r[1] for r in rows})])}
+    best = {}
+    for r in rows:
+        key = (r[1], GROUP[r[4]])
+        if key not in taken and (key not in best or pick_score(r[6], r[7], r[8]) > pick_score(*best[key][6:9])):
+            best[key] = r
+    rows = list(best.values())
     matches = match_tags(conn, {r[1] for r in rows})
     for r in rows:
         r[-1] = bet_tags(matches.get(r[1], []), r[5], r[6], r[-1])

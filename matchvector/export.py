@@ -443,7 +443,8 @@ def export_bets(conn, out_dir=OUT_DIR):
         """select b.bet_id, b.strategy, b.fixture_id, b.kickoff, b.league_id, b.market, b.selection,
                   b.model_prob, b.fair_prob, b.odds_taken, bk.name, b.edge, b.closing_odds, b.clv,
                   b.result, b.profit, b.placed_at, b.settled_at, h.name, a.name,
-                  coalesce(f.ft_home, f.home_goals), coalesce(f.ft_away, f.away_goals), b.tags
+                  coalesce(f.ft_home, f.home_goals), coalesce(f.ft_away, f.away_goals), b.tags,
+                  f.home_team_id, f.away_team_id
            from paper_bets b join fixtures f using (fixture_id)
            join teams h on h.team_id = f.home_team_id join teams a on a.team_id = f.away_team_id
            left join bookmakers bk on bk.bookmaker_id = b.bookmaker_id
@@ -455,7 +456,7 @@ def export_bets(conn, out_dir=OUT_DIR):
         "odds": float(r[9]), "bookmaker": r[10], "edge": _r(r[11], 3),
         "closing_odds": float(r[12]) if r[12] is not None else None, "clv": _r(r[13], 4),
         "result": r[14], "profit": float(r[15]) if r[15] is not None else None,
-        "home": r[18], "away": r[19], "score": f"{r[20]}-{r[21]}" if r[20] is not None else None,
+        "home": r[18], "away": r[19], "home_id": r[23], "away_id": r[24], "score": f"{r[20]}-{r[21]}" if r[20] is not None else None,
         "tags": r[22] or [], "cautious": is_cautious(r[5], r[22]),
     } for r in rows]
     by = lambda key: {k: _summary([b for b in bets if key(b) == k]) for k in sorted({key(b) for b in bets})}
