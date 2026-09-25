@@ -69,6 +69,8 @@ python -m matchvector sync players  --leagues 39 140 --seasons 2024 2025
 python -m matchvector sync injuries --leagues 39 140 --seasons 2024 2025
 ```
 
+Players out that the lists miss (League Two clubs often have no list) go in `matchvector/absences.json` by club id, with an optional `until` date. The export adds them to the club's list for its next match.
+
 API-Football's injury lists run from 2021 for the big five, the Championship, Turkey, the Netherlands, MLS and Norway. Elsewhere there's little or nothing before 2025.
 - The National League has no player data for 2025 or 2026.
 - Azerbaijan has no match ratings, and no player data for 2025 or 2026.

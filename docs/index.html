@@ -3236,7 +3236,6 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   // there, including players since gone or now injured)
   const usualExact = (roles) => st?.games ? Object.values(st.players || {})
     .reduce((a, byRole) => a + roles.reduce((b, r) => b + (byRole[r] || 0), 0), 0) / st.games : 0;
-  const usual = (roles) => Math.round(usualExact(roles));
   // The share each available player is expected to start in this box: his own starts there this
   // season, plus a cut of the starts of players now injured or gone. That missing share goes to
   // the players who have started there since the last of them did (Konsa for Mosquera, Timber
@@ -3257,8 +3256,7 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   const nextGroup = nextMatch ? compGroup(nextMatch.league) : null;
   const groupXi = nextGroup ? xi.filter((_, k) => compGroup(xiLeague[k]) === nextGroup) : [];
   const wGroup = groupXi.length / (groupXi.length + 1);
-  // starters per match in a box, over the same competition-weighted matches as the shares (the
-  // box's minutes target: 0.86 at LW leaves 0.14 of a player for LM)
+  // starters per match in a box, over the same competition-weighted matches as the shares
   const perMatch = (matches, roles) => matches.length ? matches.reduce((t, m) => {
     for (let i = 0; i < m.length; i += 2) if (roles.includes(m[i + 1])) t++;
     return t;
@@ -3320,14 +3318,25 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
   const labels = new Set(visible.map((b) => b.label));
   const fallback = new Map(squad.filter((p) => !visible.some((b) => fits(p, b)))
     .map((p) => [p.id, (NEAR[p.position] || []).find((l) => labels.has(l)) || (labels.has("CM") ? "CM" : null)]));
+  // Starters per box: its starters per match rounded to whole players that make an XI, the
+  // largest fractions taking the places left after rounding down (LW 0.85 is 1, LM 0.01 is 0),
+  // so each box fills to 100% per starter and the pitch to 11 even where a match's line-up is
+  // missing a player's position
+  const exactOf = new Map(visible.map((b) => [b.label, exactFor(b.roles)]));
+  const starters = new Map([...exactOf].map(([l, x]) => [l, Math.floor(x)]));
+  let places = [...exactOf.values()].some((x) => x > 0) ? 11 - [...starters.values()].reduce((t, x) => t + x, 0) : 0;
+  for (const [l, x] of [...exactOf].sort((a, b) => (b[1] % 1) - (a[1] % 1))) {
+    if (places <= 0 || x % 1 === 0) break;
+    starters.set(l, starters.get(l) + 1);
+    places--;
+  }
   const shown = visible.map((b) => {
-    const n = usual(b.roles);
+    const n = starters.get(b.label);
     const ps = squad.filter((p) => fits(p, b) || fallback.get(p.id) === b.label)
       .map((p) => ({ p, rank: Math.max(...b.roles.map((x) => rankAt(p, x) ?? -1)) }))
       .map((d) => ({ ...d, rank: d.rank >= 0 ? d.rank : d.p.rank }))
       .sort((x, y) => y.rank - x.rank);
-    const exact = exactFor(b.roles);
-    return { ...b, n, exact, ps, proj: ps.length ? projected(b.roles, exact, ps) : null };
+    return { ...b, n, exact: n, ps, proj: ps.length ? projected(b.roles, n, ps) : null };
   });
   // The best XI by rating: the usual number of starters in each box, filled from the highest
   // player-and-position ranks down, one position per player (Odegaard's 92 in midfield puts him
@@ -3357,9 +3366,9 @@ function clubDepth(teamId, data = state.club?.data, match = null) {
     const count = (picks.get(b.label) || []).filter((id) => starters.some((d) => d.p.id === id) || rankOf.get(id) > worst);
     const rest = b.ps.filter((d) => !count.includes(d.p.id));
     const restHist = rest.reduce((a, d) => a + histOf(b, d.p.id), 0);
-    const left = Math.max(0, b.n - count.length) * 100, scale = b.exact / b.n;
-    const m = new Map(b.ps.map((d) => [d.p.id, scale * (count.includes(d.p.id) ? 100
-      : restHist ? left * histOf(b, d.p.id) / restHist : 0)]));
+    const left = Math.max(0, b.n - count.length) * 100;
+    const m = new Map(b.ps.map((d) => [d.p.id, count.includes(d.p.id) ? 100
+      : restHist ? left * histOf(b, d.p.id) / restHist : 0]));
     ability.set(b.label, m);
   }
   // Start chance per player and box: history with the pull towards the best XI

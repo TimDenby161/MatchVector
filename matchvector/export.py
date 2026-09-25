@@ -370,6 +370,7 @@ def _summary(bets):
 
 
 INJURY_LOOKBACK_DAYS = 21
+ABSENCES_FILE = Path(__file__).resolve().parent / "absences.json"   # kept by hand
 # reasons that only cover the match they were listed for: left out of a past match's list
 ONE_MATCH_REASONS = {"Red Card", "Yellow Cards", "Suspended", "Coach's decision", "Rest", "International duty",
                      "Transfer negotiations", "Personal Reasons"}
@@ -420,7 +421,24 @@ def export_injuries(conn, out_dir=OUT_DIR):
                                                       "upcoming": False, "players": []})
         if all(row[0] != player for row in entry["players"]):
             entry["players"].append([player, html.unescape(name or ""), "Suspended", "Red card"])
-    listed = defaultdict(dict)           # team -> {fixture: (kickoff, {players on its list})}
+    # players out that the lists miss (ABSENCES_FILE), on the club's list for its next match
+    today = datetime.now(timezone.utc).date().isoformat()
+    manual = {int(t): [a for a in rows if a.get("until", "9999") >= today]
+              for t, rows in json.loads(ABSENCES_FILE.read_text(encoding="utf-8")).items() if t.isdigit()}
+    manual = {t: rows for t, rows in manual.items() if rows}
+    if manual:
+        for team, fid, kickoff in conn.execute(
+                """select distinct on (t) t, fixture_id, kickoff from fixtures, unnest(array[home_team_id, away_team_id]) t
+                   where t = any(%s) and status_short in ('NS', 'TBD') and kickoff > now() order by t, kickoff""",
+                [list(manual)]):
+            entry = teams.get(str(team))
+            if not entry or not entry["upcoming"]:     # a past match's list: the next match's instead
+                entry = teams[str(team)] = {"fixture": fid, "kickoff": kickoff.isoformat(), "upcoming": True,
+                                            "players": entry["players"] if entry else []}
+            for a in manual[team]:
+                if all(row[0] != a["player"] for row in entry["players"]):
+                    entry["players"].append([a["player"], a["name"], "Missing Fixture", a["reason"]])
+    listed = defaultdict(dict)          # team -> {fixture: (kickoff, {players on its list})}
     for team, fid, kickoff, player in conn.execute(
             """select i.team_id, i.fixture_id, f.kickoff, i.player_id from injuries i join fixtures f using (fixture_id)
                where i.team_id = any(%s) and f.status_short = any(%s) and f.kickoff > now() - interval '365 days'""",
