@@ -167,19 +167,32 @@ def _fixture_row(f):
 
 # --------------------------------------------------------------------------- match statistics
 
+XG_RETRY_DAYS = 14
+
+
 def sync_fixture_stats(api, conn, league_ids, seasons=None, limit=None, batch_size=20):
     """Fetch stats for finished fixtures that don't have them yet.
 
     Uses /fixtures?ids= (max 20 per call), which embeds statistics, so each
     request covers up to 20 matches. Progress is committed per batch, so the
     job can be stopped and resumed at any time. seasons=None means all seasons.
+
+    API-Football often adds a match's xG days after its other stats (Brighton v Arsenal,
+    19 September 2026: stats on the 23rd, xG later), so matches from the last XG_RETRY_DAYS whose
+    stats came without xG are fetched again, in league seasons that have xG for other matches.
     """
     with conn.cursor() as cur:
         cur.execute(
             """
             select fixture_id from fixtures
             join league_seasons ls using (league_id, season)
-            where stats_fetched_at is null
+            where (stats_fetched_at is null
+                   or (kickoff > now() - %s * interval '1 day'
+                       and exists (select 1 from fixture_team_stats t
+                                   where t.fixture_id = fixtures.fixture_id and t.expected_goals is null)
+                       and exists (select 1 from fixture_team_stats t join fixtures f2 using (fixture_id)
+                                   where f2.league_id = fixtures.league_id and f2.season = fixtures.season
+                                     and t.expected_goals is not null)))
               and status_short = any(%s)
               and league_id = any(%s)
               and (%s::int[] is null or season = any(%s::int[]))
@@ -187,7 +200,7 @@ def sync_fixture_stats(api, conn, league_ids, seasons=None, limit=None, batch_si
               and coalesce((ls.coverage->'fixtures'->>'statistics_fixtures')::boolean, true)
             order by kickoff
             """ + (" limit %s" if limit else ""),
-            [list(config.FINISHED_STATUSES), list(league_ids), seasons, seasons]
+            [XG_RETRY_DAYS, list(config.FINISHED_STATUSES), list(league_ids), seasons, seasons]
             + ([limit] if limit else []),
         )
         pending = [r[0] for r in cur.fetchall()]
