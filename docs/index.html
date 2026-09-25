@@ -1434,10 +1434,14 @@ function renderStatsFilters() {
 function betCountries() {
   return state.betCountries ||= compCountries((state.bets?.bets || []).map((b) => b.league));
 }
-// Bets on the strategy / market / cautious filters, before the competition menu
+// Bets on the strategy / market / cautious filters, before the competition menu. Under "All"
+// each pick is bet once: when both runs chose it, the night-before bet (placed first) counts
 function betScope() {
-  return (state.bets?.bets || []).filter((b) =>
-    (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
+  const bets = state.bets?.bets || [];
+  const early = new Set(bets.filter((b) => b.strategy === "early").map((b) => `${b.fixture}|${b.market}|${b.selection}`));
+  return bets.filter((b) =>
+    (state.betStrategy === "all" ? b.strategy === "early" || !early.has(`${b.fixture}|${b.market}|${b.selection}`)
+      : b.strategy === state.betStrategy) &&
     (state.betMarket === "all" || b.market === state.betMarket) &&
     (state.betView === "all" || b.cautious));
 }
@@ -2416,7 +2420,7 @@ function renderBets() {
     ${marketRows ? `<div class="stats-card" style="margin-bottom:12px">
       <div class="stats-label">By market</div>
       <table class="calib-table">${head("Market")}<tbody>${marketRows}</tbody></table>
-      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. A bet is placed when the model's chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
+      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. Each pick is bet once: if both the night-before and pre-kickoff runs chose it, All counts only the night-before bet. A bet is placed when the model's chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
     </div>` : ""}
     ${pending.length ? `<div class="modal-section">Upcoming (${pending.length})</div><div class="bets-list">${pending.map(row).join("")}</div>` : ""}
     ${settled.length ? `<div class="modal-section">Settled (${settled.length})</div><div class="bets-list">${settled.slice(0, 300).map(row).join("")}</div>` : ""}
