@@ -53,6 +53,10 @@ and only leaves it where he has the minutes to (season_model)
                level + curve (stored with minutes = 0, shown as an estimate). His club that season
                comes from player_career_teams; one we have fixtures for but no player data (a
                lower league) adds its level as a little evidence (GAP_CLUB_MINUTES)
+    unrated  = players on a recent injury list with no minutes in these leagues at all (a
+               youngster out on loan in a lower league, Buchmann at Bayern) get the same estimate
+               from nothing: PRIOR_LEVEL on the age curve for his broad position, plus any gap-season
+               club level, so the club page can show a rank for everyone it lists
     future   = the FUTURE_SEASONS after the current one (player_projected_ranks): his current rank
                moved by his curve's change from this season's age to that season's: a decline as
                it is, growth added before the soft ceiling (so a 97 at 19 heads towards the high
@@ -517,12 +521,17 @@ def _season_ranks(conn, norms, apps, offsets, team_rank, retired, position_ranks
                                          and league_id = any(%s) group by 1)
                           select l.league_id, l.pos, (l.r - ref.r)::float8 from l join ref using (pos)""",
                         [config.RATING_REFERENCE_LEAGUES]),
-        retired=retired, position_ranks=position_ranks, projections=projections)
+        retired=retired, position_ranks=position_ranks, projections=projections,
+        unrated=q("""select distinct on (i.player_id) i.player_id, coalesce(left(ps.position, 1), 'M')
+                     from injuries i join fixtures f using (fixture_id)
+                     left join player_seasons ps on ps.player_id = i.player_id
+                     where f.kickoff > now() - interval '60 days'
+                     order by i.player_id, ps.season desc nulls last"""))
 
 
 def season_model(norms, apps, offsets, team_rank, born, team_level, careers, covered, team_games=(),
                  other_seasons=(), other_offsets=(), retired=None, detail=None, position_ranks=None,
-                 projections=None):
+                 projections=None, unrated=()):
     """Season ranks: every player follows the age curve through all his seasons, from a level
     of his own, and only leaves it where he has the minutes to (see module docstring). Query
     results come in as rows so this can be run offline. other_seasons: player_seasons rows
@@ -531,7 +540,9 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     estimates after it (retired_players). detail: a dict to fill with the
     workings per (player, season): (evidence, weight, level, curve), for checking.
     position_ranks: a dict to fill with {player: {role group: rank}} (see below). projections: a
-    dict to fill with {player: {season: rank}} for the FUTURE_SEASONS after the current one."""
+    dict to fill with {player: {season: rank}} for the FUTURE_SEASONS after the current one.
+    unrated: (player, broad position letter) rows; those with no minutes anywhere here are rated
+    from the prior and their age curve alone."""
     seasons = defaultdict(lambda: {"sums": dict.fromkeys(SUMS, 0.0), "roles": Counter(), "broad": Counter(),
                                    "club": [0.0, 0.0], "games": 0, "ref_mins": 0})
     team_games = {(t, y): n for t, y, n in team_games}
@@ -741,6 +752,9 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
     for (player, season), (ev, mins, pos) in evidence.items():
         by_player[player][season] = (ev, mins, pos, None)
     last_season = max(y for _, y in evidence)
+    for player, broad in unrated:
+        if player not in by_player and player not in (retired or {}):
+            by_player[player] = {last_season: (None, 0, FALLBACK.get(broad, "CM"), 0)}
     for player, have in by_player.items():
         real = sorted(have)
         end = (retired or {}).get(player, last_season)   # retired: nothing after his last season
@@ -767,7 +781,7 @@ def season_model(norms, apps, offsets, team_rank, born, team_level, careers, cov
         for _, w, pos, team in have.values():
             if team is None:
                 mins_in[pos] += w
-        g = mins_in.most_common(1)[0][0]
+        g = mins_in.most_common(1)[0][0] if mins_in else next(iter(have.values()))[2]   # unrated: broad position
         kind = "GK" if g == "GK" else "OUT"
         off = {y: (ev - curve(player, y, g), w) for y, (ev, w, _, _) in have.items() if w > 0}
         for season, (ev, w, pos, team) in have.items():

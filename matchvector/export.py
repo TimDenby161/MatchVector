@@ -430,11 +430,12 @@ def export_injuries(conn, out_dir=OUT_DIR):
         lists = [ps for _, ps in sorted(listed[int(team)].values(), key=lambda x: x[0], reverse=True)]
         for row in entry["players"]:
             row.append(next((k for k, ps in enumerate(lists) if row[0] not in ps), len(lists)))
-    # a rank for players off the current list (no recent minutes): his latest season rank
+    # a rank for players off the current list (no recent minutes): his latest season rank, an
+    # estimate for a season he hasn't played (player_ratings: unrated players get one too)
     ids = [row[0] for entry in teams.values() for row in entry["players"]]
     season_rank = {p: float(r) for p, r in conn.execute(
         """select distinct on (player_id) player_id, season_rank from player_season_ranks
-           where player_id = any(%s) and season_rank is not null and minutes > 0
+           where player_id = any(%s) and season_rank is not null
            order by player_id, season desc""", [ids])}
     for entry in teams.values():
         for row in entry["players"]:
