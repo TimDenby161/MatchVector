@@ -265,6 +265,9 @@
   .match-card.rated { cursor: pointer; }
   .market-line { margin-top: 4px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: center; }
   .market-line b { color: var(--text-secondary); font-weight: 700; }
+  .club-card-extra { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .club-card-extra b { color: var(--text-secondary); }
   .vs-market { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
   .vs-market .hd { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; text-align: right; }
   .vs-market .num { text-align: right; font-weight: 700; }
@@ -1782,22 +1785,23 @@ function statusTag(m) {
 // projected goals and likely score); right = what goes top right. Shared by Matches and Tips.
 function matchHead(m, right = "") {
   const finished = FINISHED.has(m.status) && m.hg != null;
-  const round = m.round ? ` · ${escapeHtml(m.round.replace(/^Regular Season - /, "Round "))}` : "";
+  const meta = escapeHtml(m.meta || fmtTime(m.kickoff));
+  const round = !m.meta && m.round ? ` · ${escapeHtml(m.round.replace(/^Regular Season - /, "Round "))}` : "";
   const hRank = finished ? m.home_rank : state.rankByTeam.get(m.home)?.current ?? m.home_rank;
   const aRank = finished ? m.away_rank : state.rankByTeam.get(m.away)?.current ?? m.away_rank;
   return `
       <div class="match-card-top">
-        <span class="match-meta">${escapeHtml(fmtTime(m.kickoff))}${round}</span>
+        <span class="match-meta">${meta}${round}</span>
         <span class="card-top-right">${right}</span>
       </div>
       <div class="match-teams">
         <div class="match-team">
-          <div class="mt-name"><img class="club-logo" data-club="${m.home}" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home)}</div>
+          <div class="mt-name"><img class="club-logo" data-club="${m.home}" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home, m.home_name)}</div>
           ${rankChip(hRank)}
         </div>
         ${scoreCentre(m)}
         <div class="match-team away">
-          <div class="mt-name"><img class="club-logo" data-club="${m.away}" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away)}</div>
+          <div class="mt-name"><img class="club-logo" data-club="${m.away}" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away, m.away_name)}</div>
           ${rankChip(aRank)}
         </div>
       </div>`;
@@ -3565,36 +3569,45 @@ function clubMatchesTab() {
   const { id, data } = state.club;
   const upcoming = clubUpcoming(id);
   const rows = data?.rows || [];
+  const addClubExtra = (card, extra) => card.replace(/<\/div>\s*$/, `${extra}</div>`);
   const fixture = (m) => {
-    const home = m.home === id, opp = home ? m.away : m.home;
+    const home = m.home === id;
     const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
-    const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
-    return `<div class="match-row">
-      <div class="mr-date">${escapeHtml(fmtShortDate(m.kickoff))}</div>
-      <div class="mr-opp"><img class="club-logo" data-club="${opp}" src="${teamLogo(opp)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-        <span>${home ? "v" : "@"} ${clubLink(opp)}</span></div>
-      <div class="mr-res" style="color:var(--text-muted)">${proj}</div>
-      <div class="mr-rating">${win != null ? `<b>${win}%</b>` : ""}</div>
-      <div class="mr-sub"><span>${escapeHtml(compLabel(m.league))} · ${escapeHtml(fmtTime(m.kickoff))}</span></div>
-    </div>`;
+    const extra = `<div class="club-card-extra"><span>${escapeHtml(compLabel(m.league))}</span>${win != null ? `<span><b>${win}%</b> win</span>` : ""}</div>`;
+    return addClubExtra(matchCard(m), extra);
   };
   const LIMIT = state.club.allResults ? Infinity : 40;
   const thisYear = String(new Date().getFullYear());
   const results = rows.map((m, i) => ({ m, move: clubMove(rows, i, data.start) })).reverse();
-  const result = ({ m, move }) => `<div class="match-row">
-      <div class="mr-date">${escapeHtml(fmtShortDate(m.date))}${m.date.slice(0, 4) !== thisYear ? ` '${m.date.slice(2, 4)}` : ""}</div>
-      <div class="mr-opp"><img class="club-logo" data-club="${m.opponent}" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-        <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, clubOpp(m.opponent))}</span></div>
-      <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
-      <div class="mr-rating rank-move">${moveHtml(move)}</div>
-      <div class="mr-sub"><span>${escapeHtml(compLabel(m.league))}${m.xi_lines ? ` · XI ${linesText(m.xi_lines)}` : ""}</span><span class="mr-rank"${m.attack != null ? ` title="Attack ${Math.round(m.attack)} · Defence ${Math.round(m.defence)} after the match"` : ""}>Elo ${m.rank.toFixed(1)}</span></div>
+  const result = ({ m, move }) => {
+    const home = m.home !== 0;
+    const card = {
+      status: "FT",
+      meta: `${fmtShortDate(m.date)}${m.date.slice(0, 4) !== thisYear ? ` '${m.date.slice(2, 4)}` : ""} · ${compLabel(m.league)}`,
+      home: home ? id : m.opponent,
+      away: home ? m.opponent : id,
+      home_name: home ? teamName(id) : clubOpp(m.opponent),
+      away_name: home ? clubOpp(m.opponent) : teamName(id),
+      hg: home ? m.gf : m.ga,
+      ag: home ? m.ga : m.gf,
+      home_rank: home ? m.rank : null,
+      away_rank: home ? null : m.rank,
+    };
+    return `<div class="match-card">
+      ${matchHead(card)}
+      ${m.xi_lines ? `<div class="market-line" title="Average player rank (0-100) by line">Starting XI ${linesText(m.xi_lines)}</div>` : ""}
+      <div class="club-card-extra">
+        <span${m.attack != null ? ` title="Attack ${Math.round(m.attack)} · Defence ${Math.round(m.defence)} after the match"` : ""}>Elo <b>${m.rank.toFixed(1)}</b></span>
+        <span class="rank-move">${moveHtml(move)}</span>
+      </div>
     </div>`;
+  };
   if (!upcoming.length && !results.length) return `<div class="empty-state">No matches for this club yet.</div>`;
   return `
-    ${upcoming.length ? `<div class="modal-section" style="margin-top:0">Fixtures</div><div class="match-list">${upcoming.map(fixture).join("")}</div>
+    ${upcoming.length ? `<div class="modal-section" style="margin-top:0">Fixtures</div><div class="card-list">${upcoming.map(fixture).join("")}</div>
       <div class="page-note">Projected score and win chance from the model.</div>` : ""}
     ${results.length ? `<div class="club-section"${upcoming.length ? "" : ' style="margin-top:0"'}><div class="modal-section">Results · Elo change</div>
-      <div class="match-list" id="club-results">${results.slice(0, LIMIT).map(result).join("")}</div>
+      <div class="card-list" id="club-results">${results.slice(0, LIMIT).map(result).join("")}</div>
       ${results.length > LIMIT ? `<button type="button" class="show-all" data-club-more>Show all ${results.length.toLocaleString()}</button>` : ""}
       <div class="page-note">Elo: the club's Elo rating after the match; the change is how far that match moved it.</div></div>` : ""}`;
 }
