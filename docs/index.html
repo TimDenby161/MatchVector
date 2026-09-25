@@ -2420,7 +2420,7 @@ function renderBets() {
     ${marketRows ? `<div class="stats-card" style="margin-bottom:12px">
       <div class="stats-label">By market</div>
       <table class="calib-table">${head("Market")}<tbody>${marketRows}</tbody></table>
-      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. Each pick is bet once: if both the night-before and pre-kickoff runs chose it, All counts only the night-before bet. A bet is placed when the model's chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
+      <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. Each pick is bet once: if both the night-before and pre-kickoff runs chose it, All counts only the night-before bet. All bets are at ${escapeHtml(rules.bookmaker || "Bet365")}'s odds. A bet is placed when the model's chance × that price is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
     </div>` : ""}
     ${pending.length ? `<div class="modal-section">Upcoming (${pending.length})</div><div class="bets-list">${pending.map(row).join("")}</div>` : ""}
     ${settled.length ? `<div class="modal-section">Settled (${settled.length})</div><div class="bets-list">${settled.slice(0, 300).map(row).join("")}</div>` : ""}

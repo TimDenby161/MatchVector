@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import config, positions
 from .cache import WEEK, cached_rows, rank_history
-from .betting import CAUTIOUS_RULE, is_cautious
+from .betting import BOOKMAKER, CAUTIOUS_RULE, is_cautious
 from .predictions import GOAL_LINES, goal_lines
 
 log = logging.getLogger(__name__)
@@ -447,7 +447,8 @@ def export_bets(conn, out_dir=OUT_DIR):
            from paper_bets b join fixtures f using (fixture_id)
            join teams h on h.team_id = f.home_team_id join teams a on a.team_id = f.away_team_id
            left join bookmakers bk on bk.bookmaker_id = b.bookmaker_id
-           order by b.kickoff desc, b.bet_id""").fetchall()
+           where b.bookmaker_id = %s       -- bets taken elsewhere before Bet365-only stay in the table
+           order by b.kickoff desc, b.bet_id""", [BOOKMAKER]).fetchall()
     bets = [{
         "id": r[0], "strategy": r[1], "fixture": r[2], "kickoff": r[3].isoformat(), "league": r[4],
         "market": r[5], "selection": r[6], "model_prob": _r(r[7], 3), "fair_prob": _r(r[8], 3),
@@ -471,7 +472,7 @@ def export_bets(conn, out_dir=OUT_DIR):
     # No generation timestamp, so the file only changes (and gets committed) when bets do
     (out_dir / "bets.json").write_text(json.dumps({
         "last_change": last.isoformat() if last else None,
-        "rules": {"min_edge": 0.03, "max_odds": 10.0, "stake": 1, "stake_gbp": BET_STAKE_GBP, "bank": BET_BANK_GBP, "cautious_rule": CAUTIOUS_RULE},
+        "rules": {"min_edge": 0.03, "max_odds": 10.0, "bookmaker": "Bet365", "stake": 1, "stake_gbp": BET_STAKE_GBP, "bank": BET_BANK_GBP, "cautious_rule": CAUTIOUS_RULE},
         "summary": summary, "bets": bets,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d paper bets", len(bets))

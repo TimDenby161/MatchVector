@@ -4,8 +4,9 @@ No real money. Two strategies are tracked separately:
     early - placed by the nightly run for matches in the next EARLY_HOURS hours
     late  - placed by the match-day run shortly before kickoff (after late injury news)
 
-A bet is placed on any selection where model_prob * best price across bookmakers - 1 is at
-least MIN_EDGE (prices above MAX_ODDS are skipped). Each selection is bet at most once per
+A bet is placed on any selection where model_prob * Bet365's price - 1 is at least MIN_EDGE
+(prices above MAX_ODDS are skipped): Bet365 (BOOKMAKER) is the only bookmaker bet with, so only
+its prices are taken. The fair (margin-free) chances still average every bookmaker. Each selection is bet at most once per
 strategy, 1 unit flat stake. Settlement uses the 90-minute score, like bookmakers.
 
 Closing line value: clv = odds_taken * closing fair probability - 1. Consistently positive CLV
@@ -27,6 +28,7 @@ log = logging.getLogger(__name__)
 
 MIN_EDGE = 0.03
 MAX_ODDS = 10.0
+BOOKMAKER = 8              # Bet365 (bookmakers.bookmaker_id): the one bookmaker bets are taken with
 BIG5 = {39, 140, 135, 78, 61}
 EUROPE = {2, 3, 848, 531}
 STREAK_POINTS = 30         # |(Form - Rating) home - (Form - Rating) away| at or above this: "streak"
@@ -64,7 +66,8 @@ SELECTION_MARKET = {(bet, sel): m for m, (bet, sels, _) in MARKETS.items() for s
 def load_prices(conn, fixture_ids):
     """{fixture: {market: {"best": {sel: (odd, bookmaker)}, "fair": {sel: prob}}}}.
 
-    fair = each bookmaker's complete set of prices with its margin removed, averaged."""
+    best = BOOKMAKER's price (the one bets are taken at); fair = each bookmaker's complete set
+    of prices with its margin removed, averaged over every bookmaker."""
     by_book = defaultdict(lambda: defaultdict(dict))    # (fid, market) -> bookmaker -> {sel: odd}
     for fid, bm, bet, sel, odd in conn.execute(
             """select fixture_id, bookmaker_id, bet_id, selection, odd from odds
@@ -79,9 +82,8 @@ def load_prices(conn, fixture_ids):
         best = {}
         fair_sets = []
         for bm, prices in books.items():
-            for sel, odd in prices.items():
-                if sel not in best or odd > best[sel][0]:
-                    best[sel] = (odd, bm)
+            if bm == BOOKMAKER:
+                best = {sel: (odd, bm) for sel, odd in prices.items()}
             if len(prices) == len(sels):
                 inv = {s: 1 / prices[s] for s in sels}
                 total = sum(inv.values())

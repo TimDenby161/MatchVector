@@ -350,7 +350,7 @@ These were tested and not adopted:
 
   - The bookmakers were about equally accurate. Pinnacle stands out for its low margin, not for sharper prices. The softest bookmaker (SBO) charges the highest margin, so it's the worst one to bet with.
   - Soft-bookmaker betting without the model was also tested: bet at one bookmaker when its price beats the other bookmakers' fair consensus, or Pinnacle's. That gave 5–36 bets per bookmaker with ranges of about ±100%, so it's inconclusive.
-  - Taking the best price across all 13 bookmakers is the real lever. The margin falls from about 8% at one bookmaker to 3.1% (result), 3.3% (over/under 2.5) and 5.1% (both teams score). Paper bets already use the best price. The best prices summed under 100% (an arbitrage) in 24 result markets (4.7%), 8 over/under 2.5 and 4 both-teams-score markets. Each bookmaker's price is stored at a different moment, though, so some of these are snapshot timing rather than prices on offer together.
+  - Taking the best price across all 13 bookmakers is the real lever. The margin falls from about 8% at one bookmaker to 3.1% (result), 3.3% (over/under 2.5) and 5.1% (both teams score). Paper bets used the best price until 25 September 2026; they now take Bet365 only, as that is the bookmaker actually bet with. The best prices summed under 100% (an arbitrage) in 24 result markets (4.7%), 8 over/under 2.5 and 4 both-teams-score markets. Each bookmaker's price is stored at a different moment, though, so some of these are snapshot timing rather than prices on offer together.
   - Next: the opening-price comparison (from matches collected before kickoff, 24 September on) will show whether any bookmaker is slow to move. That's the usual way to beat an individual bookmaker.
 - **What the disagreements have in common** (the 82 matches where the model and the closing consensus differed by 10+ points on the result).
   - They're most common where the model knows least:
@@ -378,7 +378,7 @@ python -m matchvector predict   # the nightly job runs this after the rankings
 - **early:** placed by the nightly run for matches in the next 36 hours.
 - **late:** placed by the match-day run within 75 minutes of kickoff, after late injury news.
 
-A bet is placed when model chance × the best price across bookmakers is at least 3% better than even, at odds up to 10. Each bet is 1 unit, with at most one bet per selection per strategy. Markets:
+A bet is placed when model chance × Bet365's price (`betting.BOOKMAKER`, the only bookmaker bet with, since 25 September 2026) is at least 3% better than even, at odds up to 10. Each bet is 1 unit, with at most one bet per selection per strategy. The fair chances and CLV still use every bookmaker's prices. Bets taken at other bookmakers before the switch stay in `paper_bets` but aren't exported. Markets:
 - match result
 - over/under 1.5, 2.5, 3.5 and 4.5 goals (2.5 is `p_over25`; the other lines are worked out from the stored projected goals by `predictions.goal_lines`). Lines other than 2.5 were added on 25 September 2026, because the goal markets were the closest to the bookmakers.
 - both teams to score (`p_btts`)
