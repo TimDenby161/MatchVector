@@ -782,6 +782,7 @@
   .pl-hero .club-logo-lg { width: 60px; height: 60px; }
   a.xi-spot { text-decoration: none; min-width: 58px; padding: 3px 5px 4px; }
   a.xi-spot:hover { background: rgba(255,255,255,0.26); }
+  .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .squad-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 7px 0; font-size: 13px; }
   .squad-row + .squad-row { border-top: 1px solid var(--border); }
@@ -3036,24 +3037,70 @@ function clubNextCard() {
 }
 
 // ---- Predicted XI: the next match, the XI on the pitch and as a list
+// The predicted XI from the overview's start chances: each position's usual number of starters,
+// one position per player, filled from the surest picks down
+function predictedXi(teamId) {
+  const d = clubDepth(teamId);
+  if (!d) return null;
+  const filled = new Map(), placed = new Set(), xi = [];
+  d.shown.flatMap((b) => b.n ? b.ps.map(({ p, rank }) => ({ b, p, rank, chance: d.startChance.get(`${b.label}:${p.id}`) || 0 })) : [])
+    .filter((c) => c.chance > 0).sort((x, y) => y.chance - x.chance || y.rank - x.rank).forEach((c) => {
+      if (placed.has(c.p.id) || (filled.get(c.b.label) || 0) >= c.b.n) return;
+      placed.add(c.p.id);
+      filled.set(c.b.label, (filled.get(c.b.label) || 0) + 1);
+      xi.push({ ...c, mins: d.xMins.get(`${c.b.label}:${c.p.id}`) || 0 });
+    });
+  return xi.length ? xi : null;
+}
 function clubXiTab() {
   const { id } = state.club;
-  const xi = state.players?.nextXi?.[String(id)];
-  if (!xi?.players.length) return `<div class="empty-state">No predicted XI for this club (it needs an upcoming match and player data from its recent matches).</div>`;
-  const next = clubNextCard(), pitch = xiPitch(id);
-  const row = ([pid, name, pos, rank]) => {
-    const p = playerById(pid);
-    return `<div class="squad-row">
-      <img class="player-photo" src="${playerPhoto(pid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-      <div class="sq-main"><div class="sq-name">${playerLink(pid, name)}</div>
-        <div class="sq-sub">${escapeHtml(pos || "")}${p?.age != null ? ` · ${p.age}` : ""}${p?.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""}</div></div>
+  const xi = predictedXi(id);
+  if (!xi) return `<div class="empty-state">No predicted XI for this club (it needs player data from its recent matches).</div>`;
+  const next = clubNextCard(), pitch = xiPitch(xi);
+  // keeper first, then back to front, right to left as on the pitch
+  const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
+  const at = (c) => spot[c.b.label === "CM" ? "CM" : c.b.label] || [50, 50];
+  const ordered = [...xi].sort((x, y) => Math.round(at(y)[1] / 10) - Math.round(at(x)[1] / 10) || at(y)[0] - at(x)[0]);
+  const row = ({ b, p, rank, chance, mins }) => `<div class="squad-row">
+      <img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="sq-main"><div class="sq-name">${playerLink(p.id, p.name)}</div>
+        <div class="sq-sub">${escapeHtml(b.label)} · ${Math.round(chance)}% to start · ${mins}′${p.age != null ? ` · ${p.age}` : ""}${p.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""}</div></div>
       <div>${rankChipSmall(rank)}</div>
     </div>`;
-  };
   return `
-    ${next ? `<div class="ov-top">${next}${pitch}</div>` : pitch}
-    <div class="club-section"><div class="modal-section">The XI</div><div class="match-list">${xi.players.map(row).join("")}</div>
-      <div class="page-note">A guess from recent minutes: the goalkeeper and the 10 outfield players with the most minutes over the club's last 5 matches, leaving out anyone on the injury list for this match. Each is shown at the position he has started in most, with his current rank.</div></div>`;
+    ${next ? `<div class="ov-top"><div class="ov-side">${next}</div>${pitch}</div>` : pitch}
+    <div class="club-section"><div class="modal-section">The XI</div><div class="match-list">${ordered.map(row).join("")}</div></div>`;
+}
+// The predicted XI on a pitch as the overview's: keeper at the top, attacking down, left-sided
+// positions on the right. Players in the same position are spread along its line.
+function xiPitch(xi) {
+  const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
+  const lines = new Map();                       // y -> players on that line
+  for (const c of xi) {
+    const [x0, y0] = spot[c.b.label] || spot.CM;
+    const x = 100 - x0, y = Math.round(100 - y0) + (y0 > 85 ? 1 : 0);
+    if (!lines.has(y)) lines.set(y, []);
+    lines.get(y).push({ c, x });
+  }
+  const spots = [...lines].flatMap(([y, ps]) => {
+    ps.sort((a, b) => a.x - b.x);
+    const xs = ps.map((q) => q.x);
+    // too close together: spread evenly around their middle, 24% apart (less if that won't fit)
+    const clash = xs.some((v, i) => i && v - xs[i - 1] < 22);
+    const gap = Math.min(24, 72 / Math.max(1, ps.length - 1)), width = gap * (ps.length - 1);
+    const from = Math.min(Math.max(xs.reduce((a, v) => a + v, 0) / xs.length - width / 2, 14), 86 - width);
+    return ps.map((q, i) => {
+      const x = clash ? from + i * gap : q.x;
+      const { b, p, rank, chance, mins } = q.c;
+      return `<a class="pp-spot xi-spot rel-${rankTier(rank)}" href="#/player/${p.id}" style="left:${x}%;top:${y}%"
+          title="${escapeHtml(`${p.name} · ${b.label} · rank ${rank.toFixed(1)} · ${Math.round(chance)}% to start · ${mins}′ expected`)}">
+        <span class="pp-rank">${Math.round(rank)}</span><span class="pp-name">${escapeHtml(shortName(p.name))}</span>
+        <span class="pp-meta">${Math.round(chance)}% · ${mins}′</span></a>`;
+    });
+  }).join("");
+  const avg = xi.reduce((t, c) => t + c.rank, 0) / xi.length;
+  return `<div class="club-section pp-section"><div class="pitch pp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div>
+    <div class="page-note" style="text-align:center">Average rank ${Math.round(avg)}</div></div>`;
 }
 
 // Overview pitch: in each position, the squad's players who can play there (their main position,
@@ -3101,11 +3148,11 @@ function canPlay(p) {
   if (!rows) return playsAt(p);
   return new Set([p.position, ...rows.filter(([r, m]) => r !== "SUB" && m >= DEPTH_MINUTES).map(([r]) => r)]);
 }
-function depthPitch(teamId) {
+function clubDepth(teamId) {
   const out = new Set((clubInjuries(teamId)?.players || []).map(([pid]) => pid));   // injured: in their own box
   const atClub = new Set((state.players?.list || []).filter((p) => p.team === teamId).map((p) => p.id));
   const squad = (state.players?.list || []).filter((p) => p.team === teamId && !out.has(p.id));
-  if (!squad.length) return "";
+  if (!squad.length) return null;
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
   // only the positions in the formations the club has used (all of them if none are known)
   const used = new Set(clubFormationRows().filter((m) => m.formation).flatMap((m) => formationRoles(m.formation)));
@@ -3277,6 +3324,12 @@ function depthPitch(teamId) {
     for (const [id, v] of whole) xMins.set(`${r}:${id}`, v);
     boxMins.set(r, total);
   }
+  return { shown, startChance, xMins, boxMins, picks, nextLabel, startPct, lasts, benchRate };
+}
+function depthPitch(teamId) {
+  const d = clubDepth(teamId);
+  if (!d) return "";
+  const { shown, startChance, xMins, boxMins, picks, nextLabel, startPct, lasts, benchRate } = d;
   const spots = shown.map(({ label: r, roles, row, col, n, ps, proj }) => {
     const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
     const cell = `grid-row:${row};grid-column:${col}`;
@@ -3323,37 +3376,6 @@ function shortName(name) {
 
 // The predicted XI on the pitch: each player at his position with his rank. Players on the
 // same line are spread evenly across it (two centre-backs, two left wingers ...).
-function xiPitch(teamId) {
-  const xi = state.players?.nextXi?.[String(teamId)];
-  if (!xi?.players.length) return "";
-  const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
-  const lines = new Map();                       // y -> players on that line
-  for (const pl of xi.players) {
-    const [x, y] = spot[pl[2]] || spot.CM;
-    const key = y >= 85 ? 89 : y >= 70 ? 72 : y >= 55 ? 57 : y >= 38 ? 42 : y >= 20 ? 26 : 12;
-    if (!lines.has(key)) lines.set(key, []);
-    lines.get(key).push({ pl, x });
-  }
-  const spots = [...lines].flatMap(([y, ps]) => {
-    ps.sort((a, b) => a.x - b.x);
-    const xs = ps.map((p) => p.x);
-    // too close together: spread evenly around their middle, 24% apart (less if that won't fit)
-    const clash = xs.some((v, i) => i && v - xs[i - 1] < 22);
-    const gap = Math.min(24, 72 / Math.max(1, ps.length - 1)), width = gap * (ps.length - 1);
-    const from = Math.min(Math.max(xs.reduce((a, v) => a + v, 0) / xs.length - width / 2, 14), 86 - width);
-    return ps.map((p, i) => {
-      const x = clash ? from + i * gap : p.x;
-      const [pid, name, pos, rank] = p.pl;
-      const short = shortName(name);
-      return `<a class="pp-spot xi-spot rel-${rank != null ? rankTier(rank) : 1}" href="#/player/${pid}" style="left:${x}%;top:${y}%"
-          title="${escapeHtml(`${name} · ${pos}${rank != null ? ` · rank ${rank.toFixed(1)}` : ""}`)}">
-        <span class="pp-rank">${rank != null ? Math.round(rank) : "–"}</span><span class="pp-name">${escapeHtml(short)}</span></a>`;
-    });
-  }).join("");
-  const avg = xi.players.filter((p) => p[3] != null);
-  return `<div class="club-section pp-section"><div class="pitch pp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div>
-    <div class="page-note" style="text-align:center">Predicted XI${avg.length ? ` · average rank ${Math.round(avg.reduce((a, p) => a + p[3], 0) / avg.length)}` : ""}</div></div>`;
-}
 
 // ---- Matches: upcoming fixtures, then every result since 2020 (newest first)
 function clubMatchesTab() {
