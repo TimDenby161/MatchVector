@@ -419,6 +419,7 @@ def sync_nightly(api, conn, league_ids):
     step("stats", sync_fixture_stats, league_ids)
     step("player minutes", sync_fixture_players,
          [l for l in league_ids if l in config.MATCH_PLAYER_LEAGUES])
+    step("cup line-ups", sync_cup_lineups)
     for pair in pairs:
         step("odds", sync_odds, [pair])
     for league_id, season in pairs:
@@ -785,6 +786,53 @@ def sync_team_colors(api, conn, batch_size=20):
             colors += _home_colors(f)
         _store_colors(conn, colors)
         conn.commit()
+
+
+CUP_LINEUPS_FROM = "2020-07-01"
+
+
+def sync_cup_lineups(api, conn, batch_size=20):
+    """Starting XIs, formations and coaches (fixture_lineups, fixture_formations) for the finished
+    matches outside the per-match player leagues (cups, Europe) of the clubs in them, since
+    CUP_LINEUPS_FROM (/fixtures?ids=, 20 per call). Their player stats aren't stored, so the player
+    ratings stay league-only. fixtures.players_fetched_at marks them done."""
+    pending = [r[0] for r in conn.execute(
+        """select fixture_id from fixtures
+           where players_fetched_at is null and status_short = any(%s) and not (league_id = any(%s))
+             and kickoff >= %s and (home_team_id = any(%s) or away_team_id = any(%s))
+           order by kickoff""",
+        [list(config.FINISHED_STATUSES), list(config.MATCH_PLAYER_LEAGUES), CUP_LINEUPS_FROM,
+         *[_current_player_league_teams(conn)] * 2])]
+    log.info("Cup matches needing line-ups: %d (~%d API calls)", len(pending), -(-len(pending) // batch_size))
+    now = datetime.now(timezone.utc)
+    for i in range(0, len(pending), batch_size):
+        formations, lineups, colors, done = [], [], [], []
+        for f in api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size]))):
+            fid = f["fixture"]["id"]
+            colors += _home_colors(f)
+            for lu in f.get("lineups") or []:
+                team, formation = (lu.get("team") or {}).get("id"), lu.get("formation")
+                if not team:
+                    continue
+                formations.append({"fixture_id": fid, "team_id": team, "formation": formation,
+                                   "coach_id": (lu.get("coach") or {}).get("id")})
+                for st in lu.get("startXI") or []:
+                    pl = st.get("player") or {}
+                    if pl.get("id"):
+                        lineups.append({"fixture_id": fid, "team_id": team, "player_id": pl["id"], "grid": pl.get("grid"),
+                                        "role": positions.role(formation, pl.get("grid"))})
+            if f.get("lineups") or now - datetime.fromisoformat(f["fixture"]["date"]) > STATS_RETRY_WINDOW:
+                done.append(fid)
+        upsert(conn, "fixture_formations", _dedupe(formations, ("fixture_id", "team_id")),
+               ["fixture_id", "team_id"], touch_updated_at=False)
+        upsert(conn, "fixture_lineups", _dedupe(lineups, ("fixture_id", "player_id")),
+               ["fixture_id", "player_id"], touch_updated_at=False)
+        _store_colors(conn, colors)
+        if done:
+            conn.execute("update fixtures set players_fetched_at = now() where fixture_id = any(%s)", [done])
+        conn.commit()
+        if (i // batch_size) % 50 == 0:
+            log.info("Cup line-ups %d/%d", i + batch_size, len(pending))
 
 
 def sync_fixture_players(api, conn, league_ids, batch_size=20):

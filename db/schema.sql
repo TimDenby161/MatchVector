@@ -302,6 +302,17 @@ create table if not exists fixture_formations (
     primary key (fixture_id, team_id)
 );
 alter table fixture_formations add column if not exists coach_id int;   -- the manager on the line-up
+-- Starting XIs for cup and European matches of clubs in the per-match player leagues
+-- (ingest.sync_cup_lineups): who started where, for the club page's formations and starts.
+-- Kept apart from fixture_players so the player ratings stay league-only.
+create table if not exists fixture_lineups (
+    fixture_id  int not null,
+    team_id     int not null,
+    player_id   int not null,
+    grid        text,
+    role        text,
+    primary key (fixture_id, player_id)
+);
 -- Each club's home kit colours (hex, no #) from its latest home line-up, for the club page pitch
 create table if not exists team_colors (
     team_id     int primary key,
@@ -603,3 +614,4 @@ alter table predicted_lineups  enable row level security;
 alter table fixture_formations enable row level security;
 alter table team_coaches       enable row level security;
 alter table team_colors        enable row level security;
+alter table fixture_lineups    enable row level security;

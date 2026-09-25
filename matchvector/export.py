@@ -863,7 +863,7 @@ def export_clubs(conn, out_dir=OUT_DIR):
             order_by="fixture_id, team_id")}
     neutral = {f for (f,) in conn.execute(NEUTRAL_SQL, [list(config.FINISHED_STATUSES)])}
     # this season (the club's latest season with a line-up): matches with a line-up, and starts by
-    # position (fixture_players.role) per player
+    # position per player, league (fixture_players.role) and cup (fixture_lineups) alike
     current = """with cur as (
             select ff.team_id, max(f.season) s from fixture_formations ff join fixtures f using (fixture_id)
             where f.status_short = any(%(fin)s) and ff.formation is not null and ff.team_id = any(%(teams)s) group by 1)"""
@@ -873,10 +873,11 @@ def export_clubs(conn, out_dir=OUT_DIR):
             join cur on cur.team_id = ff.team_id and cur.s = f.season
             where f.status_short = any(%(fin)s) and ff.formation is not null group by 1""", args)}
     for team, player, role, n in conn.execute(current + """
-            select fp.team_id, fp.player_id, fp.role, count(*) from fixture_players fp join fixtures f using (fixture_id)
+            select fp.team_id, fp.player_id, fp.role, count(*) from (select fixture_id, team_id, player_id, role from fixture_players where started and role is not null
+                  union all select fixture_id, team_id, player_id, role from fixture_lineups where role is not null) fp join fixtures f using (fixture_id)
             join cur on cur.team_id = fp.team_id and cur.s = f.season
             join fixture_formations ff on ff.fixture_id = fp.fixture_id and ff.team_id = fp.team_id
-            where fp.started and fp.role is not null and ff.formation is not null and f.status_short = any(%(fin)s)
+            where ff.formation is not null and f.status_short = any(%(fin)s)
             group by 1, 2, 3""", args):
         if team in starts:
             starts[team]["players"].setdefault(str(player), {})[role] = n
@@ -884,10 +885,11 @@ def export_clubs(conn, out_dir=OUT_DIR):
     # club page can see who has started in a position since an injured player last did
     xis = defaultdict(dict)
     for team, fid, player, role in conn.execute(current + """
-            select fp.team_id, fp.fixture_id, fp.player_id, fp.role from fixture_players fp join fixtures f using (fixture_id)
+            select fp.team_id, fp.fixture_id, fp.player_id, fp.role from (select fixture_id, team_id, player_id, role from fixture_players where started and role is not null
+                  union all select fixture_id, team_id, player_id, role from fixture_lineups where role is not null) fp join fixtures f using (fixture_id)
             join cur on cur.team_id = fp.team_id and cur.s = f.season
             join fixture_formations ff on ff.fixture_id = fp.fixture_id and ff.team_id = fp.team_id
-            where fp.started and fp.role is not null and ff.formation is not null and f.status_short = any(%(fin)s)
+            where ff.formation is not null and f.status_short = any(%(fin)s)
             order by f.kickoff, fp.fixture_id""", args):
         xis[team].setdefault(fid, []).extend([player, role])
     for team, by_fixture in xis.items():

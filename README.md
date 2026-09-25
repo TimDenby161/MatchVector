@@ -427,6 +427,8 @@ Each competition's current season comes from `docs/data/leagues/<league_id>.json
 
 **Managers.** Every night, each club in those leagues gets its manager from `/coachs?team=`, at most once a week each, or the next night after a line-up names a different coach (`team_coaches`, `python -m matchvector sync coaches`). The API keeps former managers listed with no end date, so the one on the club's latest line-up wins, otherwise the one who started last. Line-ups store their coach in `fixture_formations.coach_id`. API-Football seems to fill a season's line-ups with one coach, so they can't pin down a mid-season change, and the start date comes from `/coachs`.
 
+**Cup line-ups.** For clubs in those leagues, their cup and European matches since July 2020 get starting XIs, formations and coaches from `/fixtures?ids=` too (`fixture_lineups`, `fixture_formations`; `python -m matchvector sync cup_lineups`, also nightly). Player stats from them aren't stored, so the player ratings stay league-only, but the club page's formations, starts by position and predicted replacements count every competition.
+
 **Kit colours.** The club page pitches are drawn in the club's home kit: the shirt and number colours from its latest home line-up (`team_colors`). New line-ups update them as they're fetched, and `python -m matchvector sync colors` fills in clubs that have none (it also runs nightly).
 
 The site reads `docs/data/matches.json` (the last 21 days and the next 60) and `docs/data/rankings.json`. These are written by `python -m matchvector export`, and the nightly workflow commits them, so the site never needs database credentials. To view it on this PC, run `python -m http.server` in `docs/` and open http://localhost:8000.
