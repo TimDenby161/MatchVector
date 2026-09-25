@@ -805,12 +805,17 @@
   .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fixture-lineup-panel { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); cursor: default; }
-  .fixture-lineups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .fixture-lineups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
   .fixture-lineups .club-section { margin-top: 0; }
-  .fixture-lineups .pitch.pp-pitch { max-width: 300px; }
-  .fixture-lineups .page-note { font-size: 11px; }
+  .fixture-lineups .pitch.pp-pitch { max-width: 340px; }
+  .fixture-lineups a.xi-spot { min-width: 45px; padding: 2px 3px 3px; border-radius: 8px; }
+  .fixture-lineups .xi-spot .pp-rank { padding: 0 4px; font-size: 16px; border-radius: 4px; }
+  .fixture-lineups .xi-spot .pp-name { max-width: 46px; font-size: 9px; }
+  .fixture-lineups .xi-spot .pp-meta { font-size: 8px; }
   @media (max-width: 680px) {
     .fixture-lineups { grid-template-columns: 1fr; }
+    .fixture-lineups a.xi-spot { min-width: 48px; }
+    .fixture-lineups .xi-spot .pp-name { max-width: 52px; }
   }
   .flag-link { display: inline-flex; vertical-align: -1px; }
   .flag-link:hover .flag, .flag-link:focus-visible .flag { box-shadow: 0 0 0 1px var(--series-blue); }
