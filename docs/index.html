@@ -3182,6 +3182,7 @@ function clubXiTab() {
 // positions on the right. Players in the same position are spread along its line.
 function xiPitch(xi, data = state.club?.data, opts = {}) {
   const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
+  Object.assign(spot, { LM: [18, 34], RM: [82, 34] });
   const lines = new Map();                       // y -> players on that line
   for (const c of xi) {
     const [x0, y0] = spot[c.b.label] || spot.CM;
