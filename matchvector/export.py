@@ -828,7 +828,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
     history: every match since 2020 as [date, rank after, opponent, home (1, 0 away, 2 neutral), goals for, against,
     competition, formation (null where the line-up isn't known), attack and defence after,
     starting XI average rank by line [GK, DEF, MID, FWD] (null outside the line-up leagues)]; plus 12-month home/away goal
-    averages, the current manager and the home kit colours. Loaded only when the page opens.
+    averages, the current manager and the home kit colours. starts: this season's matches with a
+    line-up (games) and each player's starts by position in them. Loaded only when the page opens.
     """
     now = datetime.now(timezone.utc)
     active = {r[0] for r in conn.execute(
@@ -849,6 +850,24 @@ def export_clubs(conn, out_dir=OUT_DIR):
             from fixture_team_ratings r join fixtures f using (fixture_id) where r.actual_xi_rating is not null""",
             order_by="fixture_id, team_id")}
     neutral = {f for (f,) in conn.execute(NEUTRAL_SQL, [list(config.FINISHED_STATUSES)])}
+    # this season (the club's latest season with a line-up): matches with a line-up, and starts by
+    # position (fixture_players.role) per player
+    current = """with cur as (
+            select ff.team_id, max(f.season) s from fixture_formations ff join fixtures f using (fixture_id)
+            where f.status_short = any(%(fin)s) and ff.formation is not null and ff.team_id = any(%(teams)s) group by 1)"""
+    args = {"fin": list(config.FINISHED_STATUSES), "teams": list(active)}
+    starts = {t: {"games": n, "players": {}} for t, n in conn.execute(current + """
+            select ff.team_id, count(*) from fixture_formations ff join fixtures f using (fixture_id)
+            join cur on cur.team_id = ff.team_id and cur.s = f.season
+            where f.status_short = any(%(fin)s) and ff.formation is not null group by 1""", args)}
+    for team, player, role, n in conn.execute(current + """
+            select fp.team_id, fp.player_id, fp.role, count(*) from fixture_players fp join fixtures f using (fixture_id)
+            join cur on cur.team_id = fp.team_id and cur.s = f.season
+            join fixture_formations ff on ff.fixture_id = fp.fixture_id and ff.team_id = fp.team_id
+            where fp.started and fp.role is not null and ff.formation is not null and f.status_short = any(%(fin)s)
+            group by 1, 2, 3""", args):
+        if team in starts:
+            starts[team]["players"].setdefault(str(player), {})[role] = n
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn, *_ in club_rows:
@@ -872,7 +891,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
                    "fields": ["date", "rank", "opponent", "home", "gf", "ga", "league", "formation",
                               "attack", "defence", "xi_lines"],
                    "matches": h["matches"], "goal_averages": stats.get(team), "coach": coaches.get(team),
-                   "colors": colors.get(team), "teams": {o: names.get(o) for o in opponents}}
+                   "colors": colors.get(team), "starts": starts.get(team),
+                   "teams": {o: names.get(o) for o in opponents}}
         (club_dir / f"{team}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d club pages", len(active))
 

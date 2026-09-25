@@ -757,7 +757,10 @@
     border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .dp-pos { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: rgba(255,255,255,0.7); }
   .dp-spot.empty .dp-pos { color: inherit; }
-  a.dp-row { display: flex; justify-content: space-between; gap: 4px; font-size: 11px; font-weight: 600; color: #fff; text-decoration: none; }
+  a.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: baseline; gap: 5px;
+    font-size: 11px; font-weight: 600; color: #fff; text-decoration: none; }
+  .dp-pct { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
+  .dp-rank { text-align: right; }
   a.dp-row:hover .dp-name { text-decoration: underline; }
   .dp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .dp-rank { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -3063,6 +3066,12 @@ function depthPitch(teamId) {
   const boxes = PITCH_SPOTS.filter(([r]) => r !== "DM" && r !== "CM").map(([r, x, y]) =>
     ({ label: r, roles: [r], row: y < 20 ? 6 : y < 35 ? 5 : y < 50 ? 4 : y < 65 ? 3 : y < 80 ? 2 : 1, col: x < 35 ? 3 : x < 65 ? 2 : 1 }));
   boxes.push({ label: "CM", roles: ["DM", "CM"], row: "3 / span 2", col: 2 });
+  // his share of the club's matches this season (with a line-up) that he started in this box
+  const st = state.club.data?.starts;
+  const startPct = (p, roles) => {
+    const n = roles.reduce((a, r) => a + (st?.players?.[String(p.id)]?.[r] || 0), 0);
+    return st?.games && n ? Math.round(100 * n / st.games) : null;
+  };
   const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
     const ps = squad.filter((p) => roles.some((x) => canPlay(p).has(x)))
       .map((p) => ({ p, rank: Math.max(...roles.map((x) => rankAt(p, x) ?? -1)) }))
@@ -3072,8 +3081,12 @@ function depthPitch(teamId) {
     if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${r}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
       <span class="dp-pos">${r}</span>
-      ${ps.map(({ p, rank }) => `<a class="dp-row" href="#/player/${p.id}"><span class="dp-name">${escapeHtml(shortName(p.name))}</span>
-        <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`).join("")}
+      ${ps.map(({ p, rank }) => {
+        const pct = startPct(p, roles);
+        return `<a class="dp-row" href="#/player/${p.id}"${pct != null ? ` title="${escapeHtml(`${p.name}: started ${pct}% of this season's matches at ${r}`)}"` : ""}>
+          <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
+          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`;
+      }).join("")}
     </div>`;
   }).join("");
   return `<div class="club-section pp-section"><div class="pitch dp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div></div>`;
