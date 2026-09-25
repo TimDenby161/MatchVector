@@ -755,6 +755,7 @@
   .cchip.has-active { border-color: color-mix(in srgb, var(--series-blue) 45%, var(--border)); color: var(--series-blue); }
   .league-list { display: none; }
   .cnt, .cgroups .sep { display: none; }
+  #bet-filters .cnt { display: inline; margin-left: 5px; font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .league-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .league-row[hidden] { display: none; }
 
@@ -1433,8 +1434,21 @@ function renderStatsFilters() {
 function betCountries() {
   return state.betCountries ||= compCountries((state.bets?.bets || []).map((b) => b.league));
 }
+// Bets on the strategy / market / cautious filters, before the competition menu
+function betScope() {
+  return (state.bets?.bets || []).filter((b) =>
+    (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
+    (state.betMarket === "all" || b.market === state.betMarket) &&
+    (state.betView === "all" || b.cautious));
+}
+// The menu shows how many bets each competition, country and region has on those filters
 function renderBetFilters() {
-  renderFilterMenu($("#bet-filters"), state.betFilter, betCountries(), null, {
+  const countries = betCountries(), scope = betScope();
+  const countOf = (value) => {
+    const ids = filterLeagueIds(value, countries);
+    return ids ? scope.filter((b) => ids.includes(b.league)).length : scope.length;
+  };
+  renderFilterMenu($("#bet-filters"), state.betFilter, countries, countOf, {
     all: "All competitions", country: (c) => `All ${c} bets`, region: (r) => `All bets in ${r}`,
     euro: "Champions League, Europa League and Conference League bets", cup: (name) => `${name} bets`,
   });
@@ -2347,10 +2361,7 @@ function renderBets() {
   const body = $("#bets-body");
   if (!state.bets) { body.innerHTML = `<div class="empty-state">No paper bets yet.</div>`; return; }
   const stake = betStake(), bank = betBank();
-  const scope = state.bets.bets.filter((b) =>
-    (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
-    (state.betMarket === "all" || b.market === state.betMarket) &&
-    (state.betView === "all" || b.cautious));
+  const scope = betScope();
   const ids = filterLeagueIds(state.betFilter, betCountries());
   const all = ids ? scope.filter((b) => ids.includes(b.league)) : scope;
   const s = summarise(all);
@@ -3870,6 +3881,7 @@ for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#
     if (!btn) return;
     state[key] = btn.dataset[attr];
     document.querySelectorAll(`${id} [data-${attr}]`).forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    renderBetFilters();
     renderBets();
   });
 }
