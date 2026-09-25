@@ -3727,7 +3727,6 @@ function renderLeaguePage() {
   const avg = avgRating(leagueClubs(id));
   const teams = data ? new Set([...data.tableRows.map((r) => r.team), ...data.fixtureRows.flatMap((f) => [f.home, f.away])]).size : 0;
   $("#club-body").innerHTML = `
-    ${backButton()}
     <div class="pl-hero">
       <img class="club-logo-lg" src="${leagueLogo(id)}" alt="" onerror="this.style.visibility='hidden'">
       <div class="pl-hero-main">
