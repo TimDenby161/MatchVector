@@ -262,7 +262,7 @@
   .match-probs.labelled .prob-labels { grid-column: 2; }
   .match-probs.labelled .prob-name { grid-row: 1 / span 2; font-size: 11px; font-weight: 600; color: var(--text-muted); }
   .match-probs.labelled + .match-probs.labelled { margin-top: 4px; }
-  .match-card.rated { cursor: pointer; }
+  .match-card.rated, .match-card.lineup-card { cursor: pointer; }
   .market-line { margin-top: 4px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: center; }
   .market-line b { color: var(--text-secondary); font-weight: 700; }
   .club-card-extra { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
@@ -1280,8 +1280,10 @@ async function loadData() {
     if (pj) {        // API-Football sends some names HTML-encoded ("O&apos;Reilly")
       for (const r of pj.players) r[1] = decodeEntities(r[1]);
       for (const xi of Object.values(pj.next_xi || {})) for (const r of xi.players) r[1] = decodeEntities(r[1]);
+      for (const teams of Object.values(pj.fixture_xi || {})) for (const xi of Object.values(teams)) for (const r of xi) r[1] = decodeEntities(r[1]);
     }
-    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, seasons: pj.seasons || [], futureSeasons: pj.future_seasons || [], teams: pj.teams || {} } : null;
+    state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, fixtureXi: pj.fixture_xi || {},
+      seasons: pj.seasons || [], futureSeasons: pj.future_seasons || [], teams: pj.teams || {} } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     // Trend: Form less Rating (as shown, so the sum adds up), how far a club is playing above or below its long-term level
@@ -1813,7 +1815,8 @@ function matchHead(m, right = "") {
 function matchCard(m) {
   const finished = FINISHED.has(m.status) && m.hg != null;
   const rated = finished && m.rating;
-  const cls = rated ? ` rated acc-${m.rating}` : "";
+  const canLineup = !finished && !LIVE.has(m.status) && !CALLED_OFF.has(m.status);
+  const cls = (rated ? ` rated acc-${m.rating}` : "") + (canLineup ? " lineup-card" : "");
   const badge = rated
     ? `<span class="rating-badge badge-${m.rating}" title="${m.rating}/5 ${RATING_LABELS[m.rating]}">${m.rating}/5</span>` : "";
   const detail = rated ? `<div class="rating-detail" hidden>
@@ -1821,7 +1824,7 @@ function matchCard(m) {
       ${FACTORS.map(([k, label, w]) => `<div class="factor"><span class="factor-name">${label} <span class="factor-weight">${w}</span></span><span class="factor-score">${m[k]}/5</span></div>`).join("")}
     </div>` : "";
   return `
-    <div class="match-card${cls}">
+    <div class="match-card${cls}" data-fixture="${m.id}">
       ${matchHead(m, `${badge}${statusTag(m)}`)}
       ${m.m_home != null ? probBar(m, "p", "Model") + probBar(m, "m", "Bookmakers") : probBar(m)}
       ${m.p_over25 != null && !(FINISHED.has(m.status) && m.hg != null) ? `<div class="market-line">Over 2.5 goals <b>${Math.round(m.p_over25 * 100)}%</b> · Both teams score <b>${Math.round(m.p_btts * 100)}%</b></div>` : ""}
@@ -2897,6 +2900,48 @@ function xiBlock(teamId) {
       <span class="team-row-opp">${playerLink(pid, name)}</span><span class="team-row-res">${rankChipSmall(rank)}</span></div>`).join("")}`;
 }
 
+async function openMatchLineups(m) {
+  $("#team-modal-title").innerHTML = `${clubLink(m.home, teamName(m.home))} v ${clubLink(m.away, teamName(m.away))}`;
+  $("#team-modal-sub").textContent = `${compLabel(m.league)} · ${fmtDay(m.kickoff)} · ${fmtTime(m.kickoff)}`;
+  $("#team-modal-body").innerHTML = `<div class="empty-state">Loading predicted line-ups…</div>`;
+  $("#team-modal").hidden = false;
+  const exact = state.players?.fixtureXi?.[String(m.id)] || {};
+  let homeData = null, awayData = null;
+  if (!exact[String(m.home)] || !exact[String(m.away)]) {
+    state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    [homeData, awayData] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
+    if (!state.playerSeasons) { loadPlayerSeasons(); await state.playerSeasonsLoading; }
+  }
+  const projected = m.home_xg != null ? `${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}` : "";
+  const chance = m.p_home != null ? `<div class="team-stats compact">
+      <div class="team-stat"><div class="team-stat-label">Home</div><div class="team-stat-value">${Math.round(m.p_home * 100)}%</div></div>
+      <div class="team-stat"><div class="team-stat-label">Draw</div><div class="team-stat-value">${Math.round(m.p_draw * 100)}%</div></div>
+      <div class="team-stat"><div class="team-stat-label">Away</div><div class="team-stat-value">${Math.round(m.p_away * 100)}%</div></div>
+      ${projected ? `<div class="team-stat"><div class="team-stat-label">Projected</div><div class="team-stat-value">${projected}</div></div>` : ""}
+    </div>` : "";
+  const side = (teamId, data, home) => {
+    const rating = home ? m.home_xi : m.away_xi;
+    const recent = home ? m.home_recent_xi : m.away_recent_xi;
+    const label = `${teamName(teamId)}${rating != null ? ` · rating ${Math.round(rating)}${recent != null ? ` (recent ${Math.round(recent)})` : ""}` : ""}`;
+    const listed = exact[String(teamId)];
+    if (listed?.length) return `<div class="modal-section">${escapeHtml(label)}</div>
+      ${listed.map(([pid, name, pos, rank]) => `<div class="team-row">
+        <span class="team-row-date">${escapeHtml(POS_LABEL[pos] || pos || "")}</span>
+        <span class="team-row-opp">${playerLink(pid, name)}</span><span class="team-row-res">${rankChipSmall(rank)}</span>
+      </div>`).join("")}`;
+    const xi = predictedXi(teamId, data, m);
+    if (!xi) return `<div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No predicted XI for this team.</div>`;
+    return `<div class="modal-section">${escapeHtml(label)}</div>
+      ${xi.map(({ p, b, rank, chance, mins }) => `<div class="team-row">
+        <span class="team-row-date">${escapeHtml(POS_LABEL[b.label] || b.label)}</span>
+        <span class="team-row-opp">${playerLink(p.id, p.name)}</span>
+        <span class="team-row-res">${rankChipSmall(rank)} <span class="club-sub">${Math.round(chance)}% · ${mins}′</span></span>
+      </div>`).join("")}`;
+  };
+  $("#team-modal-body").innerHTML = chance + side(m.home, homeData, true) + side(m.away, awayData, false)
+    + `<div class="page-note">Predicted line-ups use the pre-match XI model. Start chance and expected minutes are shown when the browser has to estimate from recent line-ups, current squad ratings and listed absences.</div>`;
+}
+
 // ------------------------------------------------------------------ club page
 const clubCache = new Map();
 const CHART_RANGES = [["6m", "6M", 183], ["1y", "1Y", 365], ["3y", "3Y", 1095], ["all", "All", null]];
@@ -3108,8 +3153,8 @@ async function loadClub(id) {
 const startTier = (c) => (c = Math.round(c)) >= 80 ? 4 : c >= 60 ? 3 : c >= 40 ? 2 : 1;   // as shown, rounded
 // The predicted XI from the overview's start chances: each position's usual number of starters,
 // one position per player, filled from the surest picks down
-function predictedXi(teamId) {
-  const d = clubDepth(teamId);
+function predictedXi(teamId, data = state.club?.data, match = null) {
+  const d = clubDepth(teamId, data, match);
   if (!d) return null;
   const filled = new Map(), placed = new Set(), xi = [];
   d.shown.flatMap((b) => b.n ? b.ps.map(({ p, rank }) => ({ b, p, rank, chance: d.startChance.get(`${b.label}:${p.id}`) || 0 })) : [])
@@ -4862,6 +4907,12 @@ $("#matches-list").addEventListener("click", (e) => {
   if (ratedCard) {
     const d = ratedCard.querySelector(".rating-detail");
     if (d) d.hidden = !d.hidden;
+    return;
+  }
+  const lineupCard = e.target.closest(".match-card.lineup-card");
+  if (lineupCard) {
+    const m = state.data.matches.find((x) => x.id === Number(lineupCard.dataset.fixture));
+    if (m) openMatchLineups(m);
     return;
   }
   const go = e.target.closest("[data-goto]");

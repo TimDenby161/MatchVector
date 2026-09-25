@@ -601,11 +601,22 @@ def export_players(conn, out_dir=OUT_DIR):
     for team, fid, player, name, pos, rank in lineups:
         entry = next_xi.setdefault(str(team), {"fixture": fid, "players": []})
         entry["players"].append([player, name, pos, float(rank) if rank is not None else None])
+    all_lineups = conn.execute(
+        """select pl.fixture_id, pl.team_id, pl.player_id, p.name, pl.position, pl.player_rank
+           from predicted_lineups pl join players p using (player_id)
+           order by pl.fixture_id, pl.team_id, pl.player_id""").fetchall()
+    fixture_xi = {}
+    for fid, team, player, name, pos, rank in all_lineups:
+        fixture_xi.setdefault(str(fid), {}).setdefault(str(team), []).append(
+            [player, name, pos, float(rank) if rank is not None else None])
     # team-sheet order: keeper, defence right to left, midfield, attack
     order = {r: i for i, r in enumerate(["GK", "RB", "RWB", "CB", "LB", "LWB", "DM", "CM", "RM", "LM",
                                           "AM", "RW", "LW", "ST"])}
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
+    for teams in fixture_xi.values():
+        for players in teams.values():
+            players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     # his next seasons, projected along his age curve (player_ratings.py)
     future = defaultdict(dict)
     for player, season, rank in conn.execute("select player_id, season, projected_rank from player_projected_ranks"):
@@ -622,6 +633,7 @@ def export_players(conn, out_dir=OUT_DIR):
                      pos_12m.get(r[0], []), pos_ranks.get(r[0], {}),
                      [future[r[0]].get(y) for y in future_seasons]] for r in players],
         "next_xi": next_xi,
+        "fixture_xi": fixture_xi,
         # names of players' clubs outside the club rankings (a move out of our leagues)
         "teams": {str(t): n for t, n in conn.execute(
             "select team_id, name from teams where team_id = any(%s)", [list({r[5] for r in players if r[5]})])},
