@@ -848,48 +848,48 @@
   /* Wide screens: the panel becomes a column in the left margin, so the ranked list stays
      centred; the header drops the name row on this tab to fit a full league on one screen */
   @media (min-width: 1160px) {
-    section[data-tab="table"] { position: relative; }
-    body[data-tab="table"] main { max-width: 954px; padding-left: 250px; }
-    #table-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
-    #table-side .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
+    section[data-tab="table"], section[data-tab="matches"] { position: relative; }
+    body:is([data-tab="table"], [data-tab="matches"]) main { max-width: 954px; padding-left: 250px; }
+    #table-side, #match-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
+    :is(#table-side, #match-side) .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
     #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
     #pos-filter { order: 3; margin: 0 0 14px; }
     #who-filter { order: 3; margin: 0 0 14px; }
     #table-filters { order: 4; margin: 0; }
     /* Side menu: plain rows, counts on the right, groups slide open */
-    #table-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
-    #table-filters .cgroup { display: block; }
-    #table-filters .filter-chip { width: 100%; display: flex; align-items: center; gap: 6px; text-align: left;
+    .side-filters .cgroups { flex-direction: column; flex-wrap: nowrap; gap: 1px; }
+    .side-filters .cgroup { display: block; }
+    .side-filters .filter-chip { width: 100%; display: flex; align-items: center; gap: 6px; text-align: left;
       border: 0; background: transparent; border-radius: 7px; padding: 6px 10px; font-size: 13px; font-weight: 500;
       color: var(--text-secondary); white-space: normal; transition: background-color .15s, color .15s; }
-    #table-filters .filter-chip:hover { background: var(--chip-bg); color: var(--text-primary); }
-    #table-filters .filter-chip:active { opacity: 1; }
-    #table-filters .filter-chip:focus-visible { outline: 2px solid var(--series-blue); outline-offset: -2px; }
-    #table-filters .filter-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--series-blue) 14%, transparent);
+    .side-filters .filter-chip:hover { background: var(--chip-bg); color: var(--text-primary); }
+    .side-filters .filter-chip:active { opacity: 1; }
+    .side-filters .filter-chip:focus-visible { outline: 2px solid var(--series-blue); outline-offset: -2px; }
+    .side-filters .filter-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--series-blue) 14%, transparent);
       color: var(--series-blue); font-weight: 650; }
-    #table-filters .cchip.has-active { color: var(--series-blue); }
-    #table-filters .flabel { flex: 1; min-width: 0; }
-    #table-filters .cnt { display: inline; font-size: 11px; font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-    #table-filters .filter-chip[aria-pressed="true"] .cnt { color: inherit; opacity: .75; }
-    #table-filters .filter-chip.none:not([aria-pressed="true"]) { opacity: .45; }
-    #table-filters .caret { order: 0; display: inline-block; width: 10px; margin: 0; text-align: center; transform: rotate(-90deg); transition: transform .2s ease; }
-    #table-filters .cgroups .sep { display: block; height: 1px; background: var(--gridline); margin: 6px 10px; }
-    #table-filters .league-list { display: grid; grid-template-rows: 0fr; opacity: 0;
+    .side-filters .cchip.has-active { color: var(--series-blue); }
+    .side-filters .flabel { flex: 1; min-width: 0; }
+    .side-filters .cnt { display: inline; font-size: 11px; font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .side-filters .filter-chip[aria-pressed="true"] .cnt { color: inherit; opacity: .75; }
+    .side-filters .filter-chip.none:not([aria-pressed="true"]) { opacity: .45; }
+    .side-filters .caret { order: 0; display: inline-block; width: 10px; margin: 0; text-align: center; transform: rotate(-90deg); transition: transform .2s ease; }
+    .side-filters .cgroups .sep { display: block; height: 1px; background: var(--gridline); margin: 6px 10px; }
+    .side-filters .league-list { display: grid; grid-template-rows: 0fr; opacity: 0;
       transition: grid-template-rows .22s ease, opacity .18s ease; }
-    #table-filters .ll-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 1px;
+    .side-filters .ll-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 1px;
       margin-left: 15px; padding-left: 6px; border-left: 1px solid var(--gridline); }
-    #table-filters .league-list .filter-chip { font-size: 12.5px; padding: 5px 10px; }
-    #table-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .league-list { grid-template-rows: 1fr; opacity: 1; }
-    #table-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .filter-chip .caret { transform: none; }
-    #table-filters .league-row { display: none !important; }
+    .side-filters .league-list .filter-chip { font-size: 12.5px; padding: 5px 10px; }
+    .side-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .league-list { grid-template-rows: 1fr; opacity: 1; }
+    .side-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .filter-chip .caret { transform: none; }
+    .side-filters .league-row { display: none !important; }
     @media (prefers-reduced-motion: reduce) {
-      #table-filters .league-list, #table-filters .caret, #table-filters .filter-chip { transition: none; }
+      .side-filters .league-list, .side-filters .caret, .side-filters .filter-chip { transition: none; }
     }
     table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
     table.leaderboard.clubs th, table.leaderboard.players th { padding-top: 4px; padding-bottom: 4px; }
     .pl-cell .player-photo { margin: -2px 0; }      /* 24px, over the row's 20px badge line */
-    body[data-tab="table"] main { padding-top: 8px; }
+    body:is([data-tab="table"], [data-tab="matches"]) main { padding-top: 8px; }
     .club-logo { width: 20px; height: 20px; }
   }
 
@@ -939,10 +939,10 @@
     #age-filter, #pos-filter, #who-filter { order: 3; }
     #table-side:not(.filters-open) :is(#age-filter, #pos-filter, #who-filter) { display: none; }
     #table-filters { order: 4; margin-bottom: 8px; }
-    #table-filters .cgroups, #table-filters .league-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    .side-filters .cgroups, .side-filters .league-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
       -webkit-overflow-scrolling: touch; margin-left: -12px; margin-right: -12px; padding: 0 12px; }
-    #table-filters .cgroups::-webkit-scrollbar, #table-filters .league-row::-webkit-scrollbar { display: none; }
-    #table-filters .filter-chip { flex: none; }
+    .side-filters .cgroups::-webkit-scrollbar, .side-filters .league-row::-webkit-scrollbar { display: none; }
+    .side-filters .filter-chip { flex: none; }
     .pitch { max-width: 200px; }
     /* iOS zooms the page into any input under 16px */
     .table-search { font-size: 16px; padding-top: 8px; padding-bottom: 8px; }
@@ -969,9 +969,8 @@
 
 <main>
   <section class="panel" data-tab="matches" data-active="false">
-    <div class="filters-wrap" id="match-filters">
-      <div class="filter-row"></div>
-      <div class="filter-row filter-row-more" hidden></div>
+    <div id="match-side">
+      <div class="side-stick"><div class="filters-wrap side-filters" id="match-filters"></div></div>
     </div>
     <div class="secondary-filters">
       <button type="button" class="nav-btn" id="date-prev" aria-label="Previous day">&#8249;</button>
@@ -1005,7 +1004,7 @@
           <datalist id="nat-options"></datalist>
           <div class="who-chips" id="who-chips"></div>
         </div>
-        <div class="filters-wrap" id="table-filters"></div>
+        <div class="filters-wrap side-filters" id="table-filters"></div>
         <button type="button" class="filter-chip" id="more-filters" aria-expanded="false" aria-controls="table-side" hidden>Filters</button>
       </div>
     </div>
@@ -1148,7 +1147,6 @@ async function loadData() {
     state.rankByTeam = new Map(state.rankings.map((x) => [x.team, x]));
     buildCompetitionLabels();
     if (!state.date) state.date = defaultDate();
-    renderFilterChips("match");
     renderTableFilters();
     renderFilterChips("stats");
     renderMatches();
@@ -1209,13 +1207,6 @@ function flagLink(c) {
     + `<img class="flag" src="https://flagcdn.com/${FLAG_CODES[name]}.svg" alt="" loading="lazy"></a>` : `${countryLink(c)} ·`;
 }
 const natLink = (nat) => nat ? `<a class="nat-link" href="#/nation/${encodeURIComponent(nat)}">${escapeHtml(nat)}</a>` : "";
-
-function idsForFilter(filter) {
-  if (filter === "all") return null;
-  const p = PRIMARY_COMPS.find((c) => c.id === filter);
-  if (p && p.ids) return p.ids;
-  return [Number(filter)];
-}
 
 // Today if anything is on, otherwise the nearest upcoming day with matches
 function defaultDate() {
@@ -1298,10 +1289,7 @@ function tableFilterIsWide() {   // spans several leagues: show league names and
   return ids === null || ids.length > 1;
 }
 function renderTableFilters() {
-  const wrap = $("#table-filters");
-  const f = state.tableFilter;
   const countries = tableCountries();
-  const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
   // Clubs (current league members) or ranked players per filter, shown on the right in the side menu
   const counts = new Map();
   let total = 0;
@@ -1320,6 +1308,18 @@ function renderTableFilters() {
     : value.startsWith("c:") ? sum(countries.find((c) => c.name === value.slice(2))?.leagues || [])
     : value.startsWith("r:") ? sum(countries.filter((c) => c.region === value.slice(2)).flatMap((c) => c.leagues))
     : counts.get(Number(value)) || 0;
+  renderFilterMenu($("#table-filters"), state.tableFilter, countries, countOf, {
+    all: "All leagues", country: (c) => `All ${c} clubs`, region: (r) => `All clubs in ${r}`,
+    euro: "Clubs in this season's Champions League, Europa League or Conference League",
+    cup: (name) => `Clubs in the ${name} league phase`,
+  });
+  renderMoreFilters();
+}
+// The country / league menu on Clubs and Matches: All, European cups, the big five countries,
+// then the rest by region. countries = [{ name, leagues, region }]; countOf(value) = the number
+// shown beside each filter; titles = hover text.
+function renderFilterMenu(wrap, f, countries, countOf, titles) {
+  const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
   const chip = (value, label, title, extra = "", cls = "") =>
     `<button type="button" class="filter-chip ${cls}${countOf(value) ? "" : " none"}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${extra}<span class="flabel">${label}</span><span class="cnt">${countOf(value)}</span></button>`;
   const caret = `<span class="caret" aria-hidden="true">▾</span>`;
@@ -1332,30 +1332,29 @@ function renderTableFilters() {
   const countryGroup = (c) => {
     if (c.leagues.length === 1) return chip(String(c.leagues[0]), escapeHtml(c.name), `${c.name} · ${leagueName(c.leagues[0])}`);
     const inside = c.leagues.includes(Number(f));
-    return `<div class="cgroup${activeCountry === c ? " open" : ""}">${chip(`c:${c.name}`, escapeHtml(c.name), `All ${c.name} clubs`, caret, `cchip${inside ? " has-active" : ""}`)}${list(c.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), leagueName(id))).join(""))}</div>`;
+    return `<div class="cgroup${activeCountry === c ? " open" : ""}">${chip(`c:${c.name}`, escapeHtml(c.name), titles.country(c.name), caret, `cchip${inside ? " has-active" : ""}`)}${list(c.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), leagueName(id))).join(""))}</div>`;
   };
   const regionGroups = REGIONS.map((region) => {
     const members = countries.filter((c) => c.region === region);
     if (!members.length) return "";
     const inside = activeRegion === region && f !== `r:${region}`;
-    return `<div class="cgroup region${activeRegion === region ? " open" : ""}">${chip(`r:${region}`, escapeHtml(region), `All clubs in ${region}`, caret, `cchip${inside ? " has-active" : ""}`)}${list(members.map(countryGroup).join(""))}</div>`;
+    return `<div class="cgroup region${activeRegion === region ? " open" : ""}">${chip(`r:${region}`, escapeHtml(region), titles.region(region), caret, `cchip${inside ? " has-active" : ""}`)}${list(members.map(countryGroup).join(""))}</div>`;
   });
 
   // Phones (no hover): rows under the chips with the selected region's countries and country's leagues
   const regionRow = activeRegion ? `<div class="league-row">${countries.filter((c) => c.region === activeRegion)
     .map((c) => chip(c.leagues.length === 1 ? String(c.leagues[0]) : `c:${c.name}`, escapeHtml(c.name), "", "",
       c.leagues.length > 1 && c.leagues.includes(Number(f)) ? "has-active" : "")).join("")}</div>` : "";
-  const euroGroup = `<div class="cgroup${f.startsWith("e:") ? " open" : ""}">${chip("e:all", "European cups",
-    "Clubs in this season's Champions League, Europa League or Conference League", caret,
+  const euroGroup = `<div class="cgroup${f.startsWith("e:") ? " open" : ""}">${chip("e:all", "European cups", titles.euro, caret,
     `cchip${f.startsWith("e:") && f !== "e:all" ? " has-active" : ""}`)}${list(EURO_CUPS.map((lid) =>
-      chip(`e:${lid}`, escapeHtml(leagueName(lid)), `Clubs in the ${leagueName(lid)} league phase`)).join(""))}</div>`;
+      chip(`e:${lid}`, escapeHtml(leagueName(lid)), titles.cup(leagueName(lid)))).join(""))}</div>`;
   const euroRow = f.startsWith("e:") ? `<div class="league-row">${EURO_CUPS.map((lid) =>
     chip(`e:${lid}`, escapeHtml(leagueName(lid)), "")).join("")}</div>` : "";
   const leagueRow = activeCountry && activeCountry.leagues.length > 1
     ? `<div class="league-row">${activeCountry.leagues.map((id) => chip(String(id), escapeHtml(leagueName(id)), "")).join("")}</div>` : "";
   const scrolled = wrap.querySelector(".cgroups")?.scrollLeft || 0;
   wrap.innerHTML = `<div class="cgroups">
-      ${chip("all", "All", "All leagues")}
+      ${chip("all", "All", titles.all)}
       ${euroGroup}
       <div class="sep"></div>
       ${countries.filter((c) => !c.region).map(countryGroup).join("")}
@@ -1372,7 +1371,51 @@ function renderTableFilters() {
     if (c.left < r.left + 12) row.scrollLeft += c.left - r.left - 12;
     else if (c.right > r.right - 12) row.scrollLeft += c.right - r.right + 12;
   }
-  renderMoreFilters();
+}
+
+// ---- Matches: the same menu over every competition with fixtures (cups under their country,
+// the European cups in their own group), counting the matches on the day shown
+function matchCountries() {
+  if (state.matchCountries) return state.matchCountries;
+  const comps = state.data.competitions;
+  const present = new Set(state.data.matches.map((m) => m.league));
+  const byCountry = new Map();
+  for (const id of present) {
+    const c = comps[id];
+    if (!c || c.country === "World") continue;
+    const name = c.country.replace(/-/g, " ");
+    if (!byCountry.has(name)) byCountry.set(name, []);
+    byCountry.get(name).push(id);
+  }
+  const rank = (n) => { const i = COUNTRY_FIRST.indexOf(n); return i === -1 ? 99 : i; };
+  const orderOf = (id) => { const i = GROUP_ORDER.indexOf(id); return i === -1 ? 999 : i; };
+  // leagues before cups, then the Matches tab's usual order
+  const byOrder = (a, b) => (comps[a].type !== "League") - (comps[b].type !== "League") || orderOf(a) - orderOf(b) || a - b;
+  return state.matchCountries = [...byCountry.entries()]
+    .map(([name, ids]) => ({ name, leagues: ids.sort(byOrder), region: COUNTRY_FIRST.includes(name) ? null : regionOf(name) }))
+    .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+}
+// Competition ids for a Matches filter: null = all
+function matchLeagueIds(f = state.matchFilter) {
+  if (f === "all") return null;
+  if (f === "e:all") return EURO_CUPS;
+  if (f.startsWith("e:")) return [Number(f.slice(2))];
+  if (f.startsWith("c:")) return matchCountries().find((c) => c.name === f.slice(2))?.leagues || [];
+  if (f.startsWith("r:")) return matchCountries().filter((c) => c.region === f.slice(2)).flatMap((c) => c.leagues);
+  return [Number(f)];
+}
+function renderMatchFilters() {
+  const counts = new Map();
+  for (const m of state.data.matches)
+    if (localDateStr(new Date(m.kickoff)) === state.date) counts.set(m.league, (counts.get(m.league) || 0) + 1);
+  const countOf = (value) => {
+    const ids = matchLeagueIds(value);
+    return ids === null ? [...counts.values()].reduce((a, b) => a + b, 0) : ids.reduce((n, id) => n + (counts.get(id) || 0), 0);
+  };
+  renderFilterMenu($("#match-filters"), state.matchFilter, matchCountries(), countOf, {
+    all: "All competitions", country: (c) => `All ${c} matches`, region: (r) => `All matches in ${r}`,
+    euro: "Champions League, Europa League and Conference League matches", cup: (name) => `${name} matches`,
+  });
 }
 // Phones: the age, position, club and nationality filters sit behind one button, which
 // shows how many are on
@@ -1409,9 +1452,7 @@ function bindFilterHover(wrap) {
 }
 // Update the selection in place: no rebuild, so nothing flickers. A group that was open stays
 // open (.stay) until the pointer leaves the menu, so rows don't shift under the pointer.
-function syncTableFilters() {
-  const wrap = $("#table-filters");
-  const f = state.tableFilter;
+function syncFilterMenu(wrap, f) {
   const hovering = wrap.matches(":hover");
   wrap.querySelectorAll("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === f)));
   for (const g of wrap.querySelectorAll(".cgroup")) {
@@ -1427,7 +1468,7 @@ function renderFilterChips(kind) {
   const wrap = $(`#${kind}-filters`);
   const main = wrap.querySelector(".filter-row");
   const more = wrap.querySelector(".filter-row-more");
-  const current = kind === "match" ? state.matchFilter : kind === "stats" ? state.statsFilter : state.tableFilter;
+  const current = kind === "stats" ? state.statsFilter : state.tableFilter;
   const matchLike = kind !== "table";
   const chip = (id, label, title = label) =>
     `<button type="button" class="filter-chip" data-filter="${escapeHtml(id)}" title="${escapeHtml(title)}" aria-pressed="${current === id}">${escapeHtml(label)}</button>`;
@@ -1439,11 +1480,9 @@ function renderFilterChips(kind) {
 
   // "More": every other competition, grouped by country
   const comps = state.data.competitions;
-  const present = kind === "match"
-    ? new Set(state.data.matches.map((m) => String(m.league)))
-    : kind === "stats"
-      ? new Set(Object.keys(state.stats?.ranges?.[state.statsRange] || {}))
-      : new Set(state.rankings.map((r) => String(r.league)));
+  const present = kind === "stats"
+    ? new Set(Object.keys(state.stats?.ranges?.[state.statsRange] || {}))
+    : new Set(state.rankings.map((r) => String(r.league)));
   const byCountry = {};
   for (const [id, c] of Object.entries(comps)) {
     if (covered.has(id) || !present.has(id)) continue;
@@ -1475,8 +1514,7 @@ function onChipClick(kind, e) {
   }
   const btn = e.target.closest(".filter-chip[data-filter]");
   if (!btn) return;
-  if (kind === "match") { state.matchFilter = btn.dataset.filter; renderMatches(); }
-  else if (kind === "stats") { state.statsFilter = btn.dataset.filter; renderStats(); }
+  if (kind === "stats") { state.statsFilter = btn.dataset.filter; renderStats(); }
   else { state.tableFilter = btn.dataset.filter; renderTable(); }
   wrap.querySelectorAll(".filter-chip[data-filter]").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.filter === btn.dataset.filter)));
@@ -1575,10 +1613,11 @@ function matchCard(m) {
     </div>`;
 }
 
-function renderMatches() {
+function renderMatches(menu = true) {
   const container = $("#matches-list");
   $("#date-input").value = state.date;
-  const ids = idsForFilter(state.matchFilter);
+  if (menu) renderMatchFilters();
+  const ids = matchLeagueIds();
   const day = state.date;
   const shown = state.data.matches
     .filter((m) => !ids || ids.includes(m.league))
@@ -3671,18 +3710,26 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 window.addEventListener("popstate", route);
-$("#match-filters").addEventListener("click", (e) => onChipClick("match", e));
+$("#match-filters").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-filter]");
+  if (!btn) return;
+  state.matchFilter = btn.dataset.filter;
+  // as on Clubs: the side menu updates in place, phones rebuild
+  if (SIDE_MENU.matches) { syncFilterMenu($("#match-filters"), state.matchFilter); renderMatches(false); } else renderMatches();
+});
+$("#match-filters").addEventListener("mouseleave", (e) =>
+  e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
 $("#table-filters").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-filter]");
   if (!btn) return;
   state.tableFilter = btn.dataset.filter;
   // Side menu: update in place; phones rebuild (their rows depend on the selection)
-  if (SIDE_MENU.matches) syncTableFilters(); else renderTableFilters();
+  if (SIDE_MENU.matches) syncFilterMenu($("#table-filters"), state.tableFilter); else renderTableFilters();
   renderTable();
 });
 $("#table-filters").addEventListener("mouseleave", (e) =>
   e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
-SIDE_MENU.addEventListener("change", () => { if (state.rankings) renderTableFilters(); });
+SIDE_MENU.addEventListener("change", () => { if (state.rankings) { renderTableFilters(); renderMatchFilters(); } });
 $("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
 for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"], ["#bet-view", "betView", "view"]]) {
   $(id).addEventListener("click", (e) => {
