@@ -213,6 +213,11 @@
   .mt-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .match-team.away .mt-name { flex-direction: row-reverse; }
   .mt-name .club-logo { width: 20px; height: 20px; flex: none; }
+  .team-squad-badges { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+  .squad-badge { display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+    min-width: 28px; height: 18px; padding: 0 4px; border-radius: 6px;
+    background: var(--chip-bg); color: var(--text-secondary); font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .squad-badge .ico { font-size: 10px; line-height: 1; }
   /* phones: no room beside the name, so the badge sits just above it */
   @media (max-width: 480px) {
     .mt-name, .match-team.away .mt-name { flex-direction: column; align-items: flex-start; gap: 3px; }
@@ -1814,12 +1819,12 @@ function matchHead(m, right = "") {
       </div>
       <div class="match-teams">
         <div class="match-team">
-          <div class="mt-name"><img class="club-logo" data-club="${m.home}" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home, m.home_name)}</div>
+          <div class="mt-name"><img class="club-logo" data-club="${m.home}" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home, m.home_name)}<span class="team-squad-badges" data-squad-team="home"></span></div>
           ${rankChip(hRank)}
         </div>
         ${scoreCentre(m)}
         <div class="match-team away">
-          <div class="mt-name"><img class="club-logo" data-club="${m.away}" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away, m.away_name)}</div>
+          <div class="mt-name"><img class="club-logo" data-club="${m.away}" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away, m.away_name)}<span class="team-squad-badges" data-squad-team="away"></span></div>
           ${rankChip(aRank)}
         </div>
       </div>`;
@@ -1932,10 +1937,11 @@ async function fillSquadLine(el) {
   const [h, a] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
   const sh = h && squadStrength(m.home, h, m), sa = a && squadStrength(m.away, a, m);
   if (!sh || !sa) return;
-  const f = (v) => `<b>${Math.round(v)}</b>`;
-  el.title = "The expected squad (predicted line-up and bench minutes): attack and defence weight each position's rating by how much it attacks or defends; strength is everyone's rating weighted by expected minutes";
-  el.innerHTML = `Attack ${f(sh.attack)}–${f(sa.attack)} · Defence ${f(sh.defence)}–${f(sa.defence)} · Strength ${f(sh.strength)}–${f(sa.strength)}`;
-  el.hidden = false;
+  const badge = (icon, value, label) => `<span class="squad-badge" title="${label}: ${Math.round(value)}"><span class="ico">${icon}</span>${Math.round(value)}</span>`;
+  const html = (s) => badge("🛡️", s.defence, "Defence") + badge("⚔️", s.attack, "Attack") + badge("⚽", s.strength, "Overall");
+  const card = el.closest(".match-card");
+  card.querySelector('[data-squad-team="home"]').innerHTML = html(sh);
+  card.querySelector('[data-squad-team="away"]').innerHTML = html(sa);
 }
 function observeSquadLines() {
   document.querySelectorAll("#matches-list .squad-line[hidden]:not([data-watched])").forEach((el) => {
