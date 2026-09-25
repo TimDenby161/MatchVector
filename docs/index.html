@@ -1332,11 +1332,11 @@ function renderTableFilters() {
 }
 // The country / league menu on Clubs and Matches: All, European cups, the big five countries,
 // then the rest by region. countries = [{ name, leagues, region }]; countOf(value) = the number
-// shown beside each filter; titles = hover text.
+// shown beside each filter (null: no numbers, nothing greyed out); titles = hover text.
 function renderFilterMenu(wrap, f, countries, countOf, titles) {
   const leagueName = (id) => SHORT_NAMES[id] || state.data.competitions[id].name;
   const chip = (value, label, title, extra = "", cls = "") =>
-    `<button type="button" class="filter-chip ${cls}${countOf(value) ? "" : " none"}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${extra}<span class="flabel">${label}</span><span class="cnt">${countOf(value)}</span></button>`;
+    `<button type="button" class="filter-chip ${cls}${!countOf || countOf(value) ? "" : " none"}" data-filter="${escapeHtml(value)}" title="${escapeHtml(title)}" aria-pressed="${f === value}">${extra}<span class="flabel">${label}</span>${countOf ? `<span class="cnt">${countOf(value)}</span>` : ""}</button>`;
   const caret = `<span class="caret" aria-hidden="true">▾</span>`;
   const list = (html) => `<div class="league-list"><div class="ll-inner">${html}</div></div>`;
   const activeCountry = f.startsWith("c:") ? countries.find((c) => c.name === f.slice(2))
@@ -1389,7 +1389,7 @@ function renderFilterMenu(wrap, f, countries, countOf, titles) {
 }
 
 // ---- Matches: the same menu over every competition with fixtures (cups under their country,
-// the European cups in their own group), counting the matches on the day shown
+// the European cups in their own group); no counts, since the matches shown depend on the day
 function matchCountries() {
   if (state.matchCountries) return state.matchCountries;
   const comps = state.data.competitions;
@@ -1420,14 +1420,7 @@ function matchLeagueIds(f = state.matchFilter) {
   return [Number(f)];
 }
 function renderMatchFilters() {
-  const counts = new Map();
-  for (const m of state.data.matches)
-    if (localDateStr(new Date(m.kickoff)) === state.date) counts.set(m.league, (counts.get(m.league) || 0) + 1);
-  const countOf = (value) => {
-    const ids = matchLeagueIds(value);
-    return ids === null ? [...counts.values()].reduce((a, b) => a + b, 0) : ids.reduce((n, id) => n + (counts.get(id) || 0), 0);
-  };
-  renderFilterMenu($("#match-filters"), state.matchFilter, matchCountries(), countOf, {
+  renderFilterMenu($("#match-filters"), state.matchFilter, matchCountries(), null, {
     all: "All competitions", country: (c) => `All ${c} matches`, region: (r) => `All matches in ${r}`,
     euro: "Champions League, Europa League and Conference League matches", cup: (name) => `${name} matches`,
   });
@@ -1687,7 +1680,7 @@ function setRound(key) {
   const r = matchRounds(lid).find((x) => x.key === key);
   if (!r) return;
   state.round = key;
-  state.date = localDateStr(new Date(r.first));     // the menu counts, and the day shown if you leave rounds
+  state.date = localDateStr(new Date(r.first));     // the day shown if you leave rounds
   renderMatches();
 }
 function stepRound(delta) {
@@ -3844,7 +3837,7 @@ $("#match-filters").addEventListener("click", (e) => {
     .map((m) => localDateStr(new Date(m.kickoff))))].sort();
   if (days.length && !days.includes(state.date)) {
     state.date = days.find((d) => d > state.date) || days[days.length - 1];
-    return renderMatches();       // the counts follow the new day, so the menu rebuilds
+    return renderMatches();
   }
   // as on Clubs: the side menu updates in place, phones rebuild
   if (SIDE_MENU.matches) { syncFilterMenu($("#match-filters"), state.matchFilter); renderMatches(false); } else renderMatches();
