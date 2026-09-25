@@ -149,8 +149,6 @@
 
   .filters-wrap { margin-bottom: 10px; }
   .filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .filter-row-more { margin-top: 6px; }
-  .filter-row-more[hidden] { display: none; }
   .filter-chip {
     appearance: none; border: 1px solid var(--border); background: var(--chip-bg); cursor: pointer;
     color: var(--text-secondary); font-family: inherit; font-size: 12px; font-weight: 600;
@@ -160,9 +158,6 @@
     background: color-mix(in srgb, var(--series-blue) 16%, transparent);
     color: var(--series-blue); border-color: transparent;
   }
-  .filter-more { color: var(--series-blue); font-weight: 700; }
-  .more-country { flex-basis: 100%; font-size: 10px; font-weight: 700; color: var(--text-muted);
-    text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
 
   .secondary-filters { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; }
   .date-input {
@@ -862,10 +857,10 @@
   /* Wide screens: the panel becomes a column in the left margin, so the ranked list stays
      centred; the header drops the name row on this tab to fit a full league on one screen */
   @media (min-width: 1160px) {
-    section[data-tab="table"], section[data-tab="matches"] { position: relative; }
-    body:is([data-tab="table"], [data-tab="matches"]) main { max-width: 954px; padding-left: 250px; }
-    #table-side, #match-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
-    :is(#table-side, #match-side) .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
+    section:is([data-tab="table"], [data-tab="matches"], [data-tab="stats"], [data-tab="bets"]) { position: relative; }
+    body:is([data-tab="table"], [data-tab="matches"], [data-tab="stats"], [data-tab="bets"]) main { max-width: 954px; padding-left: 250px; }
+    #table-side, #match-side, #stats-side, #bet-side { position: absolute; top: 0; bottom: 0; right: calc(100% + 24px); width: 210px; }
+    :is(#table-side, #match-side, #stats-side, #bet-side) .side-stick { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow-y: auto; padding-right: 4px; }
     #table-search { margin-bottom: 8px; padding: 7px 10px; font-size: 13px; }
     #age-filter { order: 3; margin: 0 0 12px; padding: 0 2px; }
     #pos-filter { order: 3; margin: 0 0 14px; }
@@ -903,7 +898,7 @@
     table.leaderboard.clubs td { padding-top: 5px; padding-bottom: 5px; }
     table.leaderboard.clubs th, table.leaderboard.players th { padding-top: 4px; padding-bottom: 4px; }
     .pl-cell .player-photo { margin: -2px 0; }      /* 24px, over the row's 20px badge line */
-    body:is([data-tab="table"], [data-tab="matches"]) main { padding-top: 8px; }
+    body:is([data-tab="table"], [data-tab="matches"], [data-tab="stats"], [data-tab="bets"]) main { padding-top: 8px; }
     .club-logo { width: 20px; height: 20px; }
   }
 
@@ -1028,20 +1023,22 @@
   </section>
 
   <section class="panel" data-tab="stats">
+    <div id="stats-side">
+      <div class="side-stick"><div class="filters-wrap side-filters" id="stats-filters"></div></div>
+    </div>
     <div class="filter-row range-row" id="stats-ranges">
       <button type="button" class="filter-chip" data-range="7d" aria-pressed="false">7 days</button>
       <button type="button" class="filter-chip" data-range="30d" aria-pressed="true">30 days</button>
       <button type="button" class="filter-chip" data-range="90d" aria-pressed="false">90 days</button>
       <button type="button" class="filter-chip" data-range="365d" aria-pressed="false">12 months</button>
     </div>
-    <div class="filters-wrap" id="stats-filters">
-      <div class="filter-row"></div>
-      <div class="filter-row filter-row-more" hidden></div>
-    </div>
     <div id="stats-body"></div>
   </section>
 
   <section class="panel" data-tab="bets">
+    <div id="bet-side">
+      <div class="side-stick"><div class="filters-wrap side-filters" id="bet-filters"></div></div>
+    </div>
     <div class="filter-row range-row" id="bet-strategy">
       <button type="button" class="filter-chip" data-strategy="all" aria-pressed="true">All</button>
       <button type="button" class="filter-chip" data-strategy="early" aria-pressed="false">Night before</button>
@@ -1060,7 +1057,6 @@
       <button type="button" class="filter-chip" data-market="OU45" aria-pressed="false">O/U 4.5</button>
       <button type="button" class="filter-chip" data-market="BTTS" aria-pressed="false">Both score</button>
     </div>
-    <select id="bet-league" class="date-input" aria-label="League" style="margin-bottom:10px"></select>
     <div id="bets-body"></div>
   </section>
 
@@ -1119,7 +1115,7 @@ const state = {
   matchFilter: "all", tableFilter: "all", date: null,
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
-  bets: null, betStrategy: "all", betMarket: "all", betView: "all", betLeague: "all",
+  bets: null, betStrategy: "all", betMarket: "all", betView: "all", betFilter: "all",
   players: null, tableView: "clubs", playerSort: null, playerYears: storedFlag("playerYears"), ageMin: null, ageMax: null,
 };
 
@@ -1164,7 +1160,8 @@ async function loadData() {
     buildCompetitionLabels();
     if (!state.date) state.date = defaultDate();
     renderTableFilters();
-    renderFilterChips("stats");
+    renderStatsFilters();
+    renderBetFilters();
     renderMatches();
     renderTable();
     loadEuroCups();
@@ -1389,12 +1386,11 @@ function renderFilterMenu(wrap, f, countries, countOf, titles) {
   }
 }
 
-// ---- Matches: the same menu over every competition with fixtures (cups under their country,
-// the European cups in their own group); no counts, since the matches shown depend on the day
-function matchCountries() {
-  if (state.matchCountries) return state.matchCountries;
+// ---- Matches, Stats and Bets: the same menu over the competitions each has (cups under their
+// country, the European cups in their own group); no counts, nothing greyed out
+function compCountries(ids) {
   const comps = state.data.competitions;
-  const present = new Set(state.data.matches.map((m) => m.league));
+  const present = new Set([...ids].map(Number).filter((id) => comps[id]));
   const byCountry = new Map();
   for (const id of present) {
     const c = comps[id];
@@ -1407,18 +1403,41 @@ function matchCountries() {
   const orderOf = (id) => { const i = GROUP_ORDER.indexOf(id); return i === -1 ? 999 : i; };
   // leagues before cups, then the Matches tab's usual order
   const byOrder = (a, b) => (comps[a].type !== "League") - (comps[b].type !== "League") || orderOf(a) - orderOf(b) || a - b;
-  return state.matchCountries = [...byCountry.entries()]
+  return [...byCountry.entries()]
     .map(([name, ids]) => ({ name, leagues: ids.sort(byOrder), region: COUNTRY_FIRST.includes(name) ? null : regionOf(name) }))
     .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 }
-// Competition ids for a Matches filter: null = all
-function matchLeagueIds(f = state.matchFilter) {
+// Competition ids for a menu filter value: null = all
+function filterLeagueIds(f, countries) {
   if (f === "all") return null;
   if (f === "e:all") return EURO_CUPS;
   if (f.startsWith("e:")) return [Number(f.slice(2))];
-  if (f.startsWith("c:")) return matchCountries().find((c) => c.name === f.slice(2))?.leagues || [];
-  if (f.startsWith("r:")) return matchCountries().filter((c) => c.region === f.slice(2)).flatMap((c) => c.leagues);
+  if (f.startsWith("c:")) return countries.find((c) => c.name === f.slice(2))?.leagues || [];
+  if (f.startsWith("r:")) return countries.filter((c) => c.region === f.slice(2)).flatMap((c) => c.leagues);
   return [Number(f)];
+}
+function matchCountries() {
+  return state.matchCountries ||= compCountries(state.data.matches.map((m) => m.league));
+}
+const matchLeagueIds = (f = state.matchFilter) => filterLeagueIds(f, matchCountries());
+// Stats: every competition with stats in any range, so the menu stays put when the range changes
+function statsCountries() {
+  return state.statsCountries ||= compCountries(Object.values(state.stats?.ranges || {}).flatMap(Object.keys).filter((k) => /^\d+$/.test(k)));
+}
+function renderStatsFilters() {
+  renderFilterMenu($("#stats-filters"), state.statsFilter, statsCountries(), null, {
+    all: "All competitions", country: (c) => `All ${c} competitions`, region: (r) => `All competitions in ${r}`,
+    euro: "Champions League, Europa League and Conference League", cup: (name) => name,
+  });
+}
+function betCountries() {
+  return state.betCountries ||= compCountries((state.bets?.bets || []).map((b) => b.league));
+}
+function renderBetFilters() {
+  renderFilterMenu($("#bet-filters"), state.betFilter, betCountries(), null, {
+    all: "All competitions", country: (c) => `All ${c} bets`, region: (r) => `All bets in ${r}`,
+    euro: "Champions League, Europa League and Conference League bets", cup: (name) => `${name} bets`,
+  });
 }
 function renderMatchFilters() {
   renderFilterMenu($("#match-filters"), state.matchFilter, matchCountries(), null, {
@@ -1471,62 +1490,6 @@ function syncFilterMenu(wrap, f) {
     g.classList.toggle("open", !!pressed);
     head.classList.toggle("has-active", !!pressed && pressed !== head);
   }
-}
-
-function renderFilterChips(kind) {
-  const wrap = $(`#${kind}-filters`);
-  const main = wrap.querySelector(".filter-row");
-  const more = wrap.querySelector(".filter-row-more");
-  const current = kind === "stats" ? state.statsFilter : state.tableFilter;
-  const matchLike = kind !== "table";
-  const chip = (id, label, title = label) =>
-    `<button type="button" class="filter-chip" data-filter="${escapeHtml(id)}" title="${escapeHtml(title)}" aria-pressed="${current === id}">${escapeHtml(label)}</button>`;
-
-  const primary = matchLike
-    ? [chip("all", "All"), ...PRIMARY_COMPS.map((c) => chip(c.id, c.label, c.ids ? "English teams" : compLabel(c.id)))]
-    : [chip("all", "All", "All leagues"), ...TABLE_COMPS.map((c) => chip(c.id, c.label, compLabel(c.id)))];
-  const covered = new Set((matchLike ? PRIMARY_COMPS : TABLE_COMPS).map((c) => c.id));
-
-  // "More": every other competition, grouped by country
-  const comps = state.data.competitions;
-  const present = kind === "stats"
-    ? new Set(Object.keys(state.stats?.ranges?.[state.statsRange] || {}))
-    : new Set(state.rankings.map((r) => String(r.league)));
-  const byCountry = {};
-  for (const [id, c] of Object.entries(comps)) {
-    if (covered.has(id) || !present.has(id)) continue;
-    if (kind === "table" && c.type !== "League") continue;
-    (byCountry[c.country] = byCountry[c.country] || []).push(id);
-  }
-  const countries = Object.keys(byCountry).sort((a, b) =>
-    (a === "England" ? -2 : a === "World" ? -1 : 0) - (b === "England" ? -2 : b === "World" ? -1 : 0) || a.localeCompare(b));
-  more.innerHTML = countries.map((country) =>
-    `<span class="more-country">${escapeHtml(country.replace(/-/g, " "))}</span>` +
-    byCountry[country].map((id) => chip(id, SHORT_NAMES[id] || comps[id].name, compLabel(id))).join("")
-  ).join("");
-
-  const moreSelected = !covered.has(current) && current !== "all";
-  main.innerHTML = primary.join("") +
-    `<button type="button" class="filter-chip filter-more" data-more aria-expanded="${moreSelected}" aria-label="More competitions">${moreSelected ? "&#9652;" : "&#9662;"} More</button>`;
-  more.hidden = !moreSelected;
-}
-
-function onChipClick(kind, e) {
-  const moreBtn = e.target.closest("[data-more]");
-  const wrap = $(`#${kind}-filters`);
-  if (moreBtn) {
-    const more = wrap.querySelector(".filter-row-more");
-    more.hidden = !more.hidden;
-    moreBtn.setAttribute("aria-expanded", String(!more.hidden));
-    moreBtn.innerHTML = `${more.hidden ? "&#9662;" : "&#9652;"} More`;
-    return;
-  }
-  const btn = e.target.closest(".filter-chip[data-filter]");
-  if (!btn) return;
-  if (kind === "stats") { state.statsFilter = btn.dataset.filter; renderStats(); }
-  else { state.tableFilter = btn.dataset.filter; renderTable(); }
-  wrap.querySelectorAll(".filter-chip[data-filter]").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset.filter === btn.dataset.filter)));
 }
 
 // ------------------------------------------------------------------ matches
@@ -2219,10 +2182,44 @@ $("#pos-filter").addEventListener("click", (e) => {
   renderTableFilters();
 });
 
+// Combine several competitions' stats: counts add up, averages are weighted by what they average over
+function mergeStats(parts) {
+  if (parts.length < 2) return parts[0] || null;
+  const sum = (xs, f) => xs.reduce((a, x) => a + (f(x) || 0), 0);
+  const avg = (xs, key, w) => { const n = sum(xs, w); return n ? sum(xs, (x) => x[key] == null ? 0 : x[key] * w(x)) / n : null; };
+  const n = sum(parts, (x) => x.n), rated = sum(parts, (x) => x.rated);
+  const out = { n, live: sum(parts, (x) => x.live), rated };
+  for (const k of ["correct", "exact", "home_rate", "log_loss", "brier", "goal_error"]) out[k] = avg(parts, k, (x) => x.n);
+  const mk = parts.map((x) => x.market).filter(Boolean);
+  out.market = mk.length ? Object.fromEntries([["n", sum(mk, (m) => m.n)],
+    ...["model_ll", "market_ll", "model_correct", "market_correct"].map((k) => [k, avg(mk, k, (m) => m.n)])]) : null;
+  out.rating_counts = [0, 1, 2, 3, 4].map((i) => sum(parts, (x) => x.rating_counts?.[i]));
+  out.rating_avg = rated ? out.rating_counts.reduce((a, c, i) => a + (i + 1) * c, 0) / rated : null;
+  const fa = parts.filter((x) => x.factor_avgs);
+  out.factor_avgs = rated ? Object.fromEntries(Object.keys(fa[0].factor_avgs).map((k) =>
+    [k, sum(fa, (x) => x.factor_avgs[k] * x.rated) / rated])) : null;
+  out.calibration = parts[0].calibration.map((_, i) => {
+    const bins = parts.map((x) => x.calibration[i]).filter((b) => b[0]);
+    const c = sum(bins, (b) => b[0]);
+    return c ? [c, sum(bins, (b) => b[0] * b[1]) / c, sum(bins, (b) => b[0] * b[2]) / c] : [0, null, null];
+  });
+  const markets = {};
+  for (const k of ["1X2", "BTTS", "OU15", "OU25", "OU35", "OU45"]) {
+    const ms = parts.map((x) => x.markets?.[k]).filter(Boolean);
+    if (!ms.length) continue;
+    const open = ms.filter((m) => m.open_n);
+    markets[k] = { n: sum(ms, (m) => m.n), model_ll: avg(ms, "model_ll", (m) => m.n), close_ll: avg(ms, "close_ll", (m) => m.n),
+      open_n: sum(open, (m) => m.open_n), model_open_ll: avg(open, "model_open_ll", (m) => m.open_n), open_ll: avg(open, "open_ll", (m) => m.open_n) };
+  }
+  out.markets = Object.keys(markets).length ? markets : null;
+  return out;
+}
+
 function renderStats() {
   const body = $("#stats-body");
   const range = state.stats?.ranges?.[state.statsRange];
-  const s = range?.[state.statsFilter];
+  const ids = filterLeagueIds(state.statsFilter, statsCountries());
+  const s = !range ? null : ids ? mergeStats(ids.map((id) => range[id]).filter(Boolean)) : range.all;
   if (!s) { body.innerHTML = `<div class="empty-state">No finished matches with a projection in this range.</div>`; return; }
   const card = (label, value, note = "") =>
     `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
@@ -2346,26 +2343,16 @@ function signed(x, d = 1, suffix = "") {
   return `<span class="${cls}">${x > 0 ? "+" : ""}${x.toFixed(d)}${suffix}</span>`;
 }
 
-// League dropdown: leagues that have bets, busiest first
-function renderBetLeagues() {
-  const counts = {};
-  for (const b of state.bets?.bets || []) counts[b.league] = (counts[b.league] || 0) + 1;
-  const ids = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || compLabel(a).localeCompare(compLabel(b)));
-  if (state.betLeague !== "all" && !counts[state.betLeague]) state.betLeague = "all";
-  $("#bet-league").innerHTML = `<option value="all">All leagues</option>` + ids.map((id) =>
-    `<option value="${id}"${id === state.betLeague ? " selected" : ""}>${escapeHtml(compLabel(id))} (${counts[id]})</option>`).join("");
-}
-
 function renderBets() {
   const body = $("#bets-body");
   if (!state.bets) { body.innerHTML = `<div class="empty-state">No paper bets yet.</div>`; return; }
-  renderBetLeagues();
   const stake = betStake(), bank = betBank();
   const scope = state.bets.bets.filter((b) =>
     (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
     (state.betMarket === "all" || b.market === state.betMarket) &&
     (state.betView === "all" || b.cautious));
-  const all = scope.filter((b) => state.betLeague === "all" || String(b.league) === state.betLeague);
+  const ids = filterLeagueIds(state.betFilter, betCountries());
+  const all = ids ? scope.filter((b) => ids.includes(b.league)) : scope;
   const s = summarise(all);
   const card = (label, value, note = "") =>
     `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
@@ -2374,13 +2361,13 @@ function renderBets() {
     <td>${x.settled ? `${x.wins}/${x.settled}` : "–"}</td><td>${x.settled ? gbp(x.profit, true) : "–"}</td>
     <td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td></tr>`;
   const head = (first) => `<thead><tr><th>${first}</th><th>Bets</th><th>Won</th><th>Profit</th><th>Return</th></tr></thead>`;
-  // By league on the other filters, so leagues compare side by side; tap one to filter
+  // By league within the filters above; tap one to narrow to it
   const byLeague = {};
-  for (const b of scope) (byLeague[b.league] = byLeague[b.league] || []).push(b);
+  for (const b of all) (byLeague[b.league] = byLeague[b.league] || []).push(b);
   const leagueRows = Object.entries(byLeague).map(([id, bs]) => [id, summarise(bs)])
     .sort((a, b) => b[1].settled - a[1].settled || b[1].placed - a[1].placed)
     .map(([id, x]) => tableRow(escapeHtml(compLabel(id)), x,
-      ` data-league="${id}" style="cursor:pointer${id === state.betLeague ? ";font-weight:700" : ""}"`)).join("");
+      ` data-league="${id}" style="cursor:pointer${id === state.betFilter ? ";font-weight:700" : ""}"`)).join("");
   const marketRows = ["1X2", "OU15", "OU25", "OU35", "OU45", "BTTS"].map((mk) => {
     const x = summarise(all.filter((b) => b.market === mk));
     return x.placed ? tableRow(MARKET_LABELS[mk], x) : "";
@@ -2413,7 +2400,7 @@ function renderBets() {
     ${leagueRows ? `<div class="stats-card" style="margin-bottom:12px">
       <div class="stats-label">By league</div>
       <table class="calib-table">${head("League")}<tbody>${leagueRows}</tbody></table>
-      <div class="stats-note">Tap a league to see only its bets. Bets = settled <span class="dim">+ pending</span>. For how accurate the predictions are in a league, pick it on the Stats tab.</div>
+      <div class="stats-note">Tap a league to see only its bets (tap again for all). Bets = settled <span class="dim">+ pending</span>. For how accurate the predictions are in a league, pick it on the Stats tab.</div>
     </div>` : ""}
     ${marketRows ? `<div class="stats-card" style="margin-bottom:12px">
       <div class="stats-label">By market</div>
@@ -3863,8 +3850,20 @@ $("#table-filters").addEventListener("click", (e) => {
 });
 $("#table-filters").addEventListener("mouseleave", (e) =>
   e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
-SIDE_MENU.addEventListener("change", () => { if (state.rankings) { renderTableFilters(); renderMatchFilters(); } });
-$("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
+SIDE_MENU.addEventListener("change", () => { if (state.rankings) { renderTableFilters(); renderMatchFilters(); renderStatsFilters(); renderBetFilters(); } });
+// Stats and Bets menus: as on Clubs, the side menu updates in place and phones rebuild
+for (const [id, key, menu, render] of [["#stats-filters", "statsFilter", renderStatsFilters, renderStats],
+                                        ["#bet-filters", "betFilter", renderBetFilters, renderBets]]) {
+  $(id).addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-filter]");
+    if (!btn) return;
+    state[key] = btn.dataset.filter;
+    if (SIDE_MENU.matches) syncFilterMenu($(id), state[key]); else menu();
+    render();
+  });
+  $(id).addEventListener("mouseleave", (e) =>
+    e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
+}
 for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"], ["#bet-view", "betView", "view"]]) {
   $(id).addEventListener("click", (e) => {
     const btn = e.target.closest(`[data-${attr}]`);
@@ -3874,11 +3873,11 @@ for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#
     renderBets();
   });
 }
-$("#bet-league").addEventListener("change", (e) => { state.betLeague = e.target.value; renderBets(); });
 $("#bets-body").addEventListener("click", (e) => {
   const tr = e.target.closest("[data-league]");
   if (!tr) return;
-  state.betLeague = state.betLeague === tr.dataset.league ? "all" : tr.dataset.league;
+  state.betFilter = state.betFilter === tr.dataset.league ? "all" : tr.dataset.league;
+  renderBetFilters();
   renderBets();
 });
 $("#stats-ranges").addEventListener("click", (e) => {
@@ -3886,7 +3885,6 @@ $("#stats-ranges").addEventListener("click", (e) => {
   if (!btn) return;
   state.statsRange = btn.dataset.range;
   document.querySelectorAll("#stats-ranges [data-range]").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-  renderFilterChips("stats");
   renderStats();
 });
 const byRound = () => !$("#round-select").hidden;
