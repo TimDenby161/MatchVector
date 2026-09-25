@@ -3273,8 +3273,11 @@ const kitStyle = () => {
   const c = kitColors();
   return c ? ` style="--kit:#${escapeHtml(c[0])};--kit2:#${escapeHtml(c[1] || "ffffff")}"` : "";
 };
-// Surname for tight spaces, keeping lower-case particles ("M. de Ligt" -> "de Ligt")
+// Surname for tight spaces, keeping lower-case particles ("M. de Ligt" -> "de Ligt"), or the
+// name a player is known by where that isn't his surname
+const KNOWN_AS = { "Gabriel Magalhães": "Gabriel" };
 function shortName(name) {
+  if (KNOWN_AS[name]) return KNOWN_AS[name];
   const parts = name.split(" ");
   let i = parts.length - 1;
   while (i > 1 && /^(de|da|do|dos|das|di|del|della|van|von|der|den|ten|ter|la|le|el|al|bin|ben)$/i.test(parts[i - 1])) i--;
