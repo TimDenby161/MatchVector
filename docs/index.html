@@ -751,7 +751,7 @@
   .pitch.kit a.xi-spot:hover { background: rgba(0,0,0,0.6); }
   .pitch.kit .dp-spot.empty { border-color: rgba(255,255,255,0.4); color: rgba(255,255,255,0.6); }
   /* Club overview pitch: who can play in each position */
-  .pitch.dp-pitch { max-width: 420px; overflow: visible; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  .pitch.dp-pitch { max-width: 500px; overflow: visible; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: repeat(6, auto); align-content: space-between; align-items: center; gap: 10px 6px; padding: 14px 10px; }
   .dp-spot { position: relative; padding: 3px 5px 4px; border-radius: 8px;
     background: rgba(255,255,255,0.12); color: #f2f2f0; line-height: 1.2; }
@@ -759,18 +759,20 @@
     border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .dp-pos { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: rgba(255,255,255,0.7); }
   .dp-spot.empty .dp-pos { color: inherit; }
-  a.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: baseline; gap: 5px;
+  a.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px 22px; align-items: baseline; gap: 4px;
     font-size: 11px; font-weight: 600; color: #fff; text-decoration: none; }
   .dp-pct { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
   .dp-rank { text-align: right; }
+  .dp-xmin { font-size: 10px; font-weight: 700; text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
   a.dp-row:hover .dp-name { text-decoration: underline; }
   .dp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .dp-rank { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; }
   .dp-rank.t4 { color: #3ecf5a; } .dp-rank.t3 { color: #f0c43a; } .dp-rank.t2 { color: #f08a5a; } .dp-rank.t1 { color: #f07878; }
   @media (max-width: 480px) {
     .pitch.dp-pitch { gap: 8px 4px; padding: 12px 6px; }
-    .dp-spot { padding: 2px 4px 3px; }
-    a.dp-row { font-size: 10px; }
+    .dp-spot { padding: 2px 3px 3px; }
+    a.dp-row { font-size: 9.5px; gap: 2px; grid-template-columns: minmax(0, 1fr) auto 14px 19px; }
+    .dp-pct, .dp-xmin { font-size: 9px; }
   }
   /* Club page: predicted XI on the pitch, squad list, end-of-season ranks */
   .pl-hero .club-logo-lg { width: 60px; height: 60px; }
@@ -3119,12 +3121,15 @@ function depthPitch(teamId) {
       ${(() => { const proj = projected(roles, n, ps); return ps.map(({ p, rank }) => {
         const got = Math.round(proj.share.get(p.id) || 0), had = startPct(p, roles) || 0;
         const pct = got || null;
-        const tip = proj.changed && got !== had
+        // expected minutes next match in this position: for now just his start share x 90
+        const xmin = pct != null ? Math.round((proj.share.get(p.id) || 0) * 0.9) : null;
+        const tip = (proj.changed && got !== had
           ? `${p.name}: started ${had}% of this season's matches at ${r}; expected ${got}% with the injured or departed out`
-          : pct != null ? `${p.name}: started ${pct}% of this season's matches at ${r}` : "";
+          : pct != null ? `${p.name}: started ${pct}% of this season's matches at ${r}` : "")
+          + (xmin ? ` · xMins ${xmin}` : "");
         return `<a class="dp-row" href="#/player/${p.id}"${tip ? ` title="${escapeHtml(tip)}"` : ""}>
           <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
-          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`;
+          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin">${xmin ? `${xmin}′` : ""}</span></a>`;
       }).join(""); })()}
     </div>`;
   }).join("");
