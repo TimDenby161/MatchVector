@@ -2916,13 +2916,6 @@ async function renderMatchLineups(m, panel) {
     state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
     if (!state.playerSeasons) { loadPlayerSeasons(); await state.playerSeasonsLoading; }
   }
-  const projected = m.home_xg != null ? `${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}` : "";
-  const chance = m.p_home != null ? `<div class="team-stats compact">
-      <div class="team-stat"><div class="team-stat-label">Home</div><div class="team-stat-value">${Math.round(m.p_home * 100)}%</div></div>
-      <div class="team-stat"><div class="team-stat-label">Draw</div><div class="team-stat-value">${Math.round(m.p_draw * 100)}%</div></div>
-      <div class="team-stat"><div class="team-stat-label">Away</div><div class="team-stat-value">${Math.round(m.p_away * 100)}%</div></div>
-      ${projected ? `<div class="team-stat"><div class="team-stat-label">Projected</div><div class="team-stat-value">${projected}</div></div>` : ""}
-    </div>` : "";
   const side = (teamId, data, home) => {
     const rating = home ? m.home_xi : m.away_xi;
     const recent = home ? m.home_recent_xi : m.away_recent_xi;
@@ -2934,7 +2927,7 @@ async function renderMatchLineups(m, panel) {
     if (!xi) return `<div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No predicted XI for this team.</div>`;
     return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(xi, data, { note: "" })}</div>`;
   };
-  panel.innerHTML = chance + `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`
+  panel.innerHTML = `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`
     + `<div class="page-note">Predicted line-ups use the pre-match XI model. Start chance and expected minutes are shown when the browser has to estimate from recent line-ups, current squad ratings and listed absences.</div>`;
 }
 
