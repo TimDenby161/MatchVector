@@ -429,6 +429,9 @@
   .bet-pick { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 3px; font-size: 13px; }
   .bet-pick b { font-variant-numeric: tabular-nums; }
   .bet-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .bet-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .bet-tag { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border, rgba(127,127,127,.35)); color: var(--text-muted); }
+  .bet-tag.warn { border-color: #f08a5a; color: #f08a5a; }
   .pos { color: var(--status-good); font-weight: 700; } .neg { color: var(--status-critical); font-weight: 700; }
   .bets-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 
@@ -1030,6 +1033,10 @@
       <button type="button" class="filter-chip" data-strategy="early" aria-pressed="false">Night before</button>
       <button type="button" class="filter-chip" data-strategy="late" aria-pressed="false">Pre-kickoff</button>
     </div>
+    <div class="filter-row" id="bet-view">
+      <button type="button" class="filter-chip" data-view="all" aria-pressed="true">All bets</button>
+      <button type="button" class="filter-chip" data-view="cautious" aria-pressed="false">Cautious</button>
+    </div>
     <div class="filter-row" id="bet-market" style="margin-bottom:10px">
       <button type="button" class="filter-chip" data-market="all" aria-pressed="true">All markets</button>
       <button type="button" class="filter-chip" data-market="1X2" aria-pressed="false">Result</button>
@@ -1097,7 +1104,7 @@ const state = {
   matchFilter: "all", tableFilter: "all", date: null,
   tableSort: "lt", tableSearch: "", collapsed: new Set(),
   stats: null, statsRange: "30d", statsFilter: "all",
-  bets: null, betStrategy: "all", betMarket: "all",
+  bets: null, betStrategy: "all", betMarket: "all", betView: "all",
   players: null, tableView: "clubs", playerSort: null, playerYears: storedFlag("playerYears"), ageMin: null, ageMax: null,
 };
 
@@ -2153,6 +2160,16 @@ function marketsTable(ms) {
 const MARKET_LABELS = { "1X2": "Result", OU15: "Over/Under 1.5", OU25: "Over/Under 2.5", OU35: "Over/Under 3.5", OU45: "Over/Under 4.5", BTTS: "Both teams score" };
 const SEL_LABELS = { Home: "Home win", Draw: "Draw", Away: "Away win", Yes: "Both score", No: "Not both score" };
 
+// Paper bet tags (betting.bet_tags): what kind of disagreement each bet is
+const TAG_LABELS = { cup: "Cup / Europe", big5: "Big five", league: "Other league", promoted: "Promoted / relegated club",
+  thin_data: "Thin data", streak: "Streak", favourite: "Favourite", outsider: "Outsider", gap10: "10+ point gap" };
+const TAG_TIPS = {
+  cup: "A cup or European game", big5: "Premier League, La Liga, Serie A, Bundesliga or Ligue 1", league: "Any other league",
+  promoted: "Either club is in a different league from last season", thin_data: "Under 25 games of data (home side at home + away side away, last 12 months)",
+  streak: "One side's Form is 30+ points further from its Rating than the other's: a hot or cold run",
+  favourite: "The bookmakers' most likely outcome", outsider: "Not the bookmakers' most likely outcome",
+  gap10: "The model's chance is 10+ points above the bookmakers'" };
+
 function summarise(bets) {
   const settled = bets.filter((b) => b.result === "win" || b.result === "loss");
   const clvs = settled.map((b) => b.clv).filter((c) => c != null);
@@ -2176,9 +2193,10 @@ function signed(x, d = 1, suffix = "") {
 function renderBets() {
   const body = $("#bets-body");
   if (!state.bets) { body.innerHTML = `<div class="empty-state">No paper bets yet.</div>`; return; }
-  const all = state.bets.bets.filter((b) =>
+  const scope = state.bets.bets.filter((b) =>
     (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
     (state.betMarket === "all" || b.market === state.betMarket));
+  const all = state.betView === "cautious" ? scope.filter((b) => b.cautious) : scope;
   const s = summarise(all);
   const card = (label, value, note = "") =>
     `<div class="stats-card"><div class="stats-label">${label}</div><div class="stats-value">${value}</div>${note ? `<div class="stats-note">${note}</div>` : ""}</div>`;
@@ -2188,6 +2206,18 @@ function renderBets() {
     if (!x.placed) return "";
     return `<tr><td>${MARKET_LABELS[mk]}</td><td>${x.settled}</td><td>${signed(x.profit, 1)}</td>
       <td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td><td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td></tr>`;
+  }).join("");
+  // All bets vs the cautious view, on the strategy / market filters above
+  const views = [["All bets", scope], ["Cautious", scope.filter((b) => b.cautious)]].map(([label, bs]) => {
+    const x = summarise(bs);
+    return `<tr><td>${label}</td><td>${x.placed}</td><td>${x.settled}</td><td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td>
+      <td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td><td>${x.beat == null ? "–" : pct(x.beat)}</td></tr>`;
+  }).join("");
+  const tagRows = Object.keys(TAG_LABELS).map((t) => {
+    const x = summarise(all.filter((b) => (b.tags || []).includes(t)));
+    if (!x.placed) return "";
+    return `<tr><td>${TAG_LABELS[t]}</td><td>${x.placed}</td><td>${x.settled}</td><td>${x.roi == null ? "–" : signed(100 * x.roi, 1, "%")}</td>
+      <td>${x.clv == null ? "–" : signed(100 * x.clv, 1, "%")}</td><td>${x.beat == null ? "–" : pct(x.beat)}</td></tr>`;
   }).join("");
   const row = (b) => {
     const when = new Date(b.kickoff);
@@ -2200,6 +2230,7 @@ function renderBets() {
       <div class="bet-match">${escapeHtml(b.home)} v ${escapeHtml(b.away)}${b.score ? ` <span style="color:var(--text-muted)">(${escapeHtml(b.score)})</span>` : ""}</div>
       <div class="bet-pick"><span>${escapeHtml(SEL_LABELS[b.selection] || b.selection)} @ <b>${b.odds.toFixed(2)}</b> <span style="color:var(--text-muted);font-size:11px">${escapeHtml(b.bookmaker || "")}</span></span><span>${res}</span></div>
       <div class="bet-sub">Model ${Math.round(100 * b.model_prob)}% · bookmakers ${b.fair_prob != null ? Math.round(100 * b.fair_prob) + "%" : "–"} · edge ${signed(100 * b.edge, 1, "%")}${clv}</div>
+      ${(b.tags || []).length ? `<div class="bet-tags">${b.tags.map((t) => `<span class="bet-tag${(t === "streak" || (t === "outsider" && b.market === "1X2")) ? " warn" : ""}" title="${escapeHtml(TAG_TIPS[t] || "")}">${escapeHtml(TAG_LABELS[t] || t)}</span>`).join("")}</div>` : ""}
     </div>`;
   };
   const pending = all.filter((b) => !b.result).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
@@ -2216,6 +2247,16 @@ function renderBets() {
       ${markets ? `<table class="calib-table"><thead><tr><th>Market</th><th>Settled</th><th>Profit</th><th>ROI</th><th>CLV</th></tr></thead><tbody>${markets}</tbody></table>` : `<div class="stats-note">No bets yet.</div>`}
       <div class="stats-note">Paper bets only, no money. The model bets when its chance × the best price across bookmakers is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. "Beat the closing price" (CLV) is the early sign of a real edge. Profit needs roughly 1,000+ settled bets before it means much.</div>
     </div>
+    <div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">All bets vs cautious</div>
+      <table class="calib-table"><thead><tr><th>View</th><th>Placed</th><th>Settled</th><th>ROI</th><th>CLV</th><th>Beat close</th></tr></thead><tbody>${views}</tbody></table>
+      <div class="stats-note">Cautious ${escapeHtml(state.bets.rules.cautious_rule || "")}: the kinds of disagreement the model lost most often in the first check. It's the same bets, prices and timing, so the two compare exactly. Judge it on CLV first; ROI needs hundreds of bets.</div>
+    </div>
+    ${tagRows ? `<div class="stats-card" style="margin-bottom:12px">
+      <div class="stats-label">By kind of disagreement</div>
+      <table class="calib-table"><thead><tr><th>Tag</th><th>Placed</th><th>Settled</th><th>ROI</th><th>CLV</th><th>Beat close</th></tr></thead><tbody>${tagRows}</tbody></table>
+      <div class="stats-note">A bet can have several tags. Tags use what was known before kickoff. Hover a tag on a bet for what it means.</div>
+    </div>` : ""}
     ${pending.length ? `<div class="modal-section">Upcoming (${pending.length})</div><div class="bets-list">${pending.map(row).join("")}</div>` : ""}
     ${settled.length ? `<div class="modal-section">Settled</div><div class="bets-list">${settled.slice(0, 150).map(row).join("")}</div>` : ""}
     ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}`;
@@ -3643,7 +3684,7 @@ $("#table-filters").addEventListener("mouseleave", (e) =>
   e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
 SIDE_MENU.addEventListener("change", () => { if (state.rankings) renderTableFilters(); });
 $("#stats-filters").addEventListener("click", (e) => onChipClick("stats", e));
-for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"]]) {
+for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"], ["#bet-view", "betView", "view"]]) {
   $(id).addEventListener("click", (e) => {
     const btn = e.target.closest(`[data-${attr}]`);
     if (!btn) return;

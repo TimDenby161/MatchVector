@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import config, positions
 from .cache import WEEK, cached_rows, rank_history
+from .betting import CAUTIOUS_RULE, is_cautious
 from .predictions import GOAL_LINES, goal_lines
 
 log = logging.getLogger(__name__)
@@ -440,7 +441,7 @@ def export_bets(conn, out_dir=OUT_DIR):
         """select b.bet_id, b.strategy, b.fixture_id, b.kickoff, b.league_id, b.market, b.selection,
                   b.model_prob, b.fair_prob, b.odds_taken, bk.name, b.edge, b.closing_odds, b.clv,
                   b.result, b.profit, b.placed_at, b.settled_at, h.name, a.name,
-                  coalesce(f.ft_home, f.home_goals), coalesce(f.ft_away, f.away_goals)
+                  coalesce(f.ft_home, f.home_goals), coalesce(f.ft_away, f.away_goals), b.tags
            from paper_bets b join fixtures f using (fixture_id)
            join teams h on h.team_id = f.home_team_id join teams a on a.team_id = f.away_team_id
            left join bookmakers bk on bk.bookmaker_id = b.bookmaker_id
@@ -453,6 +454,7 @@ def export_bets(conn, out_dir=OUT_DIR):
         "closing_odds": float(r[12]) if r[12] is not None else None, "clv": _r(r[13], 4),
         "result": r[14], "profit": float(r[15]) if r[15] is not None else None,
         "home": r[18], "away": r[19], "score": f"{r[20]}-{r[21]}" if r[20] is not None else None,
+        "tags": r[22] or [], "cautious": is_cautious(r[5], r[22]),
     } for r in rows]
     by = lambda key: {k: _summary([b for b in bets if key(b) == k]) for k in sorted({key(b) for b in bets})}
     summary = {
@@ -461,12 +463,14 @@ def export_bets(conn, out_dir=OUT_DIR):
         "market": by(lambda b: b["market"]),
         "strategy_market": by(lambda b: f"{b['strategy']}|{b['market']}"),
         "league": by(lambda b: str(b["league"])),
+        "cautious": _summary([b for b in bets if b["cautious"]]),
+        "tag": {t: _summary([b for b in bets if t in b["tags"]]) for t in sorted({t for b in bets for t in b["tags"]})},
     }
     last = max([r[16] for r in rows] + [r[17] for r in rows if r[17]], default=None)
     # No generation timestamp, so the file only changes (and gets committed) when bets do
     (out_dir / "bets.json").write_text(json.dumps({
         "last_change": last.isoformat() if last else None,
-        "rules": {"min_edge": 0.03, "max_odds": 10.0, "stake": 1},
+        "rules": {"min_edge": 0.03, "max_odds": 10.0, "stake": 1, "cautious_rule": CAUTIOUS_RULE},
         "summary": summary, "bets": bets,
     }, separators=(",", ":")), encoding="utf-8")
     log.info("Exported %d paper bets", len(bets))

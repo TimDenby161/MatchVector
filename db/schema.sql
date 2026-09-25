@@ -555,7 +555,7 @@ create table if not exists paper_bets (
     fixture_id      int not null,
     league_id       int,
     kickoff         timestamptz,
-    market          text not null,       -- '1X2', 'OU25', 'BTTS'
+    market          text not null,       -- '1X2', 'OU15', 'OU25', 'OU35', 'OU45', 'BTTS'
     selection       text not null,       -- e.g. 'Home', 'Over 2.5', 'Yes'
     model_prob      double precision,
     fair_prob       double precision,    -- bookmakers' average, margin removed, when placed
@@ -572,6 +572,9 @@ create table if not exists paper_bets (
     settled_at      timestamptz,
     unique (strategy, fixture_id, market, selection)
 );
+-- Kind of disagreement (betting.bet_tags): cup / big5 / league, promoted, thin_data, streak,
+-- favourite / outsider, gap10
+alter table paper_bets add column if not exists tags text[];
 create index if not exists paper_bets_fixture_idx on paper_bets (fixture_id);
 
 -- Supabase exposes the public schema through its REST API; enable RLS with no

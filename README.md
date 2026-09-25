@@ -363,7 +363,7 @@ These were tested and not adopted:
     | Other leagues | 13% |
 
   - The new parts (home edge, line-ups, attack/defence) barely drive them. Correlation with the gap was 0.12 at most.
-  - Who was right: the model was better in 40% of them overall. It did worst when a side's Form was far from its Rating (30%, when either side's Form was 30+ points above or below its Rating), with a promoted or relegated club (37%), and when it backed an outsider (38%). When its pick was the bookmakers' favourite, it broke even (46%, log loss −0.003). Cups and European games were the only kind it won on average (50%, −0.058, 22 matches).
+  - Who was right: the model was better in 40% of them overall. It did worst in streak matches, where one side's Form was 30+ points further from its Rating than the other's (30%), with a promoted or relegated club (37%), and when it backed an outsider (38%). When its pick was the bookmakers' favourite, it broke even (46%, log loss −0.003). Cups and European games were the only kind it won on average (50%, −0.058, 22 matches).
   - A split-sample test found nothing that predicts the good ones yet. Across 500 random halves, the best kind of disagreement on one half scored −0.064, but on the other half it scored +0.031 (bookmakers better), and the model won the other half in only 36% of splits. With 82 disagreements, any pattern found is mostly noise. The same test needs a few hundred more.
 
 **Bookmaker comparison.** `export.market_probabilities` averages each bookmaker's match-winner odds with its margin removed. Match cards show these alongside the model, and the Stats tab compares model and bookmakers on every finished match that has odds.
@@ -384,6 +384,16 @@ A bet is placed when model chance × the best price across bookmakers is at leas
 - both teams to score (`p_btts`)
 
 The goal-market probabilities come from the same Poisson grid, calibrated towards the base rate. The 1.5, 3.5 and 4.5 calibrations were fitted on 2023/24 (`GOAL_LINE_CALIBRATION`). Bets settle on the 90-minute score and are stored in `paper_bets`.
+
+**Tags and the cautious view** (added 25 September 2026, after the check of what model-vs-bookmaker disagreements have in common). Every bet is tagged with the kind of match and bet it is (`paper_bets.tags`, `betting.bet_tags`), using only what was known before kickoff:
+- `cup` (cups and European games), `big5` or `league`
+- `promoted`: either club's league changed since last season
+- `thin_data`: under 25 games of data (the home side's home games plus the away side's away games in the last 12 months)
+- `streak`: one side's Form is 30+ points further from its Rating than the other's
+- `favourite` or `outsider` by the bookmakers' fair chances
+- `gap10`: the model's chance is 10+ points above the bookmakers'
+
+The Bets tab shows return and CLV for each tag. It also has a **Cautious** view, which leaves out result-market bets on outsiders and any bet in a streak match (`betting.is_cautious`). Those were the kinds of disagreement the model lost most often. The outsider rule is for results only because that's where the evidence was; on goal lines "outsider" just means Under 1.5 or Over 3.5/4.5. The cautious view is the same bets, prices and timing, not a separate strategy, so the two compare exactly. Streak matches are common (about 40% of matches), so the cautious view keeps roughly a third of the bets. Judge it on CLV after a few hundred bets.
 
 **Closing line value.** `odds.first_odd` keeps the opening price. `odds.odd` is never updated after kickoff, so it holds the closing price. Each bet records `clv` = odds taken × the fair closing probability − 1. Consistently positive CLV is the early sign of a real edge. Profit needs thousands of bets before it means much.
 
