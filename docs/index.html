@@ -753,16 +753,16 @@
   /* Club overview pitch: who can play in each position */
   .pitch.dp-pitch { max-width: 500px; overflow: visible; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: repeat(6, auto); align-content: space-between; align-items: center; gap: 10px 6px; padding: 14px 10px; }
-  .dp-spot { position: relative; padding: 3px 5px 4px; border-radius: 8px;
+  .dp-spot { position: relative; padding: 3px 4px 4px; border-radius: 8px;
     background: rgba(255,255,255,0.12); color: #f2f2f0; line-height: 1.2; }
   .dp-spot.empty { justify-self: center; min-width: 38px; text-align: center; padding: 5px 7px; background: transparent;
     border: 1.5px dashed rgba(255,255,255,0.28); color: rgba(255,255,255,0.4); }
   .dp-total { float: right; font-size: 10px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
   .dp-pos { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; color: rgba(255,255,255,0.7); }
   .dp-spot.empty .dp-pos { color: inherit; }
-  a.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px 22px; align-items: baseline; gap: 4px;
+  a.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) 24px 15px 20px; align-items: baseline; gap: 3px;
     font-size: 11px; font-weight: 600; color: #fff; text-decoration: none; }
-  .dp-pct { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
+  .dp-pct { text-align: right; font-size: 9.5px; letter-spacing: -.02em; font-weight: 600; color: rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }
   .dp-rank { text-align: right; }
   .dp-xmin { font-size: 10px; font-weight: 700; text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
   .dp-xmin.zero { color: rgba(255,255,255,0.45); }
@@ -773,7 +773,7 @@
   @media (max-width: 480px) {
     .pitch.dp-pitch { gap: 8px 4px; padding: 12px 6px; }
     .dp-spot { padding: 2px 3px 3px; }
-    a.dp-row { font-size: 9.5px; gap: 2px; grid-template-columns: minmax(0, 1fr) auto 14px 19px; }
+    a.dp-row { font-size: 9.5px; gap: 2px; grid-template-columns: minmax(0, 1fr) 24px 14px 19px; }
     .dp-pct, .dp-xmin { font-size: 9px; }
   }
   /* Club page: predicted XI on the pitch, squad list, end-of-season ranks */
