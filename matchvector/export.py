@@ -840,8 +840,9 @@ def export_clubs(conn, out_dir=OUT_DIR):
     competition, formation (null where the line-up isn't known), attack and defence after,
     starting XI average rank by line [GK, DEF, MID, FWD] (null outside the line-up leagues)]; plus 12-month home/away goal
     averages, the current manager and the home kit colours. starts: this season's matches with a
-    line-up (games), each player's starts by position in them, and each match's starters (xi) and
-    competition (xi_league).
+    line-up (games), each player's starts by position in them, each match's starters (xi) and
+    competition (xi_league), and per player his starts, substitute appearances and minutes in
+    them over the last 12 months (mins, out of mins_matches).
     Loaded only when the page opens.
     """
     now = datetime.now(timezone.utc)
@@ -898,6 +899,22 @@ def export_clubs(conn, out_dir=OUT_DIR):
         if team in starts:
             starts[team]["xi"] = list(by_fixture.values())
             starts[team]["xi_league"] = list(xi_league[team].values())   # each match's competition
+    # minutes over the last 12 months (league matches with player data): the club's matches, and
+    # per player [starts, minutes in them, substitute appearances, minutes in those], for the
+    # club page's expected minutes (how long a starter usually lasts, who comes off the bench)
+    for team, matches in conn.execute(
+            """select fp.team_id, count(distinct fp.fixture_id) from fixture_players fp join fixtures f using (fixture_id)
+               where fp.team_id = any(%s) and f.kickoff > now() - interval '365 days' group by 1""", [list(active)]):
+        if team in starts:
+            starts[team]["mins_matches"] = matches
+    for team, player, n_start, m_start, n_sub, m_sub in conn.execute(
+            """select fp.team_id, fp.player_id, count(*) filter (where fp.started),
+                      coalesce(sum(fp.minutes) filter (where fp.started), 0),
+                      count(*) filter (where not fp.started), coalesce(sum(fp.minutes) filter (where not fp.started), 0)
+               from fixture_players fp join fixtures f using (fixture_id)
+               where fp.team_id = any(%s) and f.kickoff > now() - interval '365 days' group by 1, 2""", [list(active)]):
+        if team in starts:
+            starts[team].setdefault("mins", {})[str(player)] = [n_start, m_start, n_sub, m_sub]
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn, *_ in club_rows:

@@ -3207,6 +3207,41 @@ function depthPitch(teamId) {
       : restHist ? left * histOf(b, d.p.id) / restHist : 0]));
     ability.set(b.label, m);
   }
+  // Start chance per player and box: history with the pull towards the best XI
+  const startChance = new Map();                       // "box:player" -> %
+  for (const { label: r, n, ps, proj } of shown) {
+    const ab = ability.get(r);
+    for (const { p } of ps) {
+      const hist = proj?.share.get(p.id) || 0;
+      startChance.set(`${r}:${p.id}`, ab ? (1 - ABILITY_PULL) * hist + ABILITY_PULL * Math.min(100, ab.get(p.id) || 0) : hist);
+    }
+  }
+  // Expected minutes in each box: as a starter, his start chance x how long he usually lasts when
+  // he starts (last 12 months, blended towards a typical 90 for keepers and 80 for the rest over
+  // his first few starts); off the bench, the minutes the box's starters are expected to leave
+  // (it needs its usual starters x 90) shared among the squad players whose main position is
+  // there, by their minutes per match off the bench
+  const mins = st?.mins || {}, minsMatches = st?.mins_matches || 0;
+  const lasts = (p) => {
+    const [n = 0, m = 0] = mins[String(p.id)] || [], typical = GROUP_OF[p.position] === "GK" ? 90 : 80;
+    return (m + 3 * typical) / (n + 3);
+  };
+  const benchRate = (p) => minsMatches ? ((mins[String(p.id)] || [])[3] || 0) / minsMatches : 0;
+  const mainBox = (p) => (shown.find((b) => b.roles.includes(p.position)) || {}).label;
+  const xMins = new Map();                             // "box:player" -> minutes
+  for (const { label: r, n, ps } of shown) {
+    let starting = 0;
+    for (const { p } of ps) {
+      const m = startChance.get(`${r}:${p.id}`) / 100 * lasts(p);
+      xMins.set(`${r}:${p.id}`, m);
+      starting += m;
+    }
+    const demand = Math.max(0, n * 90 - starting);
+    let bench = ps.filter(({ p }) => mainBox(p) === r && benchRate(p) > 0);
+    if (!bench.length) bench = ps.filter(({ p }) => benchRate(p) > 0);
+    const rsum = bench.reduce((t, { p }) => t + benchRate(p), 0);
+    for (const { p } of bench) xMins.set(`${r}:${p.id}`, xMins.get(`${r}:${p.id}`) + demand * benchRate(p) / rsum);
+  }
   const spots = shown.map(({ label: r, roles, row, col, n, ps, proj }) => {
     const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
     const cell = `grid-row:${row};grid-column:${col}`;
@@ -3214,20 +3249,17 @@ function depthPitch(teamId) {
     return `<div class="dp-spot" style="${cell}">
       <span class="dp-pos" title="${n ? `${n} usually start${n === 1 ? "s" : ""} here this season` : ""}">${label}</span>
       ${ps.map(({ p, rank }) => {
-        const hist = proj.share.get(p.id) || 0;
-        const ab = ability.get(r);
-        const share = ab ? (1 - ABILITY_PULL) * hist + ABILITY_PULL * Math.min(100, ab.get(p.id) || 0) : hist;
+        const share = startChance.get(`${r}:${p.id}`) || 0;
         const got = Math.round(share), had = startPct(p, roles) || 0;
         const pct = got || null;
-        // expected minutes next match in this position: for now just his start share x 90
-        const xmin = pct != null ? Math.round(share * 0.9) : null;
-        const tip = `${p.name}: started ${had}% of this season's matches at ${r}`
-          + (got !== had ? `; expected ${got}% in the next match${nextLabel ? ` (${nextLabel})` : ""}${proj.changed ? ", with the injured or departed out" : ""}` : "")
+        const xmin = Math.round(Math.min(90, xMins.get(`${r}:${p.id}`) || 0));
+        const tip = `${p.name}: ${got}% chance of starting at ${r} in the next match${nextLabel ? ` (${nextLabel})` : ""}`
+          + ` (started ${had}% of this season's matches there${proj.changed ? "; allowing for the injured or departed" : ""})`
           + ((picks.get(r) || []).includes(p.id) ? " · in the best XI by rating" : "")
-          + ` · xMins ${xmin || 0}`;
+          + ` · xMins ${xmin}: lasts ${Math.round(lasts(p))}′ when he starts${benchRate(p) ? `, ${Math.round(benchRate(p))}′ a match off the bench` : ""}`;
         return `<a class="dp-row" href="#/player/${p.id}" title="${escapeHtml(tip)}">
           <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
-          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin${xmin ? "" : " zero"}">${xmin || 0}′</span></a>`;
+          <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin${xmin ? "" : " zero"}">${xmin}′</span></a>`;
       }).join("")}
     </div>`;
   }).join("");
