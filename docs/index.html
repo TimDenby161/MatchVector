@@ -3064,15 +3064,22 @@ function depthPitch(teamId) {
     const n = roles.reduce((a, r) => a + (st?.players?.[String(p.id)]?.[r] || 0), 0);
     return st?.games && n ? Math.round(100 * n / st.games) : null;
   };
+  // how many usually start in this box: its starts this season per match (everyone who started
+  // there, including players since gone or now injured)
+  const usual = (roles) => st?.games ? Math.round(Object.values(st.players || {})
+    .reduce((a, byRole) => a + roles.reduce((b, r) => b + (byRole[r] || 0), 0), 0) / st.games) : 0;
   const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
-    const ps = squad.filter((p) => roles.some((x) => canPlay(p).has(x)))
+    const n = usual(roles);
+    const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
+    // who can play there, and anyone who has started there this season
+    const ps = squad.filter((p) => roles.some((x) => canPlay(p).has(x)) || startPct(p, roles))
       .map((p) => ({ p, rank: Math.max(...roles.map((x) => rankAt(p, x) ?? -1)) }))
       .map((d) => ({ ...d, rank: d.rank >= 0 ? d.rank : d.p.rank }))
       .sort((a, b) => b.rank - a.rank);
     const cell = `grid-row:${row};grid-column:${col}`;
-    if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${r}</span></div>`;
+    if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${label}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
-      <span class="dp-pos">${r}</span>
+      <span class="dp-pos" title="${n ? `${n} usually start${n === 1 ? "s" : ""} here this season` : ""}">${label}</span>
       ${ps.map(({ p, rank }) => {
         const pct = startPct(p, roles);
         return `<a class="dp-row" href="#/player/${p.id}"${pct != null ? ` title="${escapeHtml(`${p.name}: started ${pct}% of this season's matches at ${r}`)}"` : ""}>
