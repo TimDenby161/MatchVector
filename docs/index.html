@@ -3771,7 +3771,7 @@ function leagueTableTab() {
       <thead><tr><th class="lt-pos">#</th><th></th><th class="lt-club">Club</th>
         <th title="Played">P</th><th class="lt-wdl" title="Won">W</th><th class="lt-wdl" title="Drawn">D</th><th class="lt-wdl" title="Lost">L</th>
         <th class="lt-wide" title="Goals for and against">Goals</th><th title="Goal difference">GD</th><th title="Points">Pts</th>
-        <th title="Last five league games, oldest first: green won, grey drawn, red lost">Form</th><th title="Rating: the club's long-term Elo rating">Elo</th></tr></thead>
+        <th title="Last five league games, oldest first: green won, grey drawn, red lost">Form</th><th title="Form: the club's current Elo rating">Elo</th></tr></thead>
       <tbody>${rows.filter((r) => r.group === g).map((r) => {
         const rk = state.rankByTeam.get(r.team);
         return `<tr><td class="lt-pos" style="border-left-color:${zones.get(r.description) || "transparent"}">${r.rank}</td>
@@ -3779,7 +3779,7 @@ function leagueTableTab() {
           <td class="lt-club">${clubLink(r.team, data.teams[r.team] || teamName(r.team))}</td>
           <td>${r.played ?? ""}</td><td class="lt-wdl">${r.win ?? ""}</td><td class="lt-wdl">${r.draw ?? ""}</td><td class="lt-wdl">${r.lose ?? ""}</td>
           <td class="lt-wide">${r.gf ?? ""}–${r.ga ?? ""}</td><td>${r.gd > 0 ? "+" : ""}${r.gd ?? ""}</td><td><b>${r.points ?? ""}</b></td>
-          <td>${formChips(r.form)}</td><td class="lt-elo">${rk ? Math.round(rk.lt) : ""}</td></tr>`;
+          <td>${formChips(r.form)}</td><td class="lt-elo">${rk ? Math.round(rk.current) : ""}</td></tr>`;
       }).join("")}</tbody></table></div>`;
   return groups.map(table).join("") + (zones.size ? `<div class="lt-legend">${[...zones].map(([d, c]) =>
     `<span><i style="background:${c}"></i>${escapeHtml(d)}</span>`).join("")}</div>` : "");
