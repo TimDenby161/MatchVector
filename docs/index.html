@@ -328,6 +328,7 @@
   .pl-cell .player-photo { width: 24px; height: 24px; }
   table.leaderboard tr.row-hl td { background: color-mix(in srgb, var(--series-blue) 14%, transparent); }
   table.leaderboard.clubs .rel-chip { min-width: 40px; padding: 2px 6px; font-size: 12px; }
+  img[data-club], img[data-league] { cursor: pointer; }
   .club-logo { width: 24px; height: 24px; object-fit: contain; display: block; }
   .pl-cell { display: flex; align-items: center; gap: 10px; }
   .pl-cell .pl-badge { flex: none; margin-right: -2px; }
@@ -1322,6 +1323,16 @@ const flagImg = (nat) => FLAG_CODES[nat] ? `<img class="flag" src="https://flagc
 const countryDisplay = (c) => c === "World" ? "International" : (c || "").replace(/-/g, " ");
 const countryHref = (c) => `#/country/${encodeURIComponent(c)}`;
 const leagueHref = (lid) => `#/league/${lid}`;
+// Every club badge and competition logo opens its page: tagged data-club / data-league, one
+// listener for the whole site (not links of their own, so a badge inside a clickable row or card
+// works too; ones inside a link or button keep that control's behaviour)
+document.addEventListener("click", (e) => {
+  const img = e.target.closest("img[data-club], img[data-league]");
+  if (!img || img.closest("a, button")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  location.hash = img.dataset.club ? clubHref(img.dataset.club) : leagueHref(img.dataset.league);
+}, true);
 const leagueLogo = (lid) => `https://media.api-sports.io/football/leagues/${lid}.png`;
 const countryLink = (c) => `<a class="nat-link" href="${countryHref(c)}">${escapeHtml(countryDisplay(c))}</a>`;
 const leagueLink = (lid) => `<a class="nat-link" href="${leagueHref(lid)}">${escapeHtml(SHORT_NAMES[lid] || state.data.competitions[lid]?.name || compLabel(lid))}</a>`;
@@ -1617,7 +1628,7 @@ function onePerPick(bets) {
 }
 // The badge of the team a bet backs, or both teams' for a draw or goals bet
 function betBadges(b) {
-  const img = (id) => id ? `<img class="club-logo" src="${teamLogo(id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : "";
+  const img = (id) => id ? `<img class="club-logo" data-club="${id}" src="${teamLogo(id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : "";
   const ids = b.market === "1X2" && b.selection !== "Draw" ? [b.selection === "Home" ? b.home_id : b.away_id] : [b.home_id, b.away_id];
   return `<span class="tip-badges">${ids.map(img).join("")}</span>`;
 }
@@ -1773,12 +1784,12 @@ function matchHead(m, right = "") {
       </div>
       <div class="match-teams">
         <div class="match-team">
-          <div class="mt-name"><img class="club-logo" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home)}</div>
+          <div class="mt-name"><img class="club-logo" data-club="${m.home}" src="${teamLogo(m.home)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.home)}</div>
           ${rankChip(hRank)}
         </div>
         ${scoreCentre(m)}
         <div class="match-team away">
-          <div class="mt-name"><img class="club-logo" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away)}</div>
+          <div class="mt-name"><img class="club-logo" data-club="${m.away}" src="${teamLogo(m.away)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${clubLink(m.away)}</div>
           ${rankChip(aRank)}
         </div>
       </div>`;
@@ -2251,7 +2262,7 @@ function renderTable() {
       <tbody>${rows.map((r, i) => `
         <tr data-team="${r.team}">
           <td>${i + 1}</td>
-          <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+          <td><img class="club-logo" data-club="${r.team}" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td>${clubLink(r.team)}${q || all ? countryLeague(r.league) : ""}</td>
           <td class="num" style="color:var(--text-muted)">${r.played}</td>
           <td class="num">${eloChip(r.lt)}</td>
@@ -2948,9 +2959,9 @@ function clubOverviewTab() {
       <div class="form-row form-hdr"><span></span><span></span><span></span><span></span><span>xG</span><span>Elo</span></div>
       ${form.map(({ m, move }) => `<div class="form-row" title="${escapeHtml(`${fmtShortDate(m.date)} ${m.home ? "v" : "@"} ${clubOpp(m.opponent)}${m.home === 2 ? " (neutral)" : ""} · ${compLabel(m.league)}`)}">
         <span class="rel-chip rel-${m.gf > m.ga ? 4 : m.gf === m.ga ? 3 : 1}">${m.gf}–${m.ga}</span>
-        <img class="club-logo" src="${teamLogo(m.opponent)}" alt="${escapeHtml(clubOpp(m.opponent))}" loading="lazy" onerror="this.style.visibility='hidden'">
+        <img class="club-logo" data-club="${m.opponent}" src="${teamLogo(m.opponent)}" alt="${escapeHtml(clubOpp(m.opponent))}" loading="lazy" onerror="this.style.visibility='hidden'">
         <span class="form-ha">${m.home === 2 ? "N" : m.home ? "H" : "A"}</span>
-        <img class="next5-comp" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(compLabel(m.league))}" title="${escapeHtml(compLabel(m.league))}" loading="lazy" onerror="this.style.visibility='hidden'">
+        <img class="next5-comp" data-league="${m.league}" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(compLabel(m.league))}" title="${escapeHtml(compLabel(m.league))}" loading="lazy" onerror="this.style.visibility='hidden'">
         <span class="form-xg" title="Expected goals: for – against">${m.xgf != null && m.xga != null ? `${m.xgf.toFixed(1)}–${m.xga.toFixed(1)}` : "–"}</span>
         <span class="form-move">${moveHtml(move)}</span></div>`).join("")}
     </div>` : "";
@@ -2967,9 +2978,9 @@ function clubOverviewTab() {
         const comp = SHORT_NAMES[m.league] || state.data.competitions[m.league]?.name || "";
         return `<div class="next5-row" title="${escapeHtml(`${fmtDay(m.kickoff)} ${fmtTime(m.kickoff)} · ${home ? "v" : "@"} ${teamName(opp)} · ${compLabel(m.league)}`)}">
           <span class="next5-date">${escapeHtml(fmtShortDate(m.kickoff))}</span>
-          <img class="club-logo" src="${teamLogo(opp)}" alt="${escapeHtml(teamName(opp))}" loading="lazy" onerror="this.style.visibility='hidden'">
+          <img class="club-logo" data-club="${opp}" src="${teamLogo(opp)}" alt="${escapeHtml(teamName(opp))}" loading="lazy" onerror="this.style.visibility='hidden'">
           <span class="form-ha">${home ? "H" : "A"}</span>
-          <img class="next5-comp" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(comp)}" title="${escapeHtml(comp)}" loading="lazy" onerror="this.style.visibility='hidden'">
+          <img class="next5-comp" data-league="${m.league}" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(comp)}" title="${escapeHtml(comp)}" loading="lazy" onerror="this.style.visibility='hidden'">
           <span class="next5-num">${gf != null ? gf.toFixed(1) : ""}</span>
           <span class="next5-num">${cs != null ? `${cs}%` : ""}</span>
           <span class="next5-num strong">${win != null ? `${win}%` : ""}</span></div>`;
@@ -3014,7 +3025,7 @@ function clubNextCard() {
   return `<div class="next-card">
     <div class="next-top"><span class="next-label">${LIVE.has(m.status) ? "Live now" : "Next match"}</span>
       <span>${escapeHtml(fmtDay(m.kickoff))} · ${escapeHtml(fmtTime(m.kickoff))}</span></div>
-    <div class="next-opp"><img class="club-logo" src="${teamLogo(opp)}" alt="" onerror="this.style.visibility='hidden'">
+    <div class="next-opp"><img class="club-logo" data-club="${opp}" src="${teamLogo(opp)}" alt="" onerror="this.style.visibility='hidden'">
       <span class="next-opp-name">${home ? "v" : "@"} ${clubLink(opp)}</span></div>
     <div class="next-meta"><span>${escapeHtml(compLabel(m.league))}</span>${win != null ? `<span>${win}% win</span>` : ""}${proj ? `<span>projected ${proj}</span>` : ""}
       ${xiRating != null ? `<span>XI rating ${Math.round(xiRating)}</span>` : ""}</div>
@@ -3353,7 +3364,7 @@ function clubMatchesTab() {
     const proj = m.home_xg != null ? `${(home ? m.home_xg : m.away_xg).toFixed(1)}–${(home ? m.away_xg : m.home_xg).toFixed(1)}` : "";
     return `<div class="match-row">
       <div class="mr-date">${escapeHtml(fmtShortDate(m.kickoff))}</div>
-      <div class="mr-opp"><img class="club-logo" src="${teamLogo(opp)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="mr-opp"><img class="club-logo" data-club="${opp}" src="${teamLogo(opp)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
         <span>${home ? "v" : "@"} ${clubLink(opp)}</span></div>
       <div class="mr-res" style="color:var(--text-muted)">${proj}</div>
       <div class="mr-rating">${win != null ? `<b>${win}%</b>` : ""}</div>
@@ -3365,7 +3376,7 @@ function clubMatchesTab() {
   const results = rows.map((m, i) => ({ m, move: clubMove(rows, i, data.start) })).reverse();
   const result = ({ m, move }) => `<div class="match-row">
       <div class="mr-date">${escapeHtml(fmtShortDate(m.date))}${m.date.slice(0, 4) !== thisYear ? ` '${m.date.slice(2, 4)}` : ""}</div>
-      <div class="mr-opp"><img class="club-logo" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="mr-opp"><img class="club-logo" data-club="${m.opponent}" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
         <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, clubOpp(m.opponent))}</span></div>
       <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
       <div class="mr-rating rank-move">${moveHtml(move)}</div>
@@ -3745,7 +3756,7 @@ function renderPlayerPage() {
       <img class="player-photo-lg" src="${playerPhoto(p.id)}" alt="" onerror="this.style.visibility='hidden'">
       <div class="pl-hero-main">
         <h2>${escapeHtml(p.name)}</h2>
-        <div class="pl-hero-club">${p.team ? `<img class="club-logo" src="${teamLogo(p.team)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
+        <div class="pl-hero-club">${p.team ? `<img class="club-logo" data-club="${p.team}" src="${teamLogo(p.team)}" alt="" onerror="this.style.visibility='hidden'">` : ""}
           <span>${playerClub(p)}${league ? `<span class="dim-sep"> · </span><a class="pl-league team-link" href="#" data-league="${p.league}" title="Open the ${escapeHtml(league)} table">${escapeHtml(league)}</a>` : ""}</span></div>
         <div class="pl-hero-club pl-hero-nat">${p.nationality ? `${flagImg(p.nationality)}<span>${natLink(p.nationality)}</span><span class="dim-sep">·</span>` : ""}
           <span class="pl-meta">${escapeHtml(p.position || "")}</span>${p.age != null ? `<span class="dim-sep">·</span>
@@ -3856,7 +3867,7 @@ function nextMatchCard() {
   return `<div class="next-card">
     <div class="next-top"><span class="next-label">${LIVE.has(m.status) ? "Live now" : "Next match"}</span>
       <span>${escapeHtml(fmtDay(m.kickoff))} · ${escapeHtml(fmtTime(m.kickoff))}</span></div>
-    <div class="next-opp"><img class="club-logo" src="${teamLogo(opp)}" alt="" onerror="this.style.visibility='hidden'">
+    <div class="next-opp"><img class="club-logo" data-club="${opp}" src="${teamLogo(opp)}" alt="" onerror="this.style.visibility='hidden'">
       <span class="next-opp-name">${home ? "v" : "@"} ${clubLink(opp)}</span></div>
     <div class="next-meta"><span>${escapeHtml(compLabel(m.league))}</span>${win != null ? `<span>${win}% win</span>` : ""}${proj ? `<span>projected ${proj}</span>` : ""}</div>
     ${status ? `<div class="next-status ${status[0]}">${escapeHtml(status[1])}</div>` : ""}
@@ -3977,7 +3988,7 @@ function playerStatsTab() {
       <div class="seg">${[["0", "Totals"], ["1", "Per 90"]].map(([k, l]) =>
         `<button type="button" data-per90="${k}" aria-pressed="${String(per90) === (k === "1" ? "true" : "false")}">${l}</button>`).join("")}</div>
     </div>
-    <div class="season-clubs">${rows.map((r) => `<div class="season-club"><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+    <div class="season-clubs">${rows.map((r) => `<div class="season-club"><img class="club-logo" data-club="${r.team}" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
       ${clubLink(r.team, pageTeamName(r.team))}<span class="dim"> · ${escapeHtml(compLabel(r.league))} · ${r.apps} apps · ${r.minutes.toLocaleString()}′</span></div>`).join("")}</div>
     <div class="team-stats compact">
       ${tile("Apps", s.apps, s.starts != null && !partial ? `${s.starts} started` : "")}
@@ -4006,7 +4017,7 @@ function playerMatchesTab() {
     ].filter(Boolean);
     return `<div class="match-row">
       <div class="mr-date">${escapeHtml(fmtShortDate(m.date))}</div>
-      <div class="mr-opp"><img class="club-logo" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+      <div class="mr-opp"><img class="club-logo" data-club="${m.opponent}" src="${teamLogo(m.opponent)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
         <span>${m.home ? "v" : "@"} ${clubLink(m.opponent, pageTeamName(m.opponent))}</span></div>
       <div class="mr-res ${resClass(m)}">${m.gf}–${m.ga}</div>
       <div class="mr-rating">${ratingChip(m.rating)}</div>
@@ -4242,7 +4253,7 @@ function leagueTableTab() {
       <tbody>${rows.filter((r) => r.group === g).map((r) => {
         const rk = state.rankByTeam.get(r.team);
         return `<tr><td class="lt-pos" style="border-left-color:${zones.get(r.description) || "transparent"}">${r.rank}</td>
-          <td class="lt-badge"><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+          <td class="lt-badge"><img class="club-logo" data-club="${r.team}" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td class="lt-club">${clubLink(r.team, data.teams[r.team] || teamName(r.team))}</td>
           <td>${r.played ?? ""}</td><td class="lt-wdl">${r.win ?? ""}</td><td class="lt-wdl">${r.draw ?? ""}</td><td class="lt-wdl">${r.lose ?? ""}</td>
           <td class="lt-wide">${r.gf ?? ""}–${r.ga ?? ""}</td><td>${r.gd > 0 ? "+" : ""}${r.gd ?? ""}</td><td><b>${r.points ?? ""}</b></td>
@@ -4334,7 +4345,7 @@ function leagueProjectedTab() {
         <th title="Projected goal difference">GD</th><th title="Projected points: points so far plus the average over the simulated seasons">Pts</th>
         <th title="Chance of finishing top">1st</th>${cols.map(([d, c]) => `<th title="${escapeHtml(d)}"><i class="lt-zone" style="background:${c}"></i></th>`).join("")}</tr></thead>
       <tbody>${list.map((x, i) => `<tr><td class="lt-pos" style="border-left-color:${zones.get(byRank.get(i + 1)) || "transparent"}">${i + 1}</td>
-          <td class="lt-badge"><img class="club-logo" src="${teamLogo(x.r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+          <td class="lt-badge"><img class="club-logo" data-club="${x.r.team}" src="${teamLogo(x.r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
           <td class="lt-club">${clubLink(x.r.team, data.teams[x.r.team] || teamName(x.r.team))}</td>
           <td class="lt-wide">${x.left}</td><td class="lt-wdl">${Math.round(x.w)}</td><td class="lt-wdl">${Math.round(x.d)}</td><td class="lt-wdl">${Math.round(x.l)}</td>
           <td>${x.gd >= 0.5 ? "+" : ""}${Math.round(x.gd)}</td><td><b>${Math.round(x.pts)}</b></td>
@@ -4363,7 +4374,7 @@ function leagueMatchesTab() {
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day).push(f);
   }
-  const logo = (t) => `<img class="club-logo" src="${teamLogo(t)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
+  const logo = (t) => `<img class="club-logo" data-club="${t}" src="${teamLogo(t)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
   const row = (f) => {
     const done = f.hg != null && (FINISHED.has(f.status) || LIVE.has(f.status));
     const p = preds.get(f.id);
@@ -4407,7 +4418,7 @@ function clubRatingTable(rows, pos, names = {}, meta = null) {
       <th class="num">Rating</th><th class="num">Trend</th><th class="num">Form</th></tr></thead>
     <tbody>${rows.map((r, i) => `<tr>
       <td>${i + 1}</td>
-      <td><img class="club-logo" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+      <td><img class="club-logo" data-club="${r.team}" src="${teamLogo(r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
       <td>${clubLink(r.team, names[r.team] || teamName(r.team))}${meta ? meta(r) : ""}</td>
       <td class="num" style="color:var(--text-muted)">${pos ? pos(r) : r.played}</td>
       <td class="num">${eloChip(r.lt)}</td>
