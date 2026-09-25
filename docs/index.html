@@ -1581,20 +1581,30 @@ $("#more-filters").addEventListener("click", () => {
 });
 
 // Side menu (wide screens): a group opens after a short hover, so sweeping the pointer past
-// doesn't make the list jump, and closes shortly after the pointer leaves
+// doesn't make the list jump. Groups above the pointer stay open while it is in the menu
+// (closing them would pull the rows up under it); ones below close as another group is
+// entered, and all of them shortly after the pointer leaves the menu.
 const SIDE_MENU = matchMedia("(min-width: 1160px)");
 function bindFilterHover(wrap) {
   if (!matchMedia("(hover: hover)").matches) return;
-  for (const g of wrap.querySelectorAll(".cgroup")) {
+  const groups = [...wrap.querySelectorAll(".cgroup")];
+  for (const g of groups) {
     g.addEventListener("mouseenter", () => {
-      clearTimeout(g._close);
+      for (const o of groups) if (g.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        clearTimeout(o._open);
+        o.classList.remove("hover-open");
+      }
       g._open = setTimeout(() => g.classList.add("hover-open"), 140);
     });
-    g.addEventListener("mouseleave", () => {
-      clearTimeout(g._open);
-      g._close = setTimeout(() => g.classList.remove("hover-open"), 220);
-    });
+    g.addEventListener("mouseleave", () => clearTimeout(g._open));
   }
+  if (wrap._hoverBound) return;
+  wrap._hoverBound = true;
+  wrap.addEventListener("mouseenter", () => clearTimeout(wrap._close));
+  wrap.addEventListener("mouseleave", () => {
+    wrap._close = setTimeout(() => wrap.querySelectorAll(".cgroup.hover-open")
+      .forEach((g) => g.classList.remove("hover-open")), 220);
+  });
 }
 // Update the selection in place: no rebuild, so nothing flickers. A group that was open stays
 // open (.stay) until the pointer leaves the menu, so rows don't shift under the pointer.
