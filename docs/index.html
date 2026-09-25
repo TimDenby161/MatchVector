@@ -917,8 +917,8 @@
     .side-filters .ll-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 1px;
       margin-left: 15px; padding-left: 6px; border-left: 1px solid var(--gridline); }
     .side-filters .league-list .filter-chip { font-size: 12.5px; padding: 5px 10px; }
-    .side-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .league-list { grid-template-rows: 1fr; opacity: 1; }
-    .side-filters .cgroup:is(.open, .hover-open, .stay, :focus-within) > .filter-chip .caret { transform: none; }
+    .side-filters .cgroup:is(.open, .hover-open, :focus-within) > .league-list { grid-template-rows: 1fr; opacity: 1; }
+    .side-filters .cgroup:is(.open, .hover-open, :focus-within) > .filter-chip .caret { transform: none; }
     .side-filters .league-row { display: none !important; }
     @media (prefers-reduced-motion: reduce) {
       .side-filters .league-list, .side-filters .caret, .side-filters .filter-chip { transition: none; }
@@ -1606,16 +1606,16 @@ function bindFilterHover(wrap) {
       .forEach((g) => g.classList.remove("hover-open")), 220);
   });
 }
-// Update the selection in place: no rebuild, so nothing flickers. A group that was open stays
-// open (.stay) until the pointer leaves the menu, so rows don't shift under the pointer.
+// Update the selection in place: no rebuild, so nothing flickers. Only the groups holding the
+// selection stay open; every other one, hover-opened or not, closes.
 function syncFilterMenu(wrap, f) {
-  const hovering = wrap.matches(":hover");
   wrap.querySelectorAll("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === f)));
   for (const g of wrap.querySelectorAll(".cgroup")) {
     const head = g.querySelector(":scope > .filter-chip");
     const pressed = g.querySelector('[aria-pressed="true"]');
-    if (g.classList.contains("open") && !pressed && hovering) g.classList.add("stay");
+    clearTimeout(g._open);
     g.classList.toggle("open", !!pressed);
+    if (!pressed) g.classList.remove("hover-open");
     head.classList.toggle("has-active", !!pressed && pressed !== head);
   }
 }
@@ -4152,8 +4152,6 @@ $("#match-filters").addEventListener("click", (e) => {
   // as on Clubs: the side menu updates in place, phones rebuild
   if (SIDE_MENU.matches) { syncFilterMenu($("#match-filters"), state.matchFilter); renderMatches(false); } else renderMatches();
 });
-$("#match-filters").addEventListener("mouseleave", (e) =>
-  e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
 $("#table-filters").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-filter]");
   if (!btn) return;
@@ -4162,8 +4160,6 @@ $("#table-filters").addEventListener("click", (e) => {
   if (SIDE_MENU.matches) syncFilterMenu($("#table-filters"), state.tableFilter); else renderTableFilters();
   renderTable();
 });
-$("#table-filters").addEventListener("mouseleave", (e) =>
-  e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
 SIDE_MENU.addEventListener("change", () => { if (state.rankings) { renderTableFilters(); renderMatchFilters(); renderStatsFilters(); renderBetFilters(); } });
 // Stats and Bets menus: as on Clubs, the side menu updates in place and phones rebuild
 for (const [id, key, menu, render] of [["#stats-filters", "statsFilter", renderStatsFilters, renderStats],
@@ -4175,8 +4171,6 @@ for (const [id, key, menu, render] of [["#stats-filters", "statsFilter", renderS
     if (SIDE_MENU.matches) syncFilterMenu($(id), state[key]); else menu();
     render();
   });
-  $(id).addEventListener("mouseleave", (e) =>
-    e.currentTarget.querySelectorAll(".cgroup.stay").forEach((g) => g.classList.remove("stay")));
 }
 for (const [id, key, attr] of [["#bet-strategy", "betStrategy", "strategy"], ["#bet-market", "betMarket", "market"], ["#bet-view", "betView", "view"]]) {
   $(id).addEventListener("click", (e) => {
