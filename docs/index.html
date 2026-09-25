@@ -2399,7 +2399,7 @@ function renderStats() {
       <span class="dist-pct">${v.toFixed(2)}</span></div>`;
   }).join("") : "";
   const ratingBlock = rated ? `
-    <div class="stats-card" style="margin-bottom:12px">
+    <div class="stats-card" style="margin-top:12px">
       <div class="stats-label">Average rating</div>
       <div class="stats-value">${s.rating_avg.toFixed(2)}<span style="font-size:14px;color:var(--text-muted)"> / 5 · ${RATING_LABELS[avgTier]}</span></div>
       <div style="margin-top:10px">${dist}</div>
@@ -2419,7 +2419,7 @@ function renderStats() {
       </div>
       <div class="stats-note">Bookmakers' chances are the average across bookmakers with their margin removed, from the last odds before kickoff. Only matches with odds are compared${mk.n < 1000 ? "; the sample is still small, so treat this as a rough guide" : ""}.</div>
     </div>${marketsTable(s.markets)}` : `<div class="stats-card" style="margin-bottom:12px"><div class="stats-label">Model vs bookmakers</div><div class="stats-note">No finished matches with bookmaker odds in this range yet. Odds are collected nightly for upcoming matches.</div></div>`;
-  body.innerHTML = ratingBlock + marketBlock + `
+  body.innerHTML = marketBlock + `
     <div class="stats-grid">
       ${card("Matches", s.n.toLocaleString(), liveNote)}
       ${card("Right result", pct(s.correct), `Picking the home team every time: ${pct(s.home_rate)}`)}
@@ -2435,7 +2435,7 @@ function renderStats() {
         <tbody>${rows}</tbody>
       </table>
       <div class="stats-note">Every home win, draw and away win chance counts as one call. Well calibrated means "Happened" is close to "Avg said".</div>
-    </div>`;
+    </div>` + ratingBlock;
 }
 
 // Model vs bookmakers in every market: log loss on the same matches against the closing
