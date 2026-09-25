@@ -785,6 +785,13 @@
   .sc-4 { color: var(--status-good); font-weight: 700; } .sc-3 { color: var(--status-warning); font-weight: 700; }
   .sc-2 { color: var(--series-orange); font-weight: 700; } .sc-1 { color: var(--status-critical); font-weight: 700; }
   .pitch .sc-4 { color: #3ecf5a; } .pitch .sc-3 { color: #f0c43a; } .pitch .sc-2 { color: #f08a5a; } .pitch .sc-1 { color: #f07878; }
+  .pitch .xi-spot.sq-4 { background: #1f7a35; border-color: #3ecf5a; } .pitch .xi-spot.sq-3 { background: #8a6d12; border-color: #f0c43a; }
+  .pitch .xi-spot.sq-2 { background: #8e4523; border-color: #f08a5a; } .pitch .xi-spot.sq-1 { background: #8a2c2c; border-color: #f07878; }
+  a.xi-spot.sq-4:hover, a.xi-spot.sq-3:hover, a.xi-spot.sq-2:hover, a.xi-spot.sq-1:hover { filter: brightness(1.15); }
+  .xi-spot .pp-rank { padding: 0 5px; border-radius: 5px; background: rgba(0,0,0,0.55); }
+  .xi-spot .pp-rank.rk-4 { color: #3ecf5a; } .xi-spot .pp-rank.rk-3 { color: #f0c43a; }
+  .xi-spot .pp-rank.rk-2 { color: #f08a5a; } .xi-spot .pp-rank.rk-1 { color: #f07878; }
+  .xi-spot .pp-meta .sc-4, .xi-spot .pp-meta .sc-3, .xi-spot .pp-meta .sc-2, .xi-spot .pp-meta .sc-1 { color: #fff; }
   .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .squad-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 7px 0; font-size: 13px; }
@@ -3152,9 +3159,10 @@ function xiPitch(xi) {
     return ps.map((q, i) => {
       const x = clash ? from + i * gap : q.x;
       const { b, p, rank, chance, mins } = q.c;
-      return `<a class="pp-spot xi-spot rel-${rankTier(rank)}" href="#/player/${p.id}" style="left:${x}%;top:${y}%"
+      // the square in the start-chance colour, the rating in its own
+      return `<a class="pp-spot xi-spot sq-${startTier(chance)}" href="#/player/${p.id}" style="left:${x}%;top:${y}%"
           title="${escapeHtml(`${p.name} · ${b.label} · rank ${rank.toFixed(1)} · ${Math.round(chance)}% to start · ${mins}′ expected`)}">
-        <span class="pp-rank">${Math.round(rank)}</span><span class="pp-name">${escapeHtml(shortName(p.name))}</span>
+        <span class="pp-rank rk-${rankTier(rank)}">${Math.round(rank)}</span><span class="pp-name">${escapeHtml(shortName(p.name))}</span>
         <span class="pp-meta"><span class="sc-${startTier(chance)}">${Math.round(chance)}%</span> · ${mins}′</span></a>`;
     });
   }).join("");
