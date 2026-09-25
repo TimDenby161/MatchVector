@@ -1480,9 +1480,9 @@ function betScope() {
     (state.betMarket === "all" || b.market === state.betMarket) &&
     (state.betView === "all" || b.cautious));
 }
-// The menu shows how many bets each competition, country and region has on those filters
+// The menu shows how many settled bets each competition, country and region has on those filters
 function renderBetFilters() {
-  const countries = betCountries(), scope = betScope();
+  const countries = betCountries(), scope = betScope().filter((b) => b.result === "win" || b.result === "loss");
   const countOf = (value) => {
     const ids = filterLeagueIds(value, countries);
     return ids ? scope.filter((b) => ids.includes(b.league)).length : scope.length;
