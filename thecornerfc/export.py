@@ -609,12 +609,37 @@ def export_players(conn, out_dir=OUT_DIR):
     for fid, team, player, name, pos, rank in all_lineups:
         fixture_xi.setdefault(str(fid), {}).setdefault(str(team), []).append(
             [player, name, pos, float(rank) if rank is not None else None])
+    actual_lineups = conn.execute(
+        f"""with starters as (
+                select fixture_id, team_id, player_id,
+                       coalesce(role, case position when 'G' then 'GK' when 'D' then 'CB'
+                                      when 'M' then 'CM' when 'F' then 'ST' end) role,
+                       1 src
+                from fixture_players where started
+                union all
+                select fixture_id, team_id, player_id, role, 2 src from fixture_lineups),
+            x as (select distinct on (fixture_id, team_id, player_id) fixture_id, team_id, player_id, role
+                  from starters order by fixture_id, team_id, player_id, src)
+            select x.fixture_id, x.team_id, x.player_id, p.name, x.role,
+                  coalesce(fpr.player_rank, p.current_rank)
+            from x join fixtures f using (fixture_id)
+            join players p using (player_id)
+            left join fixture_player_ranks fpr on fpr.fixture_id = x.fixture_id and fpr.player_id = x.player_id
+            where f.status_short = any(%s) and f.kickoff > now() - interval '{PAST_DAYS} days'
+            order by x.fixture_id, x.team_id, x.player_id""", [list(config.FINISHED_STATUSES)]).fetchall()
+    actual_xi = {}
+    for fid, team, player, name, pos, rank in actual_lineups:
+        actual_xi.setdefault(str(fid), {}).setdefault(str(team), []).append(
+            [player, name, pos, float(rank) if rank is not None else None])
     # team-sheet order: keeper, defence right to left, midfield, attack
     order = {r: i for i, r in enumerate(["GK", "RB", "RWB", "CB", "LB", "LWB", "DM", "CM", "RM", "LM",
                                           "AM", "RW", "LW", "ST"])}
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     for teams in fixture_xi.values():
+        for players in teams.values():
+            players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
+    for teams in actual_xi.values():
         for players in teams.values():
             players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     # his next seasons, projected along his age curve (player_ratings.py)
@@ -634,6 +659,7 @@ def export_players(conn, out_dir=OUT_DIR):
                      [future[r[0]].get(y) for y in future_seasons]] for r in players],
         "next_xi": next_xi,
         "fixture_xi": fixture_xi,
+        "actual_xi": actual_xi,
         # names of players' clubs outside the club rankings (a move out of our leagues)
         "teams": {str(t): n for t, n in conn.execute(
             "select team_id, name from teams where team_id = any(%s)", [list({r[5] for r in players if r[5]})])},

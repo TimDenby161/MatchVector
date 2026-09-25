@@ -1303,9 +1303,10 @@ async function loadData() {
       for (const r of pj.players) r[1] = decodeEntities(r[1]);
       for (const xi of Object.values(pj.next_xi || {})) for (const r of xi.players) r[1] = decodeEntities(r[1]);
       for (const teams of Object.values(pj.fixture_xi || {})) for (const xi of Object.values(teams)) for (const r of xi) r[1] = decodeEntities(r[1]);
+      for (const teams of Object.values(pj.actual_xi || {})) for (const xi of Object.values(teams)) for (const r of xi) r[1] = decodeEntities(r[1]);
     }
     state.players = pj ? { list: rowsToObjects(pj.fields, pj.players), nextXi: pj.next_xi, fixtureXi: pj.fixture_xi || {},
-      seasons: pj.seasons || [], futureSeasons: pj.future_seasons || [], teams: pj.teams || {} } : null;
+      actualXi: pj.actual_xi || {}, seasons: pj.seasons || [], futureSeasons: pj.future_seasons || [], teams: pj.teams || {} } : null;
     state.data = { ...m, matches: rowsToObjects(m.fields, m.matches) };
     state.rankings = rowsToObjects(r.fields, r.rankings);
     // Trend: Form less Rating (as shown, so the sum adds up), how far a club is playing above or below its long-term level
@@ -1837,7 +1838,7 @@ function matchHead(m, right = "") {
 function matchCard(m) {
   const finished = FINISHED.has(m.status) && m.hg != null;
   const rated = finished && m.rating;
-  const canLineup = !finished && !LIVE.has(m.status) && !CALLED_OFF.has(m.status);
+  const canLineup = !LIVE.has(m.status) && !CALLED_OFF.has(m.status);
   const cls = (rated ? ` rated acc-${m.rating}` : "") + (canLineup ? " lineup-card" : "");
   const badge = rated
     ? `<span class="rating-badge badge-${m.rating}" title="${m.rating}/5 ${RATING_LABELS[m.rating]}">${m.rating}/5</span>` : "";
@@ -2928,10 +2929,11 @@ function xiBlock(teamId) {
 }
 
 async function renderMatchLineups(m, panel) {
-  panel.innerHTML = `<div class="empty-state">Loading predicted line-ups…</div>`;
-  const exact = state.players?.fixtureXi?.[String(m.id)] || {};
+  const finished = FINISHED.has(m.status) && m.hg != null;
+  panel.innerHTML = `<div class="empty-state">Loading ${finished ? "actual line-ups" : "predicted line-ups"}…</div>`;
+  const exact = (finished ? state.players?.actualXi : state.players?.fixtureXi)?.[String(m.id)] || {};
   const [homeData, awayData] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
-  if (!exact[String(m.home)] || !exact[String(m.away)]) {
+  if (!finished && (!exact[String(m.home)] || !exact[String(m.away)])) {
     state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
     if (!state.playerSeasons) { loadPlayerSeasons(); await state.playerSeasonsLoading; }
   }
@@ -2942,6 +2944,7 @@ async function renderMatchLineups(m, panel) {
     const listed = exact[String(teamId)];
     if (listed?.length) return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(listed.map(([pid, name, pos, rank]) =>
       ({ p: { id: pid, name }, b: { label: pos }, rank, chance: null, mins: null })), data, { note: "" })}</div>`;
+    if (finished) return `<div><div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No actual line-up for this team.</div></div>`;
     const xi = predictedXi(teamId, data, m);
     if (!xi) return `<div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No predicted XI for this team.</div>`;
     return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(xi, data, { note: "" })}</div>`;
@@ -4918,9 +4921,9 @@ function setTableView(view) {
 $("#matches-list").addEventListener("click", (e) => {
   if (e.target.closest("a")) return;
   if (e.target.closest(".fixture-lineup-panel")) return;
-  const ratedCard = e.target.closest(".match-card.rated");
-  if (ratedCard) {
-    const d = ratedCard.querySelector(".rating-detail");
+  const ratingBadge = e.target.closest(".rating-badge");
+  if (ratingBadge) {
+    const d = ratingBadge.closest(".match-card")?.querySelector(".rating-detail");
     if (d) d.hidden = !d.hidden;
     return;
   }
