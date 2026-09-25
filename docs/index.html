@@ -861,6 +861,11 @@
     margin-top: 6px; font-size: 12px; }
   .form-row .rel-chip { min-width: 0; padding: 2px 0; font-size: 11px; }
   .form-row .club-logo { width: 16px; height: 16px; }
+  .next5-row { display: grid; grid-template-columns: 40px 16px 14px 16px minmax(0, 1fr); align-items: center; gap: 8px;
+    margin-top: 6px; font-size: 12px; }
+  .next5-row .club-logo { width: 16px; height: 16px; }
+  .next5-date { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .next5-comp { width: 16px; height: 16px; object-fit: contain; }
   .form-ha { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; }
   .form-move { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
   .inj-row { display: flex; flex-direction: column; margin-top: 6px; font-size: 12.5px; line-height: 1.25; min-width: 0; }
@@ -2937,7 +2942,22 @@ function clubOverviewTab() {
         <span class="form-ha">${m.home === 2 ? "N" : m.home ? "H" : "A"}</span>
         <span class="form-move">${moveHtml(move)}</span></div>`).join("")}
     </div>` : "";
-  const side = injuredCard(id) + formCard, pitch = depthPitch(id);   // the next match is on the Predicted XI tab
+  const upcoming = clubUpcoming(id).slice(0, 5);
+  const nextCard = upcoming.length ? `<div class="next-card form-card">
+      <div class="next-top"><span class="next-label">Next games</span><span>Win chance</span></div>
+      ${upcoming.map((m) => {
+        const home = m.home === id, opp = home ? m.away : m.home;
+        const win = m.p_home != null ? Math.round(100 * (home ? m.p_home : m.p_away)) : null;
+        const comp = SHORT_NAMES[m.league] || state.data.competitions[m.league]?.name || "";
+        return `<div class="next5-row" title="${escapeHtml(`${fmtDay(m.kickoff)} ${fmtTime(m.kickoff)} · ${home ? "v" : "@"} ${teamName(opp)} · ${compLabel(m.league)}`)}">
+          <span class="next5-date">${escapeHtml(fmtShortDate(m.kickoff))}</span>
+          <img class="club-logo" src="${teamLogo(opp)}" alt="${escapeHtml(teamName(opp))}" loading="lazy" onerror="this.style.visibility='hidden'">
+          <span class="form-ha">${home ? "H" : "A"}</span>
+          <img class="next5-comp" src="https://media.api-sports.io/football/leagues/${m.league}.png" alt="${escapeHtml(comp)}" title="${escapeHtml(comp)}" loading="lazy" onerror="this.style.visibility='hidden'">
+          <span class="form-move">${win != null ? `${win}%` : ""}</span></div>`;
+      }).join("")}
+    </div>` : "";
+  const side = injuredCard(id) + nextCard + formCard, pitch = depthPitch(id);   // the next match is on the Predicted XI tab
   return `
     ${side && pitch ? `<div class="ov-top"><div class="ov-side">${side}</div>${pitch}</div>` : side + pitch}`;
 }
@@ -3079,9 +3099,27 @@ function depthPitch(teamId) {
   // 100%. Only players who really play there take it (his main position or 180+ starting minutes
   // there in a year): a one-off cup start somewhere new (Zubimendi at right-back in a rotated
   // League Cup side) keeps its own few % but doesn't inherit anyone's.
-  const xi = st?.xi || [];
-  const projected = (roles, n, ps) => {
-    const actual = new Map(ps.map(({ p }) => [p.id, startPct(p, roles) || 0]));
+  // It's worked out for the next match's kind of competition: league, European or domestic cup.
+  // Over this season's matches of that kind, blended with all its matches in proportion
+  // k : 1 (k = matches of that kind), so a rotated League Cup side lifts the reserves for the next
+  // cup tie and a league match leans on the league regulars.
+  const xi = st?.xi || [], xiLeague = st?.xi_league || [];
+  const compGroup = (lg) => {
+    const c = state.data.competitions[lg];
+    return !c ? "cup" : c.type === "League" ? "league" : c.country === "World" ? "europe" : "cup";
+  };
+  const nextMatch = clubUpcoming(teamId)[0];
+  const nextGroup = nextMatch ? compGroup(nextMatch.league) : null;
+  const groupXi = nextGroup ? xi.filter((_, k) => compGroup(xiLeague[k]) === nextGroup) : [];
+  const wGroup = groupXi.length / (groupXi.length + 1);
+  const shareIn = (matches, p, roles) => {
+    if (!matches.length) return 0;
+    let c = 0;
+    for (const m of matches) for (let i = 0; i < m.length; i += 2) if (m[i] === p.id && roles.includes(m[i + 1])) c++;
+    return 100 * c / matches.length;
+  };
+  const projectedIn = (roles, n, ps, xi) => {
+    const actual = new Map(ps.map(({ p }) => [p.id, shareIn(xi, p, roles)]));
     const share = new Map(actual);
     let left = n * 100 - [...actual.values()].reduce((a, v) => a + v, 0);
     if (left <= 0.5) return { share, changed: false };
@@ -3107,6 +3145,14 @@ function depthPitch(teamId) {
     for (const { p } of pool) { if (left <= 0.5) break; const g = Math.min(room(p.id), left); share.set(p.id, share.get(p.id) + g); left -= g; }
     return { share, changed: true };
   };
+  const projected = (roles, n, ps) => {
+    const all = projectedIn(roles, n, ps, xi);
+    if (!groupXi.length) return all;
+    const grp = projectedIn(roles, n, ps, groupXi);
+    const share = new Map(ps.map(({ p }) => [p.id, wGroup * (grp.share.get(p.id) || 0) + (1 - wGroup) * (all.share.get(p.id) || 0)]));
+    return { share, changed: all.changed || grp.changed };
+  };
+  const nextLabel = nextMatch ? SHORT_NAMES[nextMatch.league] || state.data.competitions[nextMatch.league]?.name || "" : "";
   const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
     const n = usual(roles);
     const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
@@ -3124,11 +3170,10 @@ function depthPitch(teamId) {
         const pct = got || null;
         // expected minutes next match in this position: for now just his start share x 90
         const xmin = pct != null ? Math.round((proj.share.get(p.id) || 0) * 0.9) : null;
-        const tip = (proj.changed && got !== had
-          ? `${p.name}: started ${had}% of this season's matches at ${r}; expected ${got}% with the injured or departed out`
-          : pct != null ? `${p.name}: started ${pct}% of this season's matches at ${r}` : "")
-          + (xmin ? ` · xMins ${xmin}` : "");
-        return `<a class="dp-row" href="#/player/${p.id}"${tip ? ` title="${escapeHtml(tip)}"` : ""}>
+        const tip = `${p.name}: started ${had}% of this season's matches at ${r}`
+          + (got !== had ? `; expected ${got}% in the next match${nextLabel ? ` (${nextLabel})` : ""}${proj.changed ? ", with the injured or departed out" : ""}` : "")
+          + ` · xMins ${xmin || 0}`;
+        return `<a class="dp-row" href="#/player/${p.id}" title="${escapeHtml(tip)}">
           <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
           <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span><span class="dp-xmin${xmin ? "" : " zero"}">${xmin || 0}′</span></a>`;
       }).join(""); })()}
