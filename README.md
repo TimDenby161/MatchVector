@@ -410,12 +410,11 @@ A line-up adjustment (the strength of the starting XI against normal) was backte
 The site labels the club rank as an **Elo rating** (**Rating** = LT ALGO, **Form** = current rank, **Trend** = Form minus Rating, how far a club is playing above or below its long-term level). The numbers are the same as the club rank below, and on that scale 100 points is worth one goal a game.
 
 **Club pages.** Club names link to `#/club/<team_id>`. The page has tabs:
-- **Overview:** the next match, the squad on a pitch by the positions each player can play, recent form, the rank tiles and 12-month goal averages
-- **Predicted XI:** the predicted line-up for the next match
-- **Formations:** the manager, and the formations used since he took over and this season
+- **Overview:** injured and suspended players, the next 5 games and recent form beside the whole squad on a pitch: each player in the positions he plays, with his chance of starting the next match and expected minutes there (from this season's line-ups in every competition, weighted to the next match's kind of competition, with injured players' starts passed to whoever replaced them and a pull towards the best XI by rating)
+- **Predicted XI:** the XI from those start chances, with the squad's attack, defence and strength (also on the match cards)
+- **Formations:** the manager, and the formations used this season and since he took over
 - **Matches:** fixtures with projections, and every result with its rank change
-- **Squad:** the club's ranked players by line
-- **History:** the rank-over-time chart and season-by-season ranks
+- **History:** Elo at the end of each season and season-by-season ranks
 
 Each club's history comes from `docs/data/clubs/<team_id>.json`, which is written by `export_clubs` for clubs active in the last 400 days and loaded only when the page opens. Each match carries the formation from its line-up (`fixture_formations`; only the leagues with match-by-match player data have line-ups).
 

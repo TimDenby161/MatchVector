@@ -798,17 +798,9 @@
   .sq-tile .rel-chip { font-size: 15px; padding: 4px 8px; min-width: 44px; }
   .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .squad-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 7px 0; font-size: 13px; }
-  .squad-row + .squad-row { border-top: 1px solid var(--border); }
-  .squad-row .player-photo { width: 32px; height: 32px; }
-  .sq-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sq-sub { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; }
-  .sq-sub .flag { width: 14px; height: 10px; }
   .flag-link { display: inline-flex; vertical-align: -1px; }
   .flag-link:hover .flag, .flag-link:focus-visible .flag { box-shadow: 0 0 0 1px var(--series-blue); }
   .club-meta .flag { width: 16px; height: 11px; }
-  .sq-xi { margin-left: 6px; font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
-    background: color-mix(in srgb, var(--series-blue) 15%, transparent); color: var(--series-blue); }
   .season-bars { display: flex; align-items: flex-end; gap: 6px; height: 150px; margin-top: 8px; }
   .season-bar { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
   .sb-fill { width: 100%; max-width: 44px; border-radius: 5px 5px 0 0; background: var(--series-blue); }
@@ -2933,7 +2925,7 @@ async function openClubPage(id) {
 // The club's injury list (injuries.json): its next match's, else its latest recent one
 const clubInjuries = (id) => state.injuries?.teams?.[String(id)] || null;
 
-const CLUB_TABS = [["overview", "Overview"], ["xi", "Predicted XI"], ["formations", "Formations"], ["matches", "Matches"], ["squad", "Squad"], ["history", "History"]];
+const CLUB_TABS = [["overview", "Overview"], ["xi", "Predicted XI"], ["formations", "Formations"], ["matches", "Matches"], ["history", "History"]];
 const clubOpp = (o) => state.club?.data?.teams?.[o] || teamName(o);
 // his club's upcoming fixtures from the matches file
 const clubUpcoming = (id) => state.data.matches.filter((m) => (m.home === id || m.away === id)
@@ -2983,7 +2975,7 @@ function renderClubPage() {
 function renderClubTab() {
   const tab = state.clubTab || "overview";
   document.querySelectorAll("#club-body [data-ctab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ctab === tab)));
-  $("#club-tab").innerHTML = tab === "xi" ? clubXiTab() : tab === "formations" ? clubFormationsTab() : tab === "matches" ? clubMatchesTab() : tab === "squad" ? clubSquadTab()
+  $("#club-tab").innerHTML = tab === "xi" ? clubXiTab() : tab === "formations" ? clubFormationsTab() : tab === "matches" ? clubMatchesTab()
     : tab === "history" ? clubHistoryTab() : clubOverviewTab();
 }
 
@@ -3580,41 +3572,6 @@ function clubMatchesTab() {
       <div class="page-note">Elo: the club's Elo rating after the match; the change is how far that match moved it.</div></div>` : ""}`;
 }
 
-// ---- Squad: the club's ranked players by line, best first
-const SQUAD_LINES = [["Goalkeepers", ["GK"]], ["Defenders", ["CB", "FB"]], ["Midfielders", ["DM", "CM", "AM"]], ["Forwards", ["W", "ST"]]];
-function clubSquadTab() {
-  const { id } = state.club;
-  const squad = (state.players?.list || []).filter((p) => p.team === id).sort((a, b) => b.rank - a.rank);
-  if (!squad.length) return `<div class="empty-state">No ranked players for this club (only the leagues with player stats have them).</div>`;
-  const tile = (label, value) => `<div class="team-stat"><div class="team-stat-label">${label}</div><div class="team-stat-value">${value}</div></div>`;
-  const aged = squad.filter((p) => p.age != null);
-  const xi = state.players.nextXi?.[String(id)];
-  const inXi = new Set((xi?.players || []).map(([pid]) => pid));
-  const row = (p) => `<div class="squad-row">
-      <img class="player-photo" src="${playerPhoto(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
-      <div class="sq-main"><div class="sq-name">${playerLink(p.id, p.name)}${inXi.has(p.id) ? `<span class="sq-xi" title="In the predicted XI">XI</span>` : ""}</div>
-        <div class="sq-sub">${escapeHtml(p.position || "")}${p.age != null ? ` · ${p.age}` : ""}${p.nationality ? ` · ${flagImg(p.nationality)} ${natLink(p.nationality)}` : ""} · ${p.minutes.toLocaleString()}′</div></div>
-      <div>${rankChipSmall(p.rank)}</div>
-    </div>`;
-  const placed = new Set();
-  const groups = SQUAD_LINES.map(([name, gs]) => {
-    const ps = squad.filter((p) => gs.includes(GROUP_OF[p.position]));
-    ps.forEach((p) => placed.add(p.id));
-    return [name, ps];
-  });
-  const rest = squad.filter((p) => !placed.has(p.id));
-  if (rest.length) groups.push(["Others", rest]);
-  return `
-    <div class="team-stats compact">
-      ${tile("Players", squad.length)}
-      ${tile("Average rank", Math.round(squad.reduce((a, p) => a + p.rank, 0) / squad.length))}
-      ${tile("Average age", aged.length ? (aged.reduce((a, p) => a + p.age, 0) / aged.length).toFixed(1) : "–")}
-      ${tile("Best", `<span style="font-size:13px">${playerLink(squad[0].id, squad[0].name)}</span>`)}
-    </div>
-    ${groups.filter(([, ps]) => ps.length).map(([name, ps]) => `<div class="club-section"><div class="modal-section">${name} (${ps.length})</div>
-      <div class="match-list">${ps.map(row).join("")}</div></div>`).join("")}
-    <div class="page-note">Current player ranks (0-100), with league minutes over the last 12 months.</div>`;
-}
 
 // A club's seasons: July to June, or the calendar year for clubs that play through the summer
 // (more matches in June/July than in December/January: MLS, Norway ...)
