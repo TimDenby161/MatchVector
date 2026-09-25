@@ -14,7 +14,7 @@ from pathlib import Path
 from . import config, positions
 from .cache import WEEK, cached_rows, rank_history
 from .betting import BOOKMAKER, CAUTIOUS_RULE, is_cautious
-from .predictions import GOAL_LINES, goal_lines
+from .predictions import GOAL_LINES, UPCOMING_STATUSES, goal_lines
 
 log = logging.getLogger(__name__)
 
@@ -880,8 +880,9 @@ def export_clubs(conn, out_dir=OUT_DIR):
 def export_leagues(conn, out_dir=OUT_DIR):
     """One file per competition for its league page: docs/data/leagues/<league_id>.json.
 
-    The current season's table (every group, as API-Football sends it) and all its fixtures.
-    Loaded only when the page opens.
+    The current season's table (every group, as API-Football sends it) and all its fixtures, the
+    upcoming ones with the model's projected goals and home / draw / away chances (for the page's
+    projected table). Loaded only when the page opens.
     """
     seasons = {lid: (season, start) for lid, season, start in conn.execute(
         """select distinct on (league_id) league_id, season, start_date from league_seasons
@@ -895,13 +896,17 @@ def export_leagues(conn, out_dir=OUT_DIR):
                order by league_id, group_name, rank"""):
         tables[lid].append([group, rank, team, pl, w, d, l, gf, ga, gd, pts, form, desc])
     fixtures = defaultdict(list)
-    for fid, lid, kickoff, rnd, home, away, status, hg, ag, ph, pa_ in conn.execute(
-            """select fixture_id, league_id, kickoff, round, home_team_id, away_team_id, status_short,
-                      home_goals, away_goals, pen_home, pen_away
-               from fixtures where (league_id, season) in (select league_id, max(season) from league_seasons
-                                                          where is_current group by league_id)
-               order by kickoff, fixture_id"""):
-        fixtures[lid].append([fid, kickoff.isoformat(), rnd, home, away, status, hg, ag, ph, pa_])
+    for fid, lid, kickoff, rnd, home, away, status, hg, ag, ph, pa_, xh, xa, p1, px, p2 in conn.execute(
+            """select f.fixture_id, f.league_id, f.kickoff, f.round, f.home_team_id, f.away_team_id, f.status_short,
+                      f.home_goals, f.away_goals, f.pen_home, f.pen_away,
+                      p.home_xg::float8, p.away_xg::float8, p.p_home::float8, p.p_draw::float8, p.p_away::float8
+               from fixtures f
+               left join fixture_predictions p on p.fixture_id = f.fixture_id and f.status_short = any(%s)
+               where (f.league_id, f.season) in (select league_id, max(season) from league_seasons
+                                                 where is_current group by league_id)
+               order by f.kickoff, f.fixture_id""", [list(UPCOMING_STATUSES)]):
+        fixtures[lid].append([fid, kickoff.isoformat(), rnd, home, away, status, hg, ag, ph, pa_,
+                              _r(xh), _r(xa), _r(p1, 3), _r(px, 3), _r(p2, 3)])
     names = dict(conn.execute("select team_id, name from teams"))
     league_dir = out_dir / "leagues"
     league_dir.mkdir(parents=True, exist_ok=True)
@@ -914,7 +919,8 @@ def export_leagues(conn, out_dir=OUT_DIR):
                    "table_fields": ["group", "rank", "team", "played", "win", "draw", "lose", "gf", "ga", "gd",
                                     "points", "form", "description"],
                    "table": tables[lid],
-                   "fixture_fields": ["id", "kickoff", "round", "home", "away", "status", "hg", "ag", "pen_h", "pen_a"],
+                   "fixture_fields": ["id", "kickoff", "round", "home", "away", "status", "hg", "ag", "pen_h", "pen_a",
+                                      "home_xg", "away_xg", "p_home", "p_draw", "p_away"],
                    "fixtures": fixtures[lid],
                    "teams": {t: names.get(t) for t in teams}}
         (league_dir / f"{lid}.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")

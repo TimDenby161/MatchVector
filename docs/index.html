@@ -616,6 +616,7 @@
   table.league-table .lt-badge .club-logo { width: 20px; height: 20px; }
   table.league-table .lt-club { text-align: left; width: 100%; white-space: normal; overflow-wrap: anywhere; min-width: 110px; }
   table.league-table .lt-elo { color: var(--text-muted); }
+  table.league-table .lt-zone { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; }
   .table-scroll:has(table.league-table) { overflow-x: auto; }
   .table-scroll table.league-table tbody tr:last-child td { border-bottom: none; }
   .table-scroll + .modal-section { margin-top: 14px; }
@@ -3682,7 +3683,7 @@ function openNationPage(nat) {
 
 // ------------------------------------------------------------------ league and country pages
 const leagueCache = new Map();
-const LEAGUE_TABS = [["table", "Table"], ["matches", "Matches"], ["clubs", "Clubs"]];
+const LEAGUE_TABS = [["table", "Table"], ["projected", "Projected"], ["matches", "Matches"], ["clubs", "Clubs"]];
 const roundLabel = (r) => (r || "").replace(/^Regular Season - (\d+)$/, "Round $1");
 const OFF = new Set(["CANC", "PST", "ABD"]);
 // clubs playing their league football in this competition this season, best rated first
@@ -3715,7 +3716,7 @@ async function openLeaguePage(lid) {
     }
   }
   if (location.hash !== leagueHref(lid)) return;      // moved on while loading
-  const tabs = LEAGUE_TABS.filter(([k]) => k !== "table" || lg?.tableRows.length);
+  const tabs = LEAGUE_TABS.filter(([k]) => (k !== "table" && k !== "projected") || lg?.tableRows.length);
   const keep = state.league?.id === lid && tabs.some(([k]) => k === state.league.tab);
   state.league = { id: lid, data: lg, tabs, tab: keep ? state.league.tab : tabs[0][0], round: keep ? state.league.round : null };
   renderLeaguePage();
@@ -3746,14 +3747,13 @@ function renderLeaguePage() {
 function renderLeagueTab() {
   const tab = state.league.tab;
   document.querySelectorAll("#club-body [data-ltab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.ltab === tab)));
-  $("#league-tab").innerHTML = tab === "table" ? leagueTableTab() : tab === "matches" ? leagueMatchesTab() : leagueClubsTab();
+  $("#league-tab").innerHTML = tab === "table" ? leagueTableTab() : tab === "projected" ? leagueProjectedTab()
+    : tab === "matches" ? leagueMatchesTab() : leagueClubsTab();
 }
 
 // ---- Table: this season's standings, one table per group, zones coloured from API-Football's notes
 const ZONE_COLOURS = ["var(--series-blue)", "var(--series-aqua)", "var(--status-good)", "var(--status-warning)", "var(--text-muted)"];
-function leagueTableTab() {
-  const { data } = state.league;
-  const rows = data.tableRows;
+function leagueZones(rows) {
   const zones = new Map();
   let next = 0, releg = 0;
   for (const r of rows) {
@@ -3761,6 +3761,14 @@ function leagueTableTab() {
     zones.set(r.description, /relegation/i.test(r.description)
       ? (releg++ ? "var(--series-orange)" : "var(--status-critical)") : ZONE_COLOURS[Math.min(next++, ZONE_COLOURS.length - 1)]);
   }
+  return zones;
+}
+const zoneLegend = (zones) => zones.size ? `<div class="lt-legend">${[...zones].map(([d, c]) =>
+  `<span><i style="background:${c}"></i>${escapeHtml(d)}</span>`).join("")}</div>` : "";
+function leagueTableTab() {
+  const { data } = state.league;
+  const rows = data.tableRows;
+  const zones = leagueZones(rows);
   const groups = [...new Set(rows.map((r) => r.group))];
   // API-Football's form string is newest first; shown oldest first like the club page
   const formChips = (f) => f ? `<span class="lt-form">${[...f].reverse().map((c) =>
@@ -3781,8 +3789,100 @@ function leagueTableTab() {
           <td class="lt-wide">${r.gf ?? ""}–${r.ga ?? ""}</td><td>${r.gd > 0 ? "+" : ""}${r.gd ?? ""}</td><td><b>${r.points ?? ""}</b></td>
           <td>${formChips(r.form)}</td><td class="lt-elo">${rk ? Math.round(rk.current) : ""}</td></tr>`;
       }).join("")}</tbody></table></div>`;
-  return groups.map(table).join("") + (zones.size ? `<div class="lt-legend">${[...zones].map(([d, c]) =>
-    `<span><i style="background:${c}"></i>${escapeHtml(d)}</span>`).join("")}</div>` : "");
+  return groups.map(table).join("") + zoneLegend(zones);
+}
+
+// ---- Projected: the rest of the season played out SIMS times from the model's predictions. Each
+// upcoming match's score is drawn from its Poisson grid, scaled to its home / draw / away chances
+const SIMS = 5000;
+// one match's scores, most likely first, as cumulative chances (hg, ag in 0-10)
+function scoreTable(f) {
+  const pmf = (lam) => { const out = [], m = Math.max(lam, 0.01); let p = Math.exp(-m);
+    for (let k = 0; k <= 10; k++) { out.push(p); p *= m / (k + 1); } return out; };
+  const ph = pmf(f.home_xg), pa = pmf(f.away_xg);
+  const cells = [], sums = [0, 0, 0];      // home win, draw, away win
+  for (let i = 0; i <= 10; i++) for (let j = 0; j <= 10; j++) {
+    const k = i > j ? 0 : i === j ? 1 : 2;
+    cells.push({ i, j, k, p: ph[i] * pa[j] }); sums[k] += ph[i] * pa[j];
+  }
+  const want = [f.p_home, f.p_draw, f.p_away];
+  cells.forEach((c) => { c.p = sums[c.k] ? c.p * want[c.k] / sums[c.k] : 0; });
+  cells.sort((x, y) => y.p - x.p);
+  const cdf = new Float64Array(cells.length), hg = new Int8Array(cells.length), ag = new Int8Array(cells.length);
+  let acc = 0;
+  cells.forEach((c, n) => { cdf[n] = acc += c.p; hg[n] = c.i; ag[n] = c.j; });
+  return { cdf, hg, ag, total: acc };
+}
+function projectGroup(rows, fixtures) {
+  const n = rows.length, idx = new Map(rows.map((r, i) => [r.team, i]));
+  const games = fixtures.filter((f) => idx.has(f.home) || idx.has(f.away))
+    .map((f) => ({ h: idx.has(f.home) ? idx.get(f.home) : -1, a: idx.has(f.away) ? idx.get(f.away) : -1, ...scoreTable(f), f }));
+  const pos = rows.map(() => new Float64Array(n)), sumPts = new Float64Array(n), sumGd = new Float64Array(n);
+  const pts = new Float64Array(n), gd = new Float64Array(n), gf = new Float64Array(n), tie = new Float64Array(n);
+  const order = rows.map((_, i) => i);
+  for (let s = 0; s < SIMS; s++) {
+    for (let i = 0; i < n; i++) { const r = rows[i]; pts[i] = r.points || 0; gd[i] = r.gd || 0; gf[i] = r.gf || 0; tie[i] = Math.random(); }
+    for (const g of games) {
+      const u = Math.random() * g.total, cdf = g.cdf;
+      let c = 0;
+      while (c < cdf.length - 1 && cdf[c] < u) c++;
+      const hg = g.hg[c], ag = g.ag[c], hp = hg > ag ? 3 : hg === ag ? 1 : 0, ap = hg < ag ? 3 : hg === ag ? 1 : 0;
+      if (g.h >= 0) { pts[g.h] += hp; gd[g.h] += hg - ag; gf[g.h] += hg; }
+      if (g.a >= 0) { pts[g.a] += ap; gd[g.a] += ag - hg; gf[g.a] += ag; }
+    }
+    order.sort((x, y) => pts[y] - pts[x] || gd[y] - gd[x] || gf[y] - gf[x] || tie[y] - tie[x]);
+    for (let p = 0; p < n; p++) pos[order[p]][p]++;
+    for (let i = 0; i < n; i++) { sumPts[i] += pts[i]; sumGd[i] += gd[i]; }
+  }
+  const left = rows.map(() => 0), xw = rows.map(() => 0), xd = rows.map(() => 0);
+  for (const { h, a, f } of games) {
+    if (h >= 0) { left[h]++; xw[h] += f.p_home; xd[h] += f.p_draw; }
+    if (a >= 0) { left[a]++; xw[a] += f.p_away; xd[a] += f.p_draw; }
+  }
+  return rows.map((r, i) => ({ r, left: left[i], w: (r.win || 0) + xw[i], d: (r.draw || 0) + xd[i],
+    l: (r.lose || 0) + left[i] - xw[i] - xd[i], pts: sumPts[i] / SIMS, gd: sumGd[i] / SIMS,
+    pos: [...pos[i]].map((c) => c / SIMS) }))
+    .sort((x, y) => y.pts - x.pts || y.gd - x.gd);
+}
+function leagueProjectedTab() {
+  const { data } = state.league;
+  const rows = data.tableRows;
+  const upcoming = data.fixtureRows.filter((f) => f.p_home != null && f.home_xg != null);
+  if (!upcoming.length) return `<div class="empty-state">No upcoming matches to project.</div>`;
+  const groups = [...new Set(rows.map((r) => r.group))];
+  if (!state.league.proj) {
+    // worked out after the tab paints (it takes a moment), then drawn if still on this tab
+    const lg = state.league;
+    setTimeout(() => {
+      lg.proj = new Map(groups.map((g) => [g, projectGroup(rows.filter((r) => r.group === g), upcoming)]));
+      if (state.league === lg && lg.tab === "projected") renderLeagueTab();
+    }, 30);
+    return `<div class="empty-state">Playing out the rest of the season…</div>`;
+  }
+  const zones = leagueZones(rows);
+  const pct = (p) => p <= 0 ? `<span class="dim">–</span>` : p < 0.005 ? "<1%" : p > 0.995 && p < 1 ? ">99%" : `${Math.round(p * 100)}%`;
+  const table = (g) => {
+    const list = state.league.proj.get(g);
+    const byRank = new Map(rows.filter((r) => r.group === g).map((r) => [r.rank, r.description]));
+    // a zone's chance: the chance of finishing in any of the places carrying its note today
+    const cols = [...zones].filter(([d]) => [...byRank.values()].includes(d)).map(([d, c]) =>
+      [d, c, [...byRank].filter(([, v]) => v === d).map(([k]) => k - 1)]);
+    return `
+    ${groups.length > 1 ? `<div class="modal-section">${escapeHtml(g)}</div>` : ""}
+    <div class="table-scroll"><table class="league-table">
+      <thead><tr><th class="lt-pos">#</th><th></th><th class="lt-club">Club</th>
+        <th class="lt-wide" title="Matches left to play">Left</th><th class="lt-wdl" title="Projected wins">W</th><th class="lt-wdl" title="Projected draws">D</th><th class="lt-wdl" title="Projected losses">L</th>
+        <th title="Projected goal difference">GD</th><th title="Projected points: points so far plus the average over the simulated seasons">Pts</th>
+        <th title="Chance of finishing top">1st</th>${cols.map(([d, c]) => `<th title="${escapeHtml(d)}"><i class="lt-zone" style="background:${c}"></i></th>`).join("")}</tr></thead>
+      <tbody>${list.map((x, i) => `<tr><td class="lt-pos" style="border-left-color:${zones.get(byRank.get(i + 1)) || "transparent"}">${i + 1}</td>
+          <td class="lt-badge"><img class="club-logo" src="${teamLogo(x.r.team)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></td>
+          <td class="lt-club">${clubLink(x.r.team, data.teams[x.r.team] || teamName(x.r.team))}</td>
+          <td class="lt-wide">${x.left}</td><td class="lt-wdl">${Math.round(x.w)}</td><td class="lt-wdl">${Math.round(x.d)}</td><td class="lt-wdl">${Math.round(x.l)}</td>
+          <td>${x.gd >= 0.5 ? "+" : ""}${Math.round(x.gd)}</td><td><b>${Math.round(x.pts)}</b></td>
+          <td>${pct(x.pos[0])}</td>${cols.map(([, , places]) => `<td>${pct(places.reduce((a, k) => a + (x.pos[k] || 0), 0))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  };
+  return groups.map(table).join("") + zoneLegend(zones)
+    + `<div class="page-note">The ${upcoming.length.toLocaleString()} scheduled matches left, played out ${SIMS.toLocaleString()} times from the model's predicted scores and home · draw · away chances, on top of the current table. Level clubs are split by goal difference, then goals scored. Matches not yet scheduled (play-offs, split rounds) aren't included.</div>`;
 }
 
 // ---- Matches: one round at a time, opening on the round with the next fixture
