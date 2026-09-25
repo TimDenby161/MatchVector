@@ -3987,7 +3987,7 @@ function openCountryPage(country) {
   const order = (lid) => { const k = GROUP_ORDER.indexOf(lid); return k < 0 ? 999 : k; };
   const cups = comps.filter((c) => c.type !== "League").sort((a, b) => order(a.lid) - order(b.lid));
   const clubs = leagues.flatMap((c) => c.clubs).sort((a, b) => b.lt - a.lt);
-  const avg = avgRating(clubs);
+  const avg = avgRating(clubs.slice(0, 15));   // the country's level: its 15 best clubs
   const card = (c) => `<a class="lg-card" href="${leagueHref(c.lid)}">
       <img class="club-logo" src="${leagueLogo(c.lid)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
       <span class="lg-main"><span class="lg-name">${escapeHtml(c.name)}</span>
@@ -3997,7 +3997,6 @@ function openCountryPage(country) {
   const meta = leagues.length > 1 ? (r) => ` <span class="club-meta">${leagueLink(r.league)}</span>` : null;
   const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   body.innerHTML = `
-    ${backButton()}
     <div class="pl-hero">
       ${FLAG_CODES[name] ? `<img class="country-flag-lg" src="https://flagcdn.com/${FLAG_CODES[name]}.svg" alt="" onerror="this.style.visibility='hidden'">` : "<span></span>"}
       <div class="pl-hero-main">
@@ -4005,7 +4004,7 @@ function openCountryPage(country) {
         <div class="pl-hero-club"><span class="pl-meta">${[leagues.length && count(leagues.length, "league"), cups.length && count(cups.length, "cup"),
           clubs.length && count(clubs.length, "club")].filter(Boolean).join(" · ")}</span></div>
       </div>
-      ${avg != null ? `<div class="pl-hero-rank rel-${ratingTierOf(avg)}" title="Average Rating (long-term Elo) of the clubs in its leagues">
+      ${avg != null ? `<div class="pl-hero-rank rel-${ratingTierOf(avg)}" title="Average Rating (long-term Elo) of the 15 best clubs in its leagues">
         <span class="val">${Math.round(avg)}</span></div>` : ""}
     </div>
     ${leagues.length ? `<div class="modal-section" style="margin-top:0">Leagues</div><div class="lg-list">${leagues.map(card).join("")}</div>
