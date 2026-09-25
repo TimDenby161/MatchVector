@@ -458,13 +458,19 @@
   #tips-body .comp-group { margin-top: 10px; }
   .tip-pick + .tip-pick { border-top: 1px solid var(--gridline); padding-top: 5px; margin-top: 5px; }
   .tip-pick { align-items: center; }
-  .tips-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 10px; }
-  .tips-overview .stats-card { border-left: 4px solid var(--border); }
-  .tips-overview .good { border-left-color: var(--status-good); }
-  .tips-overview .good .stats-value { color: var(--status-good); }
-  .tips-overview .bad { border-left-color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 7%, var(--surface-1)); }
-  .tips-overview .bad .stats-value { color: var(--status-critical); }
-  .tips-overview .stats-value { font-size: 20px; }
+  .tips-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 10px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .kpi { padding: 12px 14px; border-left: 1px solid var(--border); margin-left: -1px; border-top: 1px solid var(--border); margin-top: -1px; }
+  .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .kpi-value { margin-top: 6px; font-size: 22px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .kpi-value small { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-left: 3px; letter-spacing: 0; }
+  .kpi-pill { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+    color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
+  .kpi-pill.good { color: var(--status-good); background: color-mix(in srgb, var(--status-good) 13%, transparent); }
+  .kpi-pill.bad { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 13%, transparent); }
+  .kpi-rows { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--gridline); font-size: 11px; }
+  .kpi-rows div { display: flex; justify-content: space-between; gap: 8px; color: var(--text-secondary); line-height: 1.6; }
+  .kpi-rows b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
   .tip-picks { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 4px; }
   .tip-left { display: flex; align-items: center; min-width: 0; }
   .tip-left .sel { display: block; line-height: 1.25; }
@@ -2560,25 +2566,33 @@ function tipLabel(b) {
 // How the model has done against the bookmakers, red where it's behind: accuracy on every market
 // with odds (Stats, last 12 months), and the settled tips' closing-price record and profit
 function tipsOverview() {
-  const tile = (ok, label, value, note) =>
-    `<div class="stats-card ${ok == null ? "" : ok ? "good" : "bad"}"><div class="stats-label">${label}</div><div class="stats-value">${value}</div><div class="stats-note">${note}</div></div>`;
+  // one panel of figures: a status pill (green ahead, red behind, grey no data yet), the figure,
+  // then label-value rows
+  const tile = (ok, pill, label, value, rows, title = "") =>
+    `<div class="kpi"${title ? ` title="${title}"` : ""}><div class="kpi-head"><span class="stats-label">${label}</span><span class="kpi-pill ${ok == null ? "" : ok ? "good" : "bad"}">${pill}</span></div>
+      <div class="kpi-value">${value}</div>
+      <div class="kpi-rows">${rows.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("")}</div></div>`;
   const tiles = [];
   const st = state.stats?.ranges?.["365d"]?.all;
   const ms = Object.values(st?.markets || {});
   if (ms.length) {
     const better = ms.filter((m) => m.model_ll < m.close_ll).length;
     const n = Math.max(...ms.map((m) => m.n));
-    tiles.push(tile(better > ms.length / 2, "Accuracy v bookies",
-      better === ms.length ? `Better in all ${ms.length}` : better ? `Better in ${better} of ${ms.length}` : `Worse in all ${ms.length}`,
-      `markets, on ${n.toLocaleString()} matches with odds${st.market ? ` · right result: model ${pct(st.market.model_correct)}, bookies ${pct(st.market.market_correct)}` : ""}`));
+    const ahead = better > ms.length / 2;
+    tiles.push(tile(ahead, ahead ? "Ahead" : "Behind", "Model v bookmakers", `${better}<small>of ${ms.length} markets</small>`,
+      [["Matches with odds", n.toLocaleString()],
+       ...(st.market ? [["Right result, model", pct(st.market.model_correct)], ["Right result, bookmakers", pct(st.market.market_correct)]] : [])],
+      "Markets where the model's log loss beat the closing bookmaker price, last 12 months"));
   }
   const settled = onePerPick(state.bets?.bets || []).filter((b) => b.result === "win" || b.result === "loss");
   const s = summarise(settled);
-  tiles.push(tile(s.beat == null ? null : s.beat >= 0.5, "Beat the closing price",
-    s.beat == null ? "–" : pct(s.beat), s.beat == null ? "Needs settled tips" : `of ${s.settled} settled tips. Over 50% is the sign of a real edge`));
-  tiles.push(tile(s.settled ? s.profit >= 0 : null, "Tips profit",
-    s.settled ? `${s.profit >= 0 ? "+" : "−"}${gbp(Math.abs(s.profit))}` : "–",
-    s.settled ? `${s.wins} of ${s.settled} won · return ${(s.roi > 0 ? "+" : "") + (100 * s.roi).toFixed(1)}%` : "No settled tips yet"));
+  tiles.push(tile(s.beat == null ? null : s.beat >= 0.5, s.beat == null ? "No data" : s.beat >= 0.5 ? "Edge" : "No edge",
+    "Beat closing price", s.beat == null ? "–" : pct(s.beat),
+    [["Settled tips", s.settled || "0"], ["Target", "Over 50%"]],
+    "Share of tips taken at better odds than the last price before kickoff: the early sign of a real edge"));
+  tiles.push(tile(s.settled ? s.profit >= 0 : null, s.settled ? `${s.roi > 0 ? "+" : ""}${(100 * s.roi).toFixed(1)}% ROI` : "No data",
+    "Tips profit", s.settled ? `${s.profit >= 0 ? "+" : "−"}${gbp(Math.abs(s.profit))}` : "–",
+    [["Won", s.settled ? `${s.wins} of ${s.settled}` : "–"], ["Strike rate", s.settled ? pct(s.wins / s.settled) : "–"]]));
   return `<div class="tips-overview">${tiles.join("")}</div>`;
 }
 
