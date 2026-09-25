@@ -637,11 +637,11 @@ def export_players(conn, out_dir=OUT_DIR):
     for entry in next_xi.values():
         entry["players"].sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     for teams in fixture_xi.values():
-        for players in teams.values():
-            players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
+        for xi_players in teams.values():
+            xi_players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     for teams in actual_xi.values():
-        for players in teams.values():
-            players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
+        for xi_players in teams.values():
+            xi_players.sort(key=lambda x: (order.get(x[2], 99), -(x[3] or 0)))
     # his next seasons, projected along his age curve (player_ratings.py)
     future = defaultdict(dict)
     for player, season, rank in conn.execute("select player_id, season, projected_rank from player_projected_ranks"):
