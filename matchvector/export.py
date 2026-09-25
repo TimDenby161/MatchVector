@@ -840,7 +840,8 @@ def export_clubs(conn, out_dir=OUT_DIR):
     competition, formation (null where the line-up isn't known), attack and defence after,
     starting XI average rank by line [GK, DEF, MID, FWD] (null outside the line-up leagues)]; plus 12-month home/away goal
     averages, the current manager and the home kit colours. starts: this season's matches with a
-    line-up (games) and each player's starts by position in them. Loaded only when the page opens.
+    line-up (games), each player's starts by position in them, and each match's starters (xi).
+    Loaded only when the page opens.
     """
     now = datetime.now(timezone.utc)
     active = {r[0] for r in conn.execute(
@@ -879,6 +880,19 @@ def export_clubs(conn, out_dir=OUT_DIR):
             group by 1, 2, 3""", args):
         if team in starts:
             starts[team]["players"].setdefault(str(player), {})[role] = n
+    # the same starts match by match (oldest first): [[player, role, player, role, ...], ...], so the
+    # club page can see who has started in a position since an injured player last did
+    xis = defaultdict(dict)
+    for team, fid, player, role in conn.execute(current + """
+            select fp.team_id, fp.fixture_id, fp.player_id, fp.role from fixture_players fp join fixtures f using (fixture_id)
+            join cur on cur.team_id = fp.team_id and cur.s = f.season
+            join fixture_formations ff on ff.fixture_id = fp.fixture_id and ff.team_id = fp.team_id
+            where fp.started and fp.role is not null and ff.formation is not null and f.status_short = any(%(fin)s)
+            order by f.kickoff, fp.fixture_id""", args):
+        xis[team].setdefault(fid, []).extend([player, role])
+    for team, by_fixture in xis.items():
+        if team in starts:
+            starts[team]["xi"] = list(by_fixture.values())
     history = {}
     club_rows = sorted((r for r in rank_history(conn) if r[1] in active), key=lambda r: (r[1], r[2]))
     for fid, team, _, kickoff, is_home, opp, rank_before, rank_after, _, hg, ag, league, att, dfn, *_ in club_rows:

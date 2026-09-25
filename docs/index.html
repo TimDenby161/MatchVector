@@ -3048,6 +3048,7 @@ function canPlay(p) {
 }
 function depthPitch(teamId) {
   const out = new Set((clubInjuries(teamId)?.players || []).map(([pid]) => pid));   // injured: in their own box
+  const atClub = new Set((state.players?.list || []).filter((p) => p.team === teamId).map((p) => p.id));
   const squad = (state.players?.list || []).filter((p) => p.team === teamId && !out.has(p.id));
   if (!squad.length) return "";
   const rankAt = (p, r) => p.position_ranks?.[GROUP_OF[r]] ?? (GROUP_OF[p.position] === GROUP_OF[r] ? p.rank : null);
@@ -3068,6 +3069,34 @@ function depthPitch(teamId) {
   // there, including players since gone or now injured)
   const usual = (roles) => st?.games ? Math.round(Object.values(st.players || {})
     .reduce((a, byRole) => a + roles.reduce((b, r) => b + (byRole[r] || 0), 0), 0) / st.games) : 0;
+  // The share each available player is expected to start in this box. Starts by a player now
+  // injured or gone go to whoever has started there since his last start in it (Konsa for
+  // Mosquera, Timber for White); if he started the latest match, to the others in proportion to
+  // their starts, then the best ranked with room. Nobody over 100%.
+  const xi = st?.xi || [];
+  const projected = (roles, n, ps) => {
+    const actual = new Map(ps.map(({ p }) => [p.id, startPct(p, roles) || 0]));
+    let last = -1;
+    xi.forEach((m, k) => {
+      for (let i = 0; i < m.length; i += 2) if (roles.includes(m[i + 1]) && (out.has(m[i]) || !atClub.has(m[i]))) last = k;
+    });
+    if (last < 0 || !n) return { share: actual, changed: false };
+    const share = new Map(ps.map(({ p }) => [p.id, 0]));
+    const since = xi.slice(last + 1);
+    for (const m of since) for (let i = 0; i < m.length; i += 2)
+      if (roles.includes(m[i + 1]) && share.has(m[i])) share.set(m[i], share.get(m[i]) + 100 / since.length);
+    if (!since.length) actual.forEach((v, id) => share.set(id, v));
+    const room = (id) => 100 - share.get(id);
+    let left = n * 100 - [...share.values()].reduce((a, v) => a + v, 0);
+    const weights = ps.map(({ p }) => [p.id, actual.get(p.id)]).filter(([, w]) => w > 0);
+    const wsum = weights.reduce((a, [, w]) => a + w, 0);
+    if (left > 0.5 && wsum) {
+      const give = left;
+      for (const [id, w] of weights) { const g = Math.min(room(id), give * w / wsum); share.set(id, share.get(id) + g); left -= g; }
+    }
+    for (const { p } of ps) { if (left <= 0.5) break; const g = Math.min(room(p.id), left); share.set(p.id, share.get(p.id) + g); left -= g; }
+    return { share, changed: true, actual };
+  };
   const spots = boxes.filter((b) => !used.size || b.roles.some((r) => used.has(r))).map(({ label: r, roles, row, col }) => {
     const n = usual(roles);
     const label = `${r}${n ? `<span class="dp-usual"> – ${n}</span>` : ""}`;
@@ -3080,12 +3109,16 @@ function depthPitch(teamId) {
     if (!ps.length) return `<div class="dp-spot empty" style="${cell}"><span class="dp-pos">${label}</span></div>`;
     return `<div class="dp-spot" style="${cell}">
       <span class="dp-pos" title="${n ? `${n} usually start${n === 1 ? "s" : ""} here this season` : ""}">${label}</span>
-      ${ps.map(({ p, rank }) => {
-        const pct = startPct(p, roles);
-        return `<a class="dp-row" href="#/player/${p.id}"${pct != null ? ` title="${escapeHtml(`${p.name}: started ${pct}% of this season's matches at ${r}`)}"` : ""}>
+      ${(() => { const proj = projected(roles, n, ps); return ps.map(({ p, rank }) => {
+        const got = Math.round(proj.share.get(p.id) || 0), had = startPct(p, roles) || 0;
+        const pct = got || null;
+        const tip = proj.changed && got !== had
+          ? `${p.name}: started ${had}% of this season's matches at ${r}; expected ${got}% with the injured or departed out`
+          : pct != null ? `${p.name}: started ${pct}% of this season's matches at ${r}` : "";
+        return `<a class="dp-row" href="#/player/${p.id}"${tip ? ` title="${escapeHtml(tip)}"` : ""}>
           <span class="dp-name">${escapeHtml(shortName(p.name))}</span><span class="dp-pct">${pct != null ? `${pct}%` : ""}</span>
           <span class="dp-rank t${rankTier(rank)}">${Math.round(rank)}</span></a>`;
-      }).join("")}
+      }).join(""); })()}
     </div>`;
   }).join("");
   return `<div class="club-section pp-section"><div class="pitch dp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div></div>`;
