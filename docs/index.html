@@ -179,8 +179,10 @@
   .nav-btn:active, .filter-chip:active { opacity: 0.6; }
   .today-btn { width: auto; border-radius: 20px; padding: 0 10px; font-size: 12px; }
   /* Matches: the day bar spans the match list, the date taking the room between the buttons */
-  .secondary-filters .date-input { flex: 1; min-width: 0; text-align: center; }
+  .secondary-filters .date-input { flex: 1; min-width: 0; text-align: center; text-align-last: center; }
+  .secondary-filters .date-input[hidden] { display: none; }
   .secondary-filters .nav-btn { flex: none; }
+  .secondary-filters .nav-btn[disabled] { opacity: .35; cursor: default; }
 
   .card-list { display: flex; flex-direction: column; gap: 8px; }
   .comp-group { margin-top: 16px; }
@@ -987,6 +989,7 @@
     <div class="secondary-filters">
       <button type="button" class="nav-btn" id="date-prev" aria-label="Previous day">&#8249;</button>
       <input type="date" id="date-input" class="date-input" aria-label="Match date">
+      <select id="round-select" class="date-input" aria-label="Round" hidden></select>
       <button type="button" class="nav-btn" id="date-next" aria-label="Next day">&#8250;</button>
       <button type="button" class="nav-btn today-btn" id="date-today">Today</button>
     </div>
@@ -1625,10 +1628,117 @@ function matchCard(m) {
     </div>`;
 }
 
+// ---- Rounds: a single competition is shown a round at a time, not a day at a time
+// The competition a filter picks on its own (a league, or one European cup), or null
+function matchSingleLeague(f = state.matchFilter) {
+  if (/^\d+$/.test(f)) return Number(f);
+  if (/^e:\d+$/.test(f)) return Number(f.slice(2));
+  return null;
+}
+const ROUND_WINDOW = 4 * 864e5;     // a match more than 4 days from its round's middle was rearranged
+const CALLED_OFF = new Set(["PST", "CANC", "ABD", "AWD", "WO"]);
+const roundName = (r) => r.replace(/^Regular Season - /, "Round ").replace(/^League Stage - /, "League phase ");
+// A competition's rounds in date order: [{ key, label, matches, first, last }]. Group stages
+// (cup rounds named after the group) go by week instead, one "Group stage" entry per week.
+function matchRounds(lid) {
+  const cache = state.roundsCache ||= new Map();
+  if (cache.has(lid)) return cache.get(lid);
+  const byKey = new Map();
+  for (const m of state.data.matches) {
+    if (m.league !== lid) continue;
+    let key = m.round || "", label = roundName(key);
+    if (!key || /^Group /.test(key)) {
+      const d = new Date(m.kickoff);
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));        // that week's Monday
+      key = `w:${localDateStr(d)}`;
+      label = "Group stage";
+    }
+    if (!byKey.has(key)) byKey.set(key, { key, label, matches: [] });
+    byKey.get(key).matches.push(m);
+  }
+  const rounds = [...byKey.values()];
+  for (const r of rounds) {
+    r.matches.sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+    const times = r.matches.map((m) => Date.parse(m.kickoff));
+    const mid = times[Math.floor(times.length / 2)];
+    r.mid = mid;
+    const own = times.filter((t) => Math.abs(t - mid) <= ROUND_WINDOW);    // its scheduled dates
+    r.first = Math.min(...own);
+    r.last = Math.max(...own);
+    // still to come: a match in its own window that hasn't been played (or called off)
+    r.pending = r.matches.some((m) => !FINISHED.has(m.status) && !CALLED_OFF.has(m.status)
+      && Math.abs(Date.parse(m.kickoff) - mid) <= ROUND_WINDOW);
+  }
+  rounds.sort((a, b) => a.mid - b.mid);
+  cache.set(lid, rounds);
+  return rounds;
+}
+// The round on now or next up: the first with matches still to play, else the last
+function nextRound(lid) {
+  const rounds = matchRounds(lid);
+  return (rounds.find((r) => r.pending) || rounds[rounds.length - 1])?.key ?? null;
+}
+function roundDates(r) {
+  const a = fmtShortDate(new Date(r.first).toISOString()), b = fmtShortDate(new Date(r.last).toISOString());
+  return a === b ? a : `${a} – ${b}`;
+}
+function setRound(key) {
+  const lid = matchSingleLeague();
+  const r = matchRounds(lid).find((x) => x.key === key);
+  if (!r) return;
+  state.round = key;
+  state.date = localDateStr(new Date(r.first));     // the menu counts, and the day shown if you leave rounds
+  renderMatches();
+}
+function stepRound(delta) {
+  const rounds = matchRounds(matchSingleLeague());
+  const i = rounds.findIndex((r) => r.key === state.round);
+  const r = rounds[Math.min(rounds.length - 1, Math.max(0, i + delta))];
+  if (r) setRound(r.key);
+}
+
 function renderMatches(menu = true) {
   const container = $("#matches-list");
   $("#date-input").value = state.date;
   if (menu) renderMatchFilters();
+  // One competition: the round bar (‹ round › Next) and that round's matches by day
+  const lid = matchSingleLeague();
+  const rounds = lid != null ? matchRounds(lid) : [];
+  const byRound = rounds.length > 0;
+  $("#date-input").hidden = byRound;
+  $("#round-select").hidden = !byRound;
+  $("#date-today").textContent = byRound ? "Next" : "Today";
+  $("#date-today").title = byRound ? "The round on now or next up" : "";
+  $("#date-prev").setAttribute("aria-label", byRound ? "Previous round" : "Previous day");
+  $("#date-next").setAttribute("aria-label", byRound ? "Next round" : "Next day");
+  if (byRound) {
+    if (!rounds.some((r) => r.key === state.round)) state.round = nextRound(lid);
+    const i = rounds.findIndex((r) => r.key === state.round);
+    $("#round-select").innerHTML = rounds.map((r) =>
+      `<option value="${escapeHtml(r.key)}"${r.key === state.round ? " selected" : ""}>${escapeHtml(r.label)} · ${escapeHtml(roundDates(r))}</option>`).join("");
+    $("#date-prev").disabled = i <= 0;
+    $("#date-next").disabled = i >= rounds.length - 1;
+    const days = new Map();
+    for (const m of rounds[i].matches) {
+      const d = localDateStr(new Date(m.kickoff));
+      if (!days.has(d)) days.set(d, []);
+      days.get(d).push(m);
+    }
+    container.innerHTML = [...days.entries()].map(([d, list]) => {
+      const key = `d:${d}`, collapsed = state.collapsed.has(key);
+      return `
+      <div class="comp-group${collapsed ? " collapsed" : ""}" data-comp="${key}">
+        <div class="comp-group-header">
+          <span class="comp-group-caret">${collapsed ? "&#9656;" : "&#9662;"}</span>
+          <span class="comp-group-name">${escapeHtml(fmtDay(parseDateInput(d)))}</span>
+          <span class="comp-group-count">${list.length}</span>
+        </div>
+        <div class="card-list">${list.map(matchCard).join("")}</div>
+      </div>`;
+    }).join("");
+    return;
+  }
+  $("#date-prev").disabled = $("#date-next").disabled = false;
   const ids = matchLeagueIds();
   const day = state.date;
   const shown = state.data.matches
@@ -3726,6 +3836,8 @@ $("#match-filters").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-filter]");
   if (!btn) return;
   state.matchFilter = btn.dataset.filter;
+  const lid = matchSingleLeague();
+  if (lid != null && matchRounds(lid).length) return setRound(nextRound(lid));
   // nothing in this filter on the day shown: go to its next day with fixtures (or its last, once it's over)
   const ids = matchLeagueIds();
   const days = [...new Set(state.data.matches.filter((m) => !ids || ids.includes(m.league))
@@ -3768,9 +3880,15 @@ $("#stats-ranges").addEventListener("click", (e) => {
   renderFilterChips("stats");
   renderStats();
 });
-$("#date-prev").addEventListener("click", () => stepDate(-1));
-$("#date-next").addEventListener("click", () => stepDate(1));
-$("#date-today").addEventListener("click", () => { state.date = localDateStr(new Date()); renderMatches(); });
+const byRound = () => !$("#round-select").hidden;
+$("#date-prev").addEventListener("click", () => byRound() ? stepRound(-1) : stepDate(-1));
+$("#date-next").addEventListener("click", () => byRound() ? stepRound(1) : stepDate(1));
+$("#date-today").addEventListener("click", () => {
+  if (byRound()) return setRound(nextRound(matchSingleLeague()));
+  state.date = localDateStr(new Date());
+  renderMatches();
+});
+$("#round-select").addEventListener("change", (e) => setRound(e.target.value));
 $("#date-input").addEventListener("change", (e) => { if (e.target.value) { state.date = e.target.value; renderMatches(); } });
 $("#table-search").addEventListener("input", (e) => { state.tableSearch = e.target.value; renderTable(); });
 // ---- Age range (Players view)
@@ -3842,7 +3960,7 @@ $("#matches-list").addEventListener("click", (e) => {
   if (go) { state.date = go.dataset.goto; return renderMatches(); }
   const header = e.target.closest(".comp-group-header");
   if (header) {
-    const group = header.parentElement, id = Number(group.dataset.comp);
+    const group = header.parentElement, key = group.dataset.comp, id = /^\d+$/.test(key) ? Number(key) : key;
     state.collapsed.has(id) ? state.collapsed.delete(id) : state.collapsed.add(id);
     group.classList.toggle("collapsed");
     header.querySelector(".comp-group-caret").innerHTML = group.classList.contains("collapsed") ? "&#9656;" : "&#9662;";
