@@ -410,6 +410,7 @@
   .modal-overlay[hidden] { display: none; }
   .modal-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
     padding: 14px 16px; max-width: 420px; width: 100%; max-height: 82vh; overflow-y: auto; }
+  #team-modal.lineup-modal .modal-card { max-width: 760px; }
   .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
     font-weight: 700; font-size: 15px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
   .modal-close { appearance: none; border: none; background: transparent; color: var(--text-muted);
@@ -804,6 +805,13 @@
   .sq-tile .rel-chip { font-size: 15px; padding: 4px 8px; min-width: 44px; }
   .xi-spot .pp-meta { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); font-variant-numeric: tabular-nums; }
   .xi-spot .pp-name { font-size: 10px; font-weight: 700; color: #fff; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fixture-lineups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .fixture-lineups .club-section { margin-top: 0; }
+  .fixture-lineups .pitch.pp-pitch { max-width: 300px; }
+  .fixture-lineups .page-note { font-size: 11px; }
+  @media (max-width: 680px) {
+    .fixture-lineups { grid-template-columns: 1fr; }
+  }
   .flag-link { display: inline-flex; vertical-align: -1px; }
   .flag-link:hover .flag, .flag-link:focus-visible .flag { box-shadow: 0 0 0 1px var(--series-blue); }
   .club-meta .flag { width: 16px; height: 11px; }
@@ -2901,15 +2909,15 @@ function xiBlock(teamId) {
 }
 
 async function openMatchLineups(m) {
+  $("#team-modal").classList.add("lineup-modal");
   $("#team-modal-title").innerHTML = `${clubLink(m.home, teamName(m.home))} v ${clubLink(m.away, teamName(m.away))}`;
   $("#team-modal-sub").textContent = `${compLabel(m.league)} · ${fmtDay(m.kickoff)} · ${fmtTime(m.kickoff)}`;
   $("#team-modal-body").innerHTML = `<div class="empty-state">Loading predicted line-ups…</div>`;
   $("#team-modal").hidden = false;
   const exact = state.players?.fixtureXi?.[String(m.id)] || {};
-  let homeData = null, awayData = null;
+  const [homeData, awayData] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
   if (!exact[String(m.home)] || !exact[String(m.away)]) {
     state.injuries ||= await fetch("data/injuries.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).catch(() => null);
-    [homeData, awayData] = await Promise.all([loadClub(m.home), loadClub(m.away)]);
     if (!state.playerSeasons) { loadPlayerSeasons(); await state.playerSeasonsLoading; }
   }
   const projected = m.home_xg != null ? `${m.home_xg.toFixed(1)}–${m.away_xg.toFixed(1)}` : "";
@@ -2924,21 +2932,13 @@ async function openMatchLineups(m) {
     const recent = home ? m.home_recent_xi : m.away_recent_xi;
     const label = `${teamName(teamId)}${rating != null ? ` · rating ${Math.round(rating)}${recent != null ? ` (recent ${Math.round(recent)})` : ""}` : ""}`;
     const listed = exact[String(teamId)];
-    if (listed?.length) return `<div class="modal-section">${escapeHtml(label)}</div>
-      ${listed.map(([pid, name, pos, rank]) => `<div class="team-row">
-        <span class="team-row-date">${escapeHtml(POS_LABEL[pos] || pos || "")}</span>
-        <span class="team-row-opp">${playerLink(pid, name)}</span><span class="team-row-res">${rankChipSmall(rank)}</span>
-      </div>`).join("")}`;
+    if (listed?.length) return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(listed.map(([pid, name, pos, rank]) =>
+      ({ p: { id: pid, name }, b: { label: pos }, rank, chance: null, mins: null })), data, { note: "" })}</div>`;
     const xi = predictedXi(teamId, data, m);
     if (!xi) return `<div class="modal-section">${escapeHtml(label)}</div><div class="page-note">No predicted XI for this team.</div>`;
-    return `<div class="modal-section">${escapeHtml(label)}</div>
-      ${xi.map(({ p, b, rank, chance, mins }) => `<div class="team-row">
-        <span class="team-row-date">${escapeHtml(POS_LABEL[b.label] || b.label)}</span>
-        <span class="team-row-opp">${playerLink(p.id, p.name)}</span>
-        <span class="team-row-res">${rankChipSmall(rank)} <span class="club-sub">${Math.round(chance)}% · ${mins}′</span></span>
-      </div>`).join("")}`;
+    return `<div><div class="modal-section">${escapeHtml(label)}</div>${xiPitch(xi, data, { note: "" })}</div>`;
   };
-  $("#team-modal-body").innerHTML = chance + side(m.home, homeData, true) + side(m.away, awayData, false)
+  $("#team-modal-body").innerHTML = chance + `<div class="fixture-lineups">${side(m.home, homeData, true)}${side(m.away, awayData, false)}</div>`
     + `<div class="page-note">Predicted line-ups use the pre-match XI model. Start chance and expected minutes are shown when the browser has to estimate from recent line-ups, current squad ratings and listed absences.</div>`;
 }
 
@@ -3187,7 +3187,7 @@ function clubXiTab() {
 }
 // The predicted XI on a pitch as the overview's: keeper at the top, attacking down, left-sided
 // positions on the right. Players in the same position are spread along its line.
-function xiPitch(xi) {
+function xiPitch(xi, data = state.club?.data, opts = {}) {
   const spot = Object.fromEntries(PITCH_SPOTS.map(([r, x, y]) => [r, [x, y]]));
   const lines = new Map();                       // y -> players on that line
   for (const c of xi) {
@@ -3206,16 +3206,22 @@ function xiPitch(xi) {
     return ps.map((q, i) => {
       const x = clash ? from + i * gap : q.x;
       const { b, p, rank, chance, mins } = q.c;
+      const hasChance = chance != null, hasMins = mins != null;
+      const grade = hasChance ? startTier(chance) : rankTier(rank);
+      const rankText = rank == null ? "–" : Math.round(rank);
+      const meta = hasChance || hasMins ? `<span class="pp-meta">${hasChance ? `<span class="sc-${startTier(chance)}">${Math.round(chance)}%</span>` : ""}${
+        hasChance && hasMins ? " · " : ""}${hasMins ? `${mins}′` : ""}</span>` : `<span class="pp-meta">${escapeHtml(b.label || "")}</span>`;
       // the square in the start-chance colour, the rating in its own
-      return `<a class="pp-spot xi-spot sq-${startTier(chance)}" href="#/player/${p.id}" style="left:${x}%;top:${y}%"
-          title="${escapeHtml(`${p.name} · ${b.label} · rank ${rank.toFixed(1)} · ${Math.round(chance)}% to start · ${mins}′ expected`)}">
-        <span class="pp-rank rk-${rankTier(rank)}">${Math.round(rank)}</span><span class="pp-name">${escapeHtml(shortName(p.name))}</span>
-        <span class="pp-meta"><span class="sc-${startTier(chance)}">${Math.round(chance)}%</span> · ${mins}′</span></a>`;
+      return `<a class="pp-spot xi-spot sq-${grade}" href="#/player/${p.id}" style="left:${x}%;top:${y}%"
+          title="${escapeHtml(`${p.name} · ${b.label} · rank ${rank != null ? Number(rank).toFixed(1) : "–"}${hasChance ? ` · ${Math.round(chance)}% to start` : ""}${hasMins ? ` · ${mins}′ expected` : ""}`)}">
+        <span class="pp-rank rk-${rankTier(rank)}">${rankText}</span><span class="pp-name">${escapeHtml(shortName(p.name))}</span>
+        ${meta}</a>`;
     });
   }).join("");
-  const avg = xi.reduce((t, c) => t + c.rank, 0) / xi.length;
-  return `<div class="club-section pp-section"><div class="pitch pp-pitch${kitClass()}"${kitStyle()}>${PITCH_LINES}${spots}</div>
-    <div class="page-note" style="text-align:center">Average rank ${Math.round(avg)}</div></div>`;
+  const ranks = xi.map((c) => c.rank).filter((r) => r != null);
+  const avg = ranks.reduce((t, r) => t + r, 0) / ranks.length;
+  return `<div class="club-section pp-section"><div class="pitch pp-pitch${kitClass(data)}"${kitStyle(data)}>${PITCH_LINES}${spots}</div>
+    ${opts.note === "" ? "" : `<div class="page-note" style="text-align:center">${opts.note || (Number.isFinite(avg) ? `Average rank ${Math.round(avg)}` : "")}</div>`}</div>`;
 }
 
 // Overview pitch: in each position, the squad's players who can play there (their main position,
@@ -3591,10 +3597,10 @@ function depthPitch(teamId) {
 }
 // The club's home kit colours (club file) for its pitches: stripes in the shirt colour, lines in
 // the number colour; clubs without them keep the plain dark pitch
-const kitColors = () => state.club?.data?.colors?.[0] ? state.club.data.colors : null;
-const kitClass = () => kitColors() ? " kit" : "";
-const kitStyle = () => {
-  const c = kitColors();
+const kitColors = (data = state.club?.data) => data?.colors?.[0] ? data.colors : null;
+const kitClass = (data = state.club?.data) => kitColors(data) ? " kit" : "";
+const kitStyle = (data = state.club?.data) => {
+  const c = kitColors(data);
   return c ? ` style="--kit:#${escapeHtml(c[0])};--kit2:#${escapeHtml(c[1] || "ffffff")}"` : "";
 };
 // Surname for tight spaces, keeping lower-case particles ("M. de Ligt" -> "de Ligt"), or the
@@ -3887,6 +3893,7 @@ window.addEventListener("resize", () => { if (state.club && $("#chart-wrap")?.of
 
 // ------------------------------------------------------------------ team modal
 function openTeam(teamId) {
+  $("#team-modal").classList.remove("lineup-modal");
   const r = state.rankByTeam.get(teamId);
   $("#team-modal-title").innerHTML = `${escapeHtml(teamName(teamId))} <a class="team-link" style="font-size:12px;color:var(--series-blue);margin-left:6px" href="${clubHref(teamId)}">Club page ›</a>`;
   $("#team-modal-sub").textContent = r ? compLabel(r.league) : "";
