@@ -443,6 +443,10 @@
   .bet-tag.warn { border-color: #f08a5a; color: #f08a5a; }
   .pos { color: var(--status-good); font-weight: 700; } .neg { color: var(--status-critical); font-weight: 700; }
   .bets-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  #tips-body { max-width: 640px; margin: 0 auto; }
+  .tip-pick { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
+  .tip-pick .sel { font-size: 15px; font-weight: 700; }
+  .tip-pick .odds { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   a.team-link, a.player-link, a.nat-link { color: inherit; text-decoration: none; }
   a.team-link:hover, a.team-link:focus-visible, a.player-link:hover, a.player-link:focus-visible,
@@ -972,6 +976,7 @@
     <button role="tab" data-tab="table" data-view="players" aria-selected="false">Players</button>
     <button role="tab" data-tab="matches" aria-selected="false">Matches</button>
     <button role="tab" data-tab="stats" aria-selected="false">Stats</button>
+    <button role="tab" data-tab="tips" aria-selected="false">Tips</button>
     <button role="tab" data-tab="bets" aria-selected="false">Bets</button>
   </nav>
   <div class="menu-backdrop" id="menu-backdrop" hidden></div>
@@ -1034,6 +1039,10 @@
       <button type="button" class="filter-chip" data-range="365d" aria-pressed="false">12 months</button>
     </div>
     <div id="stats-body"></div>
+  </section>
+
+  <section class="panel" data-tab="tips">
+    <div id="tips-body"></div>
   </section>
 
   <section class="panel" data-tab="bets">
@@ -1168,6 +1177,7 @@ async function loadData() {
     loadEuroCups();
     renderStats();
     renderBets();
+    renderTips();
     route();
   } catch (err) {
     console.error(err);
@@ -1434,14 +1444,16 @@ function renderStatsFilters() {
 function betCountries() {
   return state.betCountries ||= compCountries((state.bets?.bets || []).map((b) => b.league));
 }
-// Bets on the strategy / market / cautious filters, before the competition menu. Under "All"
-// each pick is bet once: when both runs chose it, the night-before bet (placed first) counts
+// Each pick bet once: when both runs chose it, the night-before bet (placed first) counts
+function onePerPick(bets) {
+  const early = new Set(bets.filter((b) => b.strategy === "early").map((b) => `${b.fixture}|${b.market}|${b.selection}`));
+  return bets.filter((b) => b.strategy === "early" || !early.has(`${b.fixture}|${b.market}|${b.selection}`));
+}
+// Bets on the strategy / market / cautious filters, before the competition menu
 function betScope() {
   const bets = state.bets?.bets || [];
-  const early = new Set(bets.filter((b) => b.strategy === "early").map((b) => `${b.fixture}|${b.market}|${b.selection}`));
-  return bets.filter((b) =>
-    (state.betStrategy === "all" ? b.strategy === "early" || !early.has(`${b.fixture}|${b.market}|${b.selection}`)
-      : b.strategy === state.betStrategy) &&
+  return (state.betStrategy === "all" ? onePerPick(bets) : bets).filter((b) =>
+    (state.betStrategy === "all" || b.strategy === state.betStrategy) &&
     (state.betMarket === "all" || b.market === state.betMarket) &&
     (state.betView === "all" || b.cautious));
 }
@@ -2404,7 +2416,6 @@ function renderBets() {
       <div class="bet-sub">Model ${Math.round(100 * b.model_prob)}% · bookmakers ${b.fair_prob != null ? Math.round(100 * b.fair_prob) + "%" : "–"}${b.closing_odds != null ? ` · closed ${b.closing_odds.toFixed(2)}` : ""}${bankAfter[b.id] != null ? ` · bank ${gbp(bankAfter[b.id])}` : ""}</div>
     </div>`;
   };
-  const pending = all.filter((b) => !b.result).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
   body.innerHTML = `
     <div class="stats-grid">
       ${card("Bank", gbp(bank + s.profit), `Started with ${gbp(bank)}${s.pending ? ` · ${gbp(s.atRisk)} on ${s.pending} pending` : ""}`)}
@@ -2422,9 +2433,38 @@ function renderBets() {
       <table class="calib-table">${head("Market")}<tbody>${marketRows}</tbody></table>
       <div class="stats-note">Paper bets, no real money: ${gbp(stake)} on every bet from a ${gbp(bank)} bank. Each pick is bet once: if both the night-before and pre-kickoff runs chose it, All counts only the night-before bet. All bets are at ${escapeHtml(rules.bookmaker || "Bet365")}'s odds. A bet is placed when the model's chance × that price is at least ${Math.round(rules.min_edge * 100)}% better than even, at odds up to ${rules.max_odds}. Return = profit ÷ staked. Profit needs a few hundred settled bets before it means much.</div>
     </div>` : ""}
-    ${pending.length ? `<div class="modal-section">Upcoming (${pending.length})</div><div class="bets-list">${pending.map(row).join("")}</div>` : ""}
     ${settled.length ? `<div class="modal-section">Settled (${settled.length})</div><div class="bets-list">${settled.slice(0, 300).map(row).join("")}</div>` : ""}
-    ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}`;
+    ${!all.length ? `<div class="empty-state">No bets match this filter yet.</div>` : ""}
+    ${s.pending ? `<div class="stats-note" style="margin-top:12px">${s.pending} bet${s.pending === 1 ? "" : "s"} still to be played: see Tips.</div>` : ""}`;
+}
+
+// ---- Tips: just the bets to place now, one per pick, soonest first, grouped by day
+function tipLabel(b) {
+  if (b.market === "1X2") return b.selection === "Draw" ? "Draw" : `${b.selection === "Home" ? b.home : b.away} to win`;
+  if (b.market === "BTTS") return b.selection === "Yes" ? "Both teams to score: Yes" : "Both teams to score: No";
+  return `${b.selection} goals`;
+}
+function renderTips() {
+  const body = $("#tips-body");
+  const stake = betStake(), book = state.bets?.rules?.bookmaker || "Bet365";
+  const now = Date.now();
+  const tips = onePerPick(state.bets?.bets || []).filter((b) => !b.result && new Date(b.kickoff) > now)
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff) || a.fixture - b.fixture || a.id - b.id);
+  const intro = `<div class="stats-note" style="margin-bottom:10px">${gbp(stake)} on each at ${escapeHtml(book)}, at these odds or better. More tips can appear up to 75 minutes before kickoff, after late team news.</div>`;
+  if (!tips.length) { body.innerHTML = intro + `<div class="empty-state">No tips right now. New ones are added the night before and shortly before kickoff.</div>`; return; }
+  const days = [];
+  for (const b of tips) {
+    const day = fmtDay(b.kickoff);
+    if (days.at(-1)?.day !== day) days.push({ day, tips: [] });
+    days.at(-1).tips.push(b);
+  }
+  body.innerHTML = intro + days.map((d) => `<div class="modal-section">${escapeHtml(d.day)} (${d.tips.length})</div><div class="bets-list">${d.tips.map((b) => `
+    <div class="bet-row">
+      <div class="bet-top"><span>${escapeHtml(fmtTime(b.kickoff))} · ${escapeHtml(compLabel(b.league))}</span></div>
+      <div class="bet-match">${escapeHtml(b.home)} v ${escapeHtml(b.away)}</div>
+      <div class="tip-pick"><span class="sel">${escapeHtml(tipLabel(b))}</span><span class="odds">${b.odds.toFixed(2)}</span></div>
+      <div class="bet-sub">${gbp(stake)} to win ${gbp(stake * (b.odds - 1))}</div>
+    </div>`).join("")}</div>`).join("");
 }
 
 function xiBlock(teamId) {
