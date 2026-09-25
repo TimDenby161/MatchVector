@@ -3664,8 +3664,8 @@ function clubFormationsTab() {
       <div><div class="next-label">Manager</div><div class="coach-name">${escapeHtml(coach.name || "")}</div>
         <div class="next-meta">${coach.since ? `<span>Since ${escapeHtml(fmtDate(coach.since))}</span>` : ""}${sinceRows.length ? `<span>${sinceRows.length} matches · ${record(sinceRows)}</span>` : ""}</div></div>
     </div>` : ""}
-    ${coach?.since && !same ? section(`Since ${escapeHtml(coach.name)} took over`, sinceRows) : ""}
-    ${section(`${same && coach ? `Since ${escapeHtml(coach.name)} took over · ` : ""}This season (${label(season)})`, seasonRows)}`;
+    ${section(`${same && coach ? `Since ${escapeHtml(coach.name)} took over · ` : ""}This season (${label(season)})`, seasonRows)}
+    ${coach?.since && !same ? section(`Since ${escapeHtml(coach.name)} took over`, sinceRows) : ""}`;
 }
 // A formation ("4-2-3-1") drawn as dots on a small pitch: keeper at the top, attacking down
 function formationSvg(f) {
