@@ -33,6 +33,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Restore API usage ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: .api-usage
+          key: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: api-usage-
+
+
       # Local copy of big historical query results (thecornerfc/cache.py): only weeks that
       # changed since the last run are downloaded from the database
       - name: Restore query cache
@@ -67,3 +75,21 @@ jobs:
         with:
           path: .cache
           key: db-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Report API usage
+        if: always()
+        run: python -m thecornerfc usage
+
+      - name: Save API usage ledger
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .api-usage
+          key: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Archive API usage ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .api-usage/ledger.sqlite3

@@ -33,6 +33,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Restore API usage ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: .api-usage
+          key: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: api-usage-
+
+
       - name: Pre-kickoff odds, injuries, late paper bets, settle
         run: python -m thecornerfc matchday
 
@@ -46,3 +54,21 @@ jobs:
             git pull --rebase
             git push
           fi
+
+      - name: Report API usage
+        if: always()
+        run: python -m thecornerfc usage
+
+      - name: Save API usage ledger
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .api-usage
+          key: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Archive API usage ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .api-usage/ledger.sqlite3

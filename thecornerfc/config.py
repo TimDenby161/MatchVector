@@ -174,3 +174,12 @@ ODDS_BET_IDS = {
     8: "Both Teams Score",
     12: "Double Chance",
 }
+
+# Observed daily headers are distinct from any unconfirmed subscription allowance.
+API_LEDGER_PATH = os.getenv("API_LEDGER_PATH", ".api-usage/ledger.sqlite3")
+API_QUOTA_WARN_THRESHOLDS = sorted({int(n) for n in os.getenv(
+    "API_QUOTA_WARN_THRESHOLDS", "2000,1000,500").split(',') if n.strip()}, reverse=True)
+API_RUN_BUDGET = int(os.getenv("API_RUN_BUDGET", "0"))  # 0 = no additional cap
+
+if API_RUN_BUDGET < 0:
+    raise ValueError("API_RUN_BUDGET must be non-negative")

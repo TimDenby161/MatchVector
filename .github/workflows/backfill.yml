@@ -9,6 +9,10 @@ on:
       leagues:
         description: "API-Football league ids, space-separated (e.g. 233 188)"
         required: true
+      call_budget:
+        description: "Maximum API attempts for this run (including preflight and retries)"
+        required: true
+        default: "2000"
       seasons:
         description: "Seasons (year the season starts), space-separated"
         required: true
@@ -29,6 +33,7 @@ jobs:
       API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       API_DAILY_RESERVE: "200"
+      API_RUN_BUDGET: ${{ inputs.call_budget }}
       THECORNERFC_MODE: production
       THECORNERFC_READ_ONLY: "false"
       THECORNERFC_NO_API: "false"
@@ -44,6 +49,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Restore API usage ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: .api-usage
+          key: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: api-usage-
+
+
       # Local copy of big historical query results (thecornerfc/cache.py): only weeks that
       # changed since the last run are downloaded from the database
       - name: Restore query cache
@@ -57,6 +70,7 @@ jobs:
         run: |
           python -m thecornerfc.workflow_inputs "$LEAGUES" "$SEASONS" > /tmp/backfill-inputs.env
           source /tmp/backfill-inputs.env
+          python -m thecornerfc preflight --leagues "${LEAGUE_ARGS[@]}" --seasons "${SEASON_ARGS[@]}"
           for target in leagues teams fixtures standings stats odds; do
             python -m thecornerfc sync "$target" --leagues "${LEAGUE_ARGS[@]}" --seasons "${SEASON_ARGS[@]}"
           done
@@ -84,3 +98,21 @@ jobs:
         with:
           path: .cache
           key: db-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Report API usage
+        if: always()
+        run: python -m thecornerfc usage
+
+      - name: Save API usage ledger
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .api-usage
+          key: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Archive API usage ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-usage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .api-usage/ledger.sqlite3

@@ -14,16 +14,17 @@
 """
 import argparse
 import logging
+import os
 import sys
 
-from . import config, export, ingest, matchday, player_ratings, predictions, ranking
+from . import usage
+from . import config
 from .api import ApiFootball, QuotaExhausted
-from .db import connect, init_schema
 
 TARGETS = ["leagues", "teams", "fixtures", "standings", "stats", "odds", "players", "injuries",
            "player_minutes", "player_careers", "retired", "squads", "coaches", "lineup_coaches", "colors", "cup_lineups"]
 DB_WRITE_COMMANDS = {"init-db", "rank", "predict", "player-ratings", "matchday", "nightly", "sync"}
-API_COMMANDS = {"status", "matchday", "nightly", "sync"}
+API_COMMANDS = {"status", "preflight", "matchday", "nightly", "sync"}
 
 
 def _guard_command(args):
@@ -37,6 +38,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="thecornerfc")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser("usage", help="Report persistent API usage without network access")
+    preflight = sub.add_parser("preflight", help="Check manual backfill budget against live daily quota")
+    preflight.add_argument("--leagues", type=int, nargs="+", required=True)
+    preflight.add_argument("--seasons", type=int, nargs="+", required=True)
     sub.add_parser("init-db", help="Create tables in the database")
     sub.add_parser("status", help="Show API-Football account quota")
     nightly = sub.add_parser("nightly", help="Refresh current seasons, new stats and odds")
@@ -56,7 +61,33 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    os.environ["API_PROCESS_LABEL"] = args.command + (f" {args.target}" if args.command == "sync" else "")
     _guard_command(args)
+
+    if args.command == "usage":
+        usage.publish()
+        return 0
+
+    if args.command == "preflight":
+        minimum = len(set(args.leagues)) * (1 + 3 * len(set(args.seasons)))
+        print(f"Backfill minimum: {minimum} calls for leagues/teams/fixtures/standings; "
+              "stats, odds pagination and retries are additional and unknown.")
+        if config.API_RUN_BUDGET <= minimum + 1:
+            raise RuntimeError("Set API_RUN_BUDGET above the minimum plus one preflight call")
+        api = ApiFootball()
+        try:
+            api.get("status")
+            if api.daily_remaining is None:
+                raise QuotaExhausted("No daily quota header available; cannot verify backfill budget")
+            with usage.connect() as ledger:
+                used = ledger.execute("SELECT count(*) FROM api_calls WHERE run_id=?", (usage.run_id(),)).fetchone()[0]
+            available = api.daily_remaining - api.daily_reserve
+            if config.API_RUN_BUDGET - used > available:
+                raise QuotaExhausted(f"Remaining run budget exceeds {available} calls available after reserve")
+            print(f"Backfill cap: {config.API_RUN_BUDGET} attempts including preflight; available: {available}")
+        finally:
+            usage.publish()
+        return 0
 
     if args.command == "status":
         info = ApiFootball().get("status")
@@ -64,6 +95,9 @@ def main(argv=None):
               f"(ends {info['subscription']['end']})")
         print(f"Requests today: {info['requests']['current']} / {info['requests']['limit_day']}")
         return 0
+
+    from . import export, ingest, matchday, player_ratings, predictions, ranking
+    from .db import connect, init_schema
 
     with connect() as conn:
         if args.command == "init-db":
@@ -136,6 +170,7 @@ def main(argv=None):
             logging.warning("Stopping: %s. Re-run later to resume.", exc)
             return 2
         finally:
+            usage.publish()
             logging.info("API calls this run: %d, daily quota left: %s",
                          api.calls_made, api.daily_remaining)
     return 0
