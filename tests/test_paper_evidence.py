@@ -37,7 +37,8 @@ class PaperEvidenceTests(unittest.TestCase):
         row=['early',1,39,self.kickoff,'1X2','Home',.6,.45,2.,8,.2,['big5']]
         market={'books':{8:{'Home':2.,'Draw':3.,'Away':4.}},'fair':{'Home':.45}}
         with patch('thecornerfc.paper_evidence.latest_quotes',return_value=[(9,8,'Home',2.,self.now)]):
-            paper_evidence.record_decision(conn,5,row,market,pred,self.now,'mv_strategy')
+            paper_evidence.record_decision(conn,5,row,market,pred,self.now,'mv_strategy',
+                selection_context={'candidates':[row], 'market_states':{'1X2':market}})
         sql,values=conn.execute.call_args.args
         self.assertIn('INSERT INTO paper_decisions',sql)
         self.assertNotIn('UPDATE',sql)
@@ -47,6 +48,14 @@ class PaperEvidenceTests(unittest.TestCase):
         evidence=json.loads(values[-1])
         self.assertEqual(evidence['books']['8']['Away'],4.)
         self.assertEqual(evidence['quote_references']['8']['Home']['observation_id'],9)
+        self.assertEqual(evidence['selection_context']['candidates'][0][3],self.kickoff.isoformat())
+        self.assertEqual(evidence['selection_context']['candidates'][0][6],.6)
+
+    def test_evidence_serialization_rejects_unknown_types_and_naive_times(self):
+        with self.assertRaises(TypeError):
+            json.dumps({'value':object()},default=paper_evidence._evidence_json_default)
+        with self.assertRaises(ValueError):
+            json.dumps({'captured_at':datetime(2026,1,1)},default=paper_evidence._evidence_json_default)
 
     def test_missing_exact_prediction_fails_instead_of_claiming_provenance(self):
         conn=Mock()

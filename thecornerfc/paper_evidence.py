@@ -71,6 +71,14 @@ def market_evidence(books, selections, bookmaker):
     return fair,margin
 
 
+def _evidence_json_default(value):
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError('Evidence timestamps must be timezone-aware')
+        return value.astimezone(timezone.utc).isoformat()
+    raise TypeError(f'Unsupported evidence type: {type(value).__name__}')
+
+
 def record_decision(conn, bet_id, row, market, pred, decision_at, version, selection_context=None):
     from .betting import MARKETS
     config.require_db_write('record paper decision')
@@ -104,7 +112,8 @@ def record_decision(conn, bet_id, row, market, pred, decision_at, version, selec
          stake_units,odds_observation_id,evidence)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s::jsonb)''',
         [bet_id,fid,strategy,version,snapshot[1],snapshot[0],decision_at,kickoff,name,market_id,sel,bm,prob,
-         1/odd,fair,odd,margin,edge,'model_probability * odds_taken - 1',chosen,json.dumps(evidence,allow_nan=False)])
+         1/odd,fair,odd,margin,edge,'model_probability * odds_taken - 1',chosen,
+         json.dumps(evidence,allow_nan=False,default=_evidence_json_default)])
 
 
 def movement(odds_taken, closing_odds, fair_at_decision, closing_fair):
