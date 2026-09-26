@@ -195,7 +195,9 @@ def place_bets(conn, strategy, within):
                   p.p_over25, p.p_btts, p.home_xg, p.away_xg
            from fixture_predictions p join fixtures f using (fixture_id)
            where f.status_short in ('NS', 'TBD') and f.kickoff > %s and f.kickoff <= %s""",
-        [now, now + within]).fetchall()
+        # Preserve float8 values exactly for immutable snapshot matching. Some
+        # databases use extra_float_digits=0, which rounds text query results.
+        [now, now + within], binary=True).fetchall()
     if not preds:
         log.info("Paper bets (%s): no fixtures in window", strategy)
         return 0

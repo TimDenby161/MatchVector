@@ -8,10 +8,13 @@ SCHEMA_PATH = Path(__file__).resolve().parent.parent / "db" / "schema.sql"
 
 
 def connect():
-    if not config.DATABASE_URL:
+    # Copied Actions secrets can contain a final newline, which libpq otherwise
+    # treats as part of the database name. Preserve all internal URL characters.
+    database_url = (config.DATABASE_URL or "").strip()
+    if not database_url:
         raise RuntimeError("DATABASE_URL or READ_ONLY_DATABASE_URL is not set (see .env.example)")
     # prepare_threshold=None keeps it compatible with Supabase's pgbouncer poolers.
-    conn = psycopg.connect(config.DATABASE_URL, prepare_threshold=None)
+    conn = psycopg.connect(database_url, prepare_threshold=None)
     if config.READ_ONLY:
         try:
             conn.read_only = True

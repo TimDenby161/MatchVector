@@ -86,6 +86,7 @@ class PaperEvidenceTests(unittest.TestCase):
         self.assertEqual(record.call_args.args[2][5],'Home')
         self.assertIn('selection_context',record.call_args.kwargs)
         conn.commit.assert_called_once()
+        self.assertTrue(conn.execute.call_args_list[0].kwargs['binary'])
 
     def test_schema_contains_migration(self):
         root=Path(__file__).resolve().parents[1]
