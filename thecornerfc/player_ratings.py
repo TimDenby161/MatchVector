@@ -84,7 +84,7 @@ import math
 from collections import Counter, defaultdict, deque
 from datetime import timedelta
 
-from . import availability, lineup_snapshots
+from . import availability, lineup_snapshots, player_history
 from .health import monitored
 from . import config
 from .cache import WEEK, cached_rows, rank_history
@@ -1103,6 +1103,7 @@ def _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_
         cur.execute("truncate player_projected_ranks")
         with cur.copy("copy player_projected_ranks (player_id, season, projected_rank) from stdin") as cp:
             cp.write("".join(f"{p}\t{y}\t{r}\n" for p, ys in projections.items() for y, r in ys.items()))
+    player_history.capture(conn, current, season_rows)
     conn.commit()
     log.info("Player ratings written: %d current player ranks, %d predicted-lineup rows, %d player-seasons",
              len(current), len(lineups), len(season_rows))
