@@ -815,3 +815,170 @@ available; it does not certify upstream vendor data timeliness or the actual sta
 of a rescheduled match. Snapshot capture begins with deployment. The existing
 backfill still fills only missing current predictions; it does not manufacture a
 retrospective snapshot history for every already-populated fixture.
+
+### Lineup prediction and availability evidence
+
+Apply `db/migrations/20260926_lineup_snapshots.sql` after the model registry migration
+before running this code. It adds `lineup_prediction_snapshots` and
+`official_lineup_snapshots`; current predicted lineups, player ratings, injuries and
+historical outputs remain in their existing tables. No historical capture times are
+invented or populated retrospectively.
+
+`compute_player_ratings` now captures one immutable fixture/team prediction state
+for every upcoming team it processes, including empty selections. It preserves the
+existing rule: recent minutes ordering, score eligibility, one goalkeeper and up to
+ten outfield players. The only intended selection change is that active manual
+absences now exclude players through the same backend availability merge as API
+reports. Lineup refresh frequency is unchanged: matchday does not rebuild player
+ratings/lineups, so new availability affects selection at the next existing rebuild.
+
+Each snapshot stores its lineup registry version, actual capture time, known kickoff
+(`effective_at`), DB insertion time, seconds to kickoff, selected players with binary
+`predicted_starter`, role/line, rating at prediction and availability state.
+`start_probability` is explicitly null: this model provides no probability or
+confidence estimate. The `selection_inputs` object retains ordered candidate minutes,
+score-eligible candidates (raw score, position, minutes, final rating and binary
+selection), unscored candidates and excluded IDs. Together with the resolved
+availability and preserved selected output, these allow the selection to be audited
+without relying on today's mutable injury lists or player ratings. They do not claim
+to archive every upstream player-rating training row.
+
+`availability.py` is the shared merge used by upcoming lineup selection and both
+club/player availability exports:
+
+- API reports apply only to their fixture/team. As before, every listed player,
+  including doubtful players, is excluded by the lineup algorithm.
+- Manual entries in `thecornerfc/absences.json` add exclusions. Optional `from` and
+  `until` dates are inclusive and evaluated against fixture kickoff, not just today's
+  date. Without `from`, an entry applies from observation onward; without `until`, it
+  lasts until removed. Manual entries are never applied to historical replay.
+- API or manual suspension reasons resolve to `suspended`. Past red cards alone are
+  no longer displayed as confirmed upcoming bans: there is no reliable served-ban
+  ledger here. Add an explicit dated manual suspension when confirmed externally.
+- Overlapping API/manual entries retain both sources; manual entries do not assert
+  fitness or cancel API reports. No evidence resolves to `not_reported`, not a claim
+  that the player is fit. Historical API lists and prior snapshots are unchanged.
+
+The snapshot's immutable `availability` object retains the exact resolved exclusions
+and their source evidence: type/reason, manual dates/name, source, observation time,
+and API row update time. Removing a manual entry later affects only future captures.
+Current API injury upserts may retain older entries until upstream ingestion is
+changed; row update times remain visible rather than asserting that every report is
+fresh. The separate match-model missing-strength calculation retains its current
+API-based calculation; this change unifies **lineup selection and availability display**,
+not the match model's calibrated injury-margin inputs.
+
+Official XI evidence is captured whenever existing fixture ingestion receives a
+non-empty `startXI`, including stats/player/cup/coaches fetches and matchday result
+refreshes. Snapshots retain provider source, actual observation time, kickoff,
+formation, starters and substitutes, positions, grids and derived roles. Corrections
+append new states; identical refetches keep the first observation. Empty/missing
+lineups do not invent an official empty XI. No extra API calls or new polling schedule
+are introduced, so the first official observation may be after kickoff. Such an
+observation is valid comparison evidence, not proof the XI was known pre-match.
+
+Both tables block UPDATE, DELETE and TRUNCATE through database triggers and use
+INSERT/DO NOTHING for duplicate content. Lineup prediction snapshots are written in
+the same transaction as the current player/lineup rebuild. They are `prospective`
+only if captured and inserted before kickoff; a late insertion is labelled
+`late_observation`. The historical lineup replay is not falsely saved as prospective.
+Content changes (including availability, candidate input, rating, model version or
+kickoff changes) append rows; observation timestamp changes alone do not.
+
+Example measurement query (one row per predicted starter):
+
+```sql
+SELECT s.fixture_id, s.team_id, s.captured_at,
+       s.seconds_to_kickoff / 3600 AS hours_to_kickoff,
+       s.model_version_id, p->>'player' AS player,
+       p->>'role' AS predicted_role, p->>'player_rating' AS rating
+FROM lineup_prediction_snapshots s
+CROSS JOIN LATERAL jsonb_array_elements(s.players) p
+WHERE s.source='prospective';
+```
+
+When comparing with official XIs, choose an explicit observation policy (for example,
+latest official observation per fixture/team) and retain its `captured_at` and source.
+Do not silently substitute future official corrections into an as-known-at-time study.
+
+### Immutable odds and paper-simulation evidence
+
+Apply `db/migrations/20260926_odds_paper_evidence.sql` after the registry and match
+snapshot migrations, before deploying these writers. The migration creates only new
+history/evidence tables and guards. It does not rewrite existing `odds`, `paper_bets`
+or their history. No additional API requests, polling frequency changes or betting
+selection rule changes are introduced.
+
+`odds_observations` records pre-kickoff prices already received by `_store_odds`:
+fixture, bookmaker, API market ID, selection, decimal odds, local `captured_at`,
+provider update time, known kickoff and source. Invalid/absent prices at or below 1
+are not meaningful observations. Consecutive identical prices with identical provider
+update time and kickoff are suppressed; changed provider timestamps retain a new
+observed state even when the price is unchanged. A price reverting A → B → A retains
+all three states. Per-fixture transaction locks serialize concurrent writers for
+this check. Old snapshots are never overwritten. The mutable `odds` table and its
+opening-price behavior remain unchanged.
+
+`paper_decisions` records each newly inserted paper bet in the same transaction:
+
+- Registry strategy version and match-model version, plus the exact matching
+  **prospective** match-prediction snapshot ID. Lookup compares all consumed W/D/L,
+  over-2.5, BTTS and xG values, kickoff, and observation time; it never just assumes
+  the newest snapshot matches. If none exists, placement fails and rolls back.
+  Run the normal prediction path before placement after migrating.
+- Actual decision capture time, known kickoff, market/selection/bookmaker, model
+  probability, `1 / odds_taken` raw implied probability, decision-time fair market
+  probability, odds, edge and its formula, one-unit stake and tags.
+- The chosen bookmaker's complete-market overround (`sum(1 / odds) - 1`), where
+  available. Fair probability remains the existing average of complete bookmaker
+  markets after proportional margin removal, not just the chosen bookmaker's value.
+- Full bookmaker price inputs for the market, their matching history references,
+  consumed prediction values, candidate comparisons, already-taken groups and market
+  states needed to inspect the existing selection. Strategy metadata includes rule
+  constants, market definitions, goal-line calibration and source digests.
+
+A current price inherited from before history capture began can have no observation
+reference. In that case its exact decision-time price inputs are still saved, and
+provenance explicitly says `legacy_current_price_without_history`; no earlier
+observation time is invented. Existing paper bets are not retrospectively presented
+as captured decisions. A long-running placement crossing kickoff is recorded with
+its actual decision timestamp and `decided_before_known_kickoff=false`, rather than
+backdating it. Evaluation should filter this flag as appropriate.
+
+`paper_outcomes` attaches closing evidence and settlement to a decision without
+updating it. Closing quotes come from the last recorded observations strictly before
+that decision's known kickoff, using the chosen bookmaker and preserved selection
+set. The attached evidence retains every quote reference/time, the comparison cutoff,
+market inputs, result status and score. This is **last-observed pre-kickoff** information,
+not guaranteed official closing prices; freshness is visible through quote timestamps.
+Without qualifying history, closing metrics stay NULL rather than using later prices.
+Unchanged repeated attachments are deduplicated; explicit corrections can append
+another attachment. The current settlement job continues processing open bets only;
+it does not automatically re-evaluate already settled results.
+
+The two new metrics are distinct:
+
+| Field | Definition |
+| --- | --- |
+| `price_clv` | `odds_taken / closing_odds - 1` |
+| `probability_movement` | `closing_fair_probability - decision_fair_probability` |
+
+The existing `paper_bets.clv` (`odds_taken * closing_fair - 1`) and frontend exports
+remain for compatibility and are not relabelled as either new metric. All three new
+tables block UPDATE, DELETE and TRUNCATE in normal operation. Mutable `paper_bets`
+can continue serving settlement/UI state; it is not the authoritative immutable
+record of the original decision.
+
+```sql
+SELECT d.paper_bet_id, d.captured_at AS decision_at, d.market, d.selection,
+       d.strategy_version_id, d.prediction_snapshot_id, d.odds_taken,
+       d.fair_probability, o.closing_odds, o.closing_fair_probability,
+       o.price_clv, o.probability_movement
+FROM paper_decisions d
+LEFT JOIN LATERAL (
+    SELECT * FROM paper_outcomes o WHERE o.decision_id=d.decision_id
+    ORDER BY captured_at DESC, outcome_id DESC LIMIT 1
+) o ON true;
+```
+
+These records support reproducible measurement; they establish no profitability claim.

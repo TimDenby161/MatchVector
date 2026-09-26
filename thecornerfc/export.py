@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .health import monitored
-from . import config, positions
+from . import config, positions, availability
 from .cache import WEEK, cached_rows, finished_fixtures, rank_history
 from .betting import BOOKMAKER, CAUTIOUS_RULE, MAX_ODDS, MIN_EDGE, is_cautious
 from .predictions import GOAL_LINES, UPCOMING_STATUSES, goal_lines
@@ -511,7 +511,6 @@ def _summary(bets):
 
 
 INJURY_LOOKBACK_DAYS = 21
-ABSENCES_FILE = Path(__file__).resolve().parent / "absences.json"   # kept by hand
 # reasons that only cover the match they were listed for: left out of a past match's list
 ONE_MATCH_REASONS = {"Red Card", "Yellow Cards", "Suspended", "Coach's decision", "Rest", "International duty",
                      "Transfer negotiations", "Personal Reasons"}
@@ -521,9 +520,8 @@ def export_injuries(conn, out_dir=OUT_DIR):
     """Each club's injury list for the club page (docs/data/injuries.json): out and doubtful
     players for its next match that has a list, else its latest list from the last
     INJURY_LOOKBACK_DAYS (API-Football publishes a match's list only shortly before it), less
-    the one-match reasons (a ban already served). Until the next match's list is out, players
-    sent off in the club's latest match are added as suspended. Small, so the match-day run
-    refreshes it too.
+    the one-match reasons (a ban already served). Upcoming fixtures use the backend
+    availability merge; past red cards alone are not treated as confirmed current bans.
 
     missed: how many of the club's played matches in a row he has been on its list, back from its
     latest (matches with no list for the club, e.g. cups, are skipped). season_rank: his latest
@@ -546,39 +544,27 @@ def export_injuries(conn, out_dir=OUT_DIR):
         entry = teams.setdefault(str(team), {"fixture": fid, "kickoff": kickoff.isoformat(), "upcoming": upcoming,
                                              "players": []})
         entry["players"].append([player, html.unescape(name or ""), kind, reason])
-    for team, fid, kickoff, player, name in conn.execute(
-            """with last as (
-                   select distinct on (fp.team_id) fp.team_id, fp.fixture_id, f.kickoff
-                   from fixture_players fp join fixtures f using (fixture_id)
-                   where f.status_short = any(%s) and f.kickoff > now() - %s * interval '1 day'
-                   order by fp.team_id, f.kickoff desc)
-               select last.team_id, last.fixture_id, last.kickoff, fp.player_id, p.name
-               from last join fixture_players fp using (team_id, fixture_id) left join players p using (player_id)
-               where fp.red_cards > 0""", [list(config.FINISHED_STATUSES), INJURY_LOOKBACK_DAYS]):
-        entry = teams.get(str(team))
-        if entry and entry["upcoming"]:      # the next match's list is out, with any bans on it
-            continue
-        entry = entry or teams.setdefault(str(team), {"fixture": fid, "kickoff": kickoff.isoformat(),
-                                                      "upcoming": False, "players": []})
-        if all(row[0] != player for row in entry["players"]):
-            entry["players"].append([player, html.unescape(name or ""), "Suspended", "Red card"])
-    # players out that the lists miss (ABSENCES_FILE), on the club's list for its next match
-    today = datetime.now(timezone.utc).date().isoformat()
-    manual = {int(t): [a for a in rows if a.get("until", "9999") >= today]
-              for t, rows in json.loads(ABSENCES_FILE.read_text(encoding="utf-8")).items() if t.isdigit()}
-    manual = {t: rows for t, rows in manual.items() if rows}
-    if manual:
-        for team, fid, kickoff in conn.execute(
-                """select distinct on (t) t, fixture_id, kickoff from fixtures, unnest(array[home_team_id, away_team_id]) t
-                   where t = any(%s) and status_short in ('NS', 'TBD') and kickoff > now() order by t, kickoff""",
-                [list(manual)]):
-            entry = teams.get(str(team))
-            if not entry or not entry["upcoming"]:     # a past match's list: the next match's instead
-                entry = teams[str(team)] = {"fixture": fid, "kickoff": kickoff.isoformat(), "upcoming": True,
-                                            "players": entry["players"] if entry else []}
-            for a in manual[team]:
-                if all(row[0] != a["player"] for row in entry["players"]):
-                    entry["players"].append([a["player"], a["name"], "Missing Fixture", a["reason"]])
+    # Upcoming display uses the exact same fixture-scoped merge as lineup selection.
+    upcoming_fixtures = availability.next_fixtures(conn)
+    merged = availability.load(conn, upcoming_fixtures)
+    ids = sorted({p for states in merged.values() for p in states})
+    names = dict(conn.execute('SELECT player_id,name FROM players WHERE player_id=any(%s)', [ids]))
+    for fid,kickoff,home,away,upcoming in upcoming_fixtures:
+        for team in (home,away):
+            existing = teams.get(str(team))
+            if existing and existing.get('_merged') and existing['kickoff'] <= kickoff.isoformat():
+                continue
+            states = merged[(fid,team)]
+            rows = []
+            for player,state in states.items():
+                evidence = state['evidence'][-1]  # manual explanation, retaining API evidence in snapshots
+                rows.append([player,html.unescape(names.get(player) or evidence.get('name','')),
+                             'Suspended' if state['state']=='suspended' else evidence.get('type'),
+                             evidence.get('reason')])
+            teams[str(team)] = {'fixture':fid,'kickoff':kickoff.isoformat(),'upcoming':True,
+                                'players':rows,'_merged':True}
+    for entry in teams.values():
+        entry.pop('_merged',None)
     listed = defaultdict(dict)          # team -> {fixture: (kickoff, {players on its list})}
     for team, fid, kickoff, player in conn.execute(
             """select i.team_id, i.fixture_id, f.kickoff, i.player_id from injuries i join fixtures f using (fixture_id)
@@ -980,11 +966,13 @@ def export_player_pages(conn, out_dir=OUT_DIR):
         """select fixture_id, player_id, player_rank from fixture_player_ranks
            where fixture_id = any(%s) and player_id = any(%s)""", [fids, ids])}
     injuries = {}
-    for player, fid, kind, reason in conn.execute(
-            """select i.player_id, i.fixture_id, i.type, i.reason from injuries i join fixtures f using (fixture_id)
-               where i.player_id = any(%s) and f.status_short in ('NS', 'TBD') and f.kickoff > now()
-               order by f.kickoff""", [ids]):
-        injuries.setdefault(player, [fid, kind, reason])
+    next_fixtures = availability.next_fixtures(conn)
+    resolved = availability.load(conn, next_fixtures)
+    for fid,kickoff,home,away,upcoming in next_fixtures:
+        for team in (home,away):
+            for player,state in resolved[(fid,team)].items():
+                item = state['evidence'][-1]
+                injuries.setdefault(player,[fid,'Suspended' if state['state']=='suspended' else item.get('type'),item.get('reason')])
     for pid, page in pages.items():
         for m in page["matches"]:
             m[12] = _r(ranks.get((m[0], pid)), 1)

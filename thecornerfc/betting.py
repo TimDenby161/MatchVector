@@ -24,6 +24,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from .predictions import goal_lines
+from . import paper_evidence
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ def load_prices(conn, fixture_ids):
                 total = sum(inv.values())
                 fair_sets.append({s: inv[s] / total for s in sels})
         fair = {s: sum(f[s] for f in fair_sets) / len(fair_sets) for s in sels} if fair_sets else {}
-        out[fid][market] = {"best": best, "fair": fair}
+        out[fid][market] = {"best": best, "fair": fair, "books": dict(books)}
     return out
 
 
@@ -222,6 +223,7 @@ def place_bets(conn, strategy, within):
     taken = {(fid, GROUP[m]) for fid, m in conn.execute(
         "select fixture_id, market from paper_bets where strategy = %s and fixture_id = any(%s)",
         [strategy, list({r[1] for r in rows})])}
+    decision_candidates = [list(r) for r in rows]
     best = {}
     for r in rows:
         key = (r[1], GROUP[r[4]])
@@ -231,13 +233,23 @@ def place_bets(conn, strategy, within):
     matches = match_tags(conn, {r[1] for r in rows})
     for r in rows:
         r[-1] = bet_tags(matches.get(r[1], []), r[5], r[6], r[-1])
-    with conn.cursor() as cur:
-        cur.executemany(
+    decided_at = datetime.now(timezone.utc)
+    version = paper_evidence.strategy_version(conn, strategy) if rows else None
+    consumed = {p[0]:p for p in preds}
+    placed = 0
+    for row in rows:
+        inserted = conn.execute(
             """insert into paper_bets (strategy, fixture_id, league_id, kickoff, market, selection,
                model_prob, fair_prob, odds_taken, bookmaker_id, edge, tags)
                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-               on conflict (strategy, fixture_id, market, selection) do nothing""", rows)
-        placed = cur.rowcount
+               on conflict (strategy, fixture_id, market, selection) do nothing returning bet_id""", row).fetchone()
+        if inserted:
+            paper_evidence.record_decision(conn, inserted[0], row, prices[row[1]][row[4]],
+                                           consumed[row[1]], decided_at, version,
+                selection_context={'candidates':[r for r in decision_candidates if r[1]==row[1]],
+                                   'already_taken_groups':[group for fid,group in sorted(taken) if fid==row[1]],
+                                   'market_states':prices[row[1]]})
+            placed += 1
     conn.commit()
     log.info("Paper bets (%s): %d candidates in %d fixtures, %d new", strategy, len(rows), len(preds), placed)
     return placed
@@ -275,6 +287,7 @@ def settle_bets(conn):
         else:
             won = _won(market, sel, hg, ag)
             result, profit = ("win", float(stake) * (float(odds) - 1)) if won else ("loss", -float(stake))
+        paper_evidence.attach_outcome(conn, bet_id, result, profit, status, hg, ag)
         updates.append((close_odd, close_fair, clv, result, profit, bet_id))
     with conn.cursor() as cur:
         cur.executemany(

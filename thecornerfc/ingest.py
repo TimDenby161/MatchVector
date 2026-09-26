@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
+from .lineup_snapshots import capture_official
+from .paper_evidence import record_odds
 from .health import monitored, CURRENT
 from . import betting, config, positions
 from .api import QuotaExhausted
@@ -128,6 +130,7 @@ def _store_fixtures(conn, items):
     # Make sure every referenced team exists, without overwriting richer /teams data.
     teams = {}
     for f in items:
+        capture_official(conn, f)
         for side in ("home", "away"):
             t = f["teams"][side]
             teams[t["id"]] = {"team_id": t["id"], "name": t["name"], "logo": t.get("logo")}
@@ -347,11 +350,13 @@ def _store_odds(conn, resp, bet_ids=None):
     bet_ids = set(bet_ids or config.ODDS_BET_IDS)
     now = datetime.now(timezone.utc)
     bookmakers, bets, rows = {}, {}, []
+    kickoffs = {}
     for item in resp:
         fixture_id = item["fixture"]["id"]
         kickoff = item["fixture"].get("date")
         if kickoff and datetime.fromisoformat(kickoff) <= now:
             continue
+        kickoffs[fixture_id] = kickoff
         updated = item.get("update")
         for bm in item.get("bookmakers", []):
             bookmakers[bm["id"]] = {"bookmaker_id": bm["id"], "name": bm["name"]}
@@ -371,6 +376,7 @@ def _store_odds(conn, resp, bet_ids=None):
                         "first_odd": odd,
                         "first_seen_at": now,
                     })
+    record_odds(conn, rows, now, kickoffs)
     upsert(conn, "bookmakers", list(bookmakers.values()), ["bookmaker_id"], touch_updated_at=False)
     upsert(conn, "bet_types", list(bets.values()), ["bet_id"], touch_updated_at=False)
     upsert(conn, "odds", _dedupe(rows, ("fixture_id", "bookmaker_id", "bet_id", "selection")),
@@ -539,6 +545,7 @@ def sync_lineup_coaches(api, conn, batch_size=20):
     for i in range(0, len(pending), batch_size):
         rows = []
         for f in api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size]))):
+            capture_official(conn, f)
             for lu in f.get("lineups") or []:
                 coach, team = (lu.get("coach") or {}).get("id"), (lu.get("team") or {}).get("id")
                 if coach and team:
@@ -817,6 +824,7 @@ def sync_team_colors(api, conn, batch_size=20):
     for i in range(0, len(fids), batch_size):
         colors = []
         for f in api.get("fixtures", ids="-".join(map(str, fids[i:i + batch_size]))):
+            capture_official(conn, f)
             colors += _home_colors(f)
         _store_colors(conn, colors)
         conn.commit()
@@ -842,6 +850,7 @@ def sync_cup_lineups(api, conn, batch_size=20):
     for i in range(0, len(pending), batch_size):
         formations, lineups, colors, done = [], [], [], []
         for f in api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size]))):
+            capture_official(conn, f)
             fid = f["fixture"]["id"]
             colors += _home_colors(f)
             for lu in f.get("lineups") or []:
@@ -881,6 +890,7 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
         resp = api.get("fixtures", ids="-".join(map(str, pending[i:i + batch_size])))
         rows, done, formations, colors = [], [], [], []
         for f in resp:
+            capture_official(conn, f)
             fid = f["fixture"]["id"]
             colors += _home_colors(f)
             grids = {}                               # player -> (grid, role) for starters

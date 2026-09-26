@@ -71,7 +71,8 @@ for the position - the average across all leagues), so a 7.0 is compared within 
 
 Team ratings per fixture and team
     predicted XI  = 1 goalkeeper + 10 outfielders with the most minutes over the team's last
-                    PREDICT_MATCHES matches, excluding anyone on the injury list for this match
+                    PREDICT_MATCHES matches, excluding API injury reports and active manual absences
+                    for upcoming fixtures (historical replay retains its existing injury lists)
     predicted     = average rank of the predicted XI
     recent        = average rank of the XIs actually started in the last PREDICT_MATCHES matches
     actual        = average rank of this match's starting XI (finished matches)
@@ -83,6 +84,7 @@ import math
 from collections import Counter, defaultdict, deque
 from datetime import timedelta
 
+from . import availability, lineup_snapshots
 from .health import monitored
 from . import config
 from .cache import WEEK, cached_rows, rank_history
@@ -903,6 +905,19 @@ def _by_line(ranked):
     return [_mean(r for r, l in ranked if l == line) for line in LINES]
 
 
+def _select_lineup(minutes, out, raw_score, kickoff):
+    """Existing selection rule, isolated so availability integration can be tested."""
+    candidates = [(p, m) for p, m in minutes.most_common() if p not in out]
+    scored = []
+    for p, m in candidates:
+        s, pos, _ = raw_score(p, kickoff)
+        if s is not None:
+            scored.append((p, pos, s, m))
+    keepers = [x for x in scored if x[1] == "GK"][:1]
+    outfield = [x for x in scored if x[1] != "GK"][:10]
+    return candidates, scored, keepers + outfield
+
+
 @monitored("player_ratings", conn_index=0)
 def compute_player_ratings(conn):
     appearances = _appearances(conn)
@@ -931,6 +946,10 @@ def compute_player_ratings(conn):
             order_by="fixture_id, team_id, player_id"):
         injured[(fid, team)].add(player)
 
+    live_availability = availability.load(conn, [f for f in fixtures if f[4]])
+    for key, evidence in live_availability.items():
+        injured[key] = {p for p, state in evidence.items() if state['excluded']}
+    selection_inputs = {}
     windows = defaultdict(Window)
     team_recent = defaultdict(lambda: deque(maxlen=PREDICT_MATCHES))     # team -> [{player: minutes}]
 
@@ -963,15 +982,16 @@ def compute_player_ratings(conn):
             for g in team_recent[team]:
                 minutes.update(g)
             out = injured.get((fid, team), set())
-            candidates = [(p, m) for p, m in minutes.most_common() if p not in out]
-            scored = []
-            for p, m in candidates:
-                s, pos, _ = raw_score(p, kickoff)
-                if s is not None:
-                    scored.append((p, pos, s, m))
-            keepers = [x for x in scored if x[1] == "GK"][:1]
-            outfield = [x for x in scored if x[1] != "GK"][:10]
-            predicted = keepers + outfield
+            candidates, scored, predicted = _select_lineup(minutes, out, raw_score, kickoff)
+            if upcoming:
+                selection_inputs[(fid,team)] = {
+                    'recent_minutes': list(minutes.items()),
+                    'excluded_players': sorted(out),
+                    'scored_candidates': [{'player':p,'position':pos,'raw_score':s,'minutes':m,
+                                           'predicted_starter':p in {x[0] for x in predicted}}
+                                          for p,pos,s,m in scored],
+                    'unscored_candidates': [p for p,m in candidates if p not in {x[0] for x in scored}],
+                }
             actual = []
             for a in apps.get(fid, []):
                 if a["team"] != team:
@@ -1036,6 +1056,10 @@ def compute_player_ratings(conn):
         if s is not None:
             current.append((player, now_rank.get(player, to_rank(s, pos)), windows[player].label(), int(minutes)))
 
+    for evidence in selection_inputs.values():
+        for candidate in evidence['scored_candidates']:
+            candidate['player_rating'] = to_rank(candidate['raw_score'], candidate['position'])
+    lineup_snapshots.capture_predictions(conn, fixtures, lineups, selection_inputs, live_availability)
     _write(conn, appearance_scores, to_rank, team_out, lineups, current, season_rows, position_ranks, projections)
 
 
