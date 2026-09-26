@@ -46,7 +46,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from .health import monitored
-from . import config
+from . import config, match_snapshots
 from .cache import finished_fixtures, rank_history
 from .injuries import BETA as INJURY_BETA, missing_strengths
 from .ranking import DEFAULT_STARTING_RANK, HOME_ADVANTAGE_POINTS
@@ -249,6 +249,8 @@ def update_predictions(conn, fixture_ids=None):
 
     missing = missing_strengths(conn, [f[0] for f in upcoming])
 
+    version_id = match_snapshots.register_version(conn)
+    snapshots = []
     rows = []
     for fid, kickoff, league_id, home, away in upcoming:
         games = comp_goals.get(league_id)
@@ -269,6 +271,20 @@ def update_predictions(conn, fixture_ids=None):
                                     league_id, h_miss or 0.0, a_miss or 0.0, (sh, sa, eh, ea, bh, ba),
                                     _pair(lines, fid, home, away)),
                      h_rel, a_rel, h_miss, a_miss))
+        snapshots.append(match_snapshots.make_snapshot(rows[-1], {
+            'home_current_rank': h_cur, 'away_current_rank': a_cur,
+            'home_lt_algo': h_lt, 'away_lt_algo': a_lt,
+            'home_reliability': h_rel, 'away_reliability': a_rel,
+            'fallback_starting_rank': default_rank,
+            'home_rank_fallback': home not in ranks, 'away_rank_fallback': away not in ranks,
+            'home_records': home_rec[home], 'away_records': away_rec[away],
+            'league_home_goals': lg_home, 'league_away_goals': lg_away,
+            'sides': [sh, sa, eh, ea, bh, ba],
+            'predicted_lines': _pair(lines, fid, home, away),
+            'home_missing': h_miss, 'away_missing': a_miss,
+        }, version_id=version_id, captured_at=datetime.now(timezone.utc),
+            reference_at=now, source='prospective'))
+
 
     # Upsert only upcoming fixtures: once a match kicks off its row is left alone, so it
     # keeps the last pre-kickoff projection for comparing with the result.
@@ -291,6 +307,7 @@ def update_predictions(conn, fixture_ids=None):
                  away_reliability = excluded.away_reliability,
                  home_missing = excluded.home_missing, away_missing = excluded.away_missing,
                  updated_at = now()""", rows)
+    match_snapshots.append_snapshots(conn, snapshots)
     conn.commit()
     log.info("Predictions: %d upcoming fixtures", len(rows))
 
@@ -314,8 +331,12 @@ def backfill_predictions(conn):
         log.info("Backfilled predictions for 0 finished fixtures (none missing)")
         return
     # Match rank going into each fixture: Now and LT ALGO (lt_before) as they stood before it
+    version_id = match_snapshots.register_version(conn)
+    snapshots = []
+    raw_ranks = {}
     ranks_before, sides_before = {}, {}
     for fid, _, _, _, is_home, _, before, _, lt, *_, s0, e0, gb in rank_history(conn):
+        raw_ranks[(fid, is_home)] = (before, lt)
         ranks_before[(fid, is_home)] = match_rank(before, lt)
         sides_before[(fid, is_home)] = (s0, e0, gb)
     lines = _predicted_lines(conn, list(targets))
@@ -347,6 +368,19 @@ def backfill_predictions(conn):
                                         league_id, h_miss or 0.0, a_miss or 0.0, sides,
                                         _pair(lines, fid, home, away)),
                          h_miss, a_miss))
+            snapshots.append(match_snapshots.make_snapshot(rows[-1], {
+                'home_current_rank': raw_ranks[(fid, True)][0],
+                'home_lt_algo': raw_ranks[(fid, True)][1],
+                'away_current_rank': raw_ranks[(fid, False)][0],
+                'away_lt_algo': raw_ranks[(fid, False)][1],
+                'home_records': [r[1:] for r in home_rec[home]],
+                'away_records': [r[1:] for r in away_rec[away]],
+                'league_home_goals': lg_home, 'league_away_goals': lg_away,
+                'sides': sides, 'predicted_lines': _pair(lines, fid, home, away),
+                'home_missing': h_miss, 'away_missing': a_miss,
+            }, version_id=version_id, captured_at=datetime.now(timezone.utc),
+                reference_at=kickoff, source='reconstruction'))
+
         hf, af = _form(hg, ag, hx, ax)
         home_rec[home].append((kickoff, hf, af))
         away_rec[away].append((kickoff, af, hf))
@@ -359,5 +393,6 @@ def backfill_predictions(conn):
                p_away, likely_score, p_over25, p_btts, home_missing, away_missing, source)
                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'backfill')
                on conflict (fixture_id) do nothing""", rows)
+    match_snapshots.append_snapshots(conn, snapshots)
     conn.commit()
     log.info("Backfilled predictions for %d finished fixtures", len(rows))

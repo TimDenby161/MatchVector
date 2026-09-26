@@ -641,3 +641,177 @@ FROM pipeline_runs ORDER BY started DESC LIMIT 20;
 SELECT dataset, last_attempt, last_success, status, row_count,
        latest_data_timestamp, message FROM dataset_status ORDER BY dataset;
 ```
+
+### Shared model versions and snapshot conventions
+
+Model provenance is registered in `model_versions`, through
+`thecornerfc.model_versions.register_model_version`. Supported `ModelType` values
+are `club`, `player`, `lineup`, `match`, `betting` (including paper strategies), and
+`fantasy` (reserved for future models). The registry does not change model formulas, historical outputs, prediction upsert
+semantics or paper-bet identities. New immutable match snapshots use it as described below.
+No guessed versions or observation times are assigned to historical rows.
+
+Apply `db/migrations/20260926_model_versions.sql` to an existing database through
+your normal authorised migration process. Fresh `init-db` also includes the exact
+same SQL. The migration is repeatable, creates only the registry/index/immutability
+trigger, enables RLS without public policies, and does not update existing datasets.
+It has **not** been applied automatically by this implementation.
+
+Register once at the orchestration boundary and pass the resulting ID to domain
+writers. Keep release labels and explicit, relevant configuration together there,
+rather than putting version strings in individual calculation functions:
+
+```python
+from thecornerfc.model_versions import ModelType, current_code_sha, register_model_version
+
+model_version_id = register_model_version(
+    conn, ModelType.MATCH, "initial-provenance-release",
+    code_sha=current_code_sha(),
+    configuration={"input_club_model_version_id": club_version_id},
+    notes="First explicitly versioned match-model deployment",
+)
+# Pass model_version_id to a domain snapshot writer; caller owns commit/rollback.
+```
+
+The example is the convention for writer integration. Existing mutable outputs are
+not retroactively versioned; the match snapshot writer below now registers versions. Include all relevant model parameters, upstream
+model-version IDs, input dataset revisions and evaluation choices explicitly.
+Never pass `.env`, credentials, connection strings or entire module globals.
+Obvious credential keys are rejected, but callers must still choose safe metadata.
+No configuration or environment secrets are collected automatically.
+
+Registry fields include `model_version_id`, `model_type`, `version_name`, `code_sha`,
+JSON `configuration`, optional training/evaluation window pairs, DB-generated
+`created_at`, and `notes`. Windows are timezone-aware, half-open `[start, end)`;
+NULL pairs mean unknown/not applicable. A missing SHA remains NULL. Git discovery
+returns NULL for a dirty tree because a commit alone cannot describe those edits.
+Use committed code for reproducible releases.
+
+Identity is a SHA-256 digest of canonical metadata, prefixed `mv_`. Re-registering
+identical metadata returns the same ID without overwriting its creation time.
+Changing configuration, SHA, windows, label, type or notes creates a new identity;
+JSON key order does not. JSON numeric types are significant (`1` versus `1.0`).
+Labels are human-readable and not unique identifiers. Registry UPDATE/DELETE is
+blocked by a trigger: corrections become new versions. Operational retention/admin
+privileges remain the database administrator's responsibility.
+
+Snapshot timestamps have one shared meaning:
+
+| Column | Meaning | How to populate |
+| --- | --- | --- |
+| `created_at` | When the database inserted the row | `timestamptz NOT NULL DEFAULT clock_timestamp()`; omit from inserts |
+| `captured_at` | When source/model state was actually observed | Explicit timezone-aware observation time, normalised to UTC |
+| `effective_at` | Event time, such as kickoff or fantasy deadline | Explicit timezone-aware domain event time, normalised to UTC |
+
+`snapshot_times(captured_at=..., effective_at=...)` validates and normalises the
+last two values; it deliberately does not generate `created_at`. Capture observation
+time at the source boundary, not after a long computation. For reconstructions,
+capture the actual reconstruction/observation time and record an explicit source
+such as `backfill`; do not backdate it to imply pre-event availability. Therefore
+`captured_at > effective_at` is allowed. Use captured time and source when selecting
+live evaluation inputs to avoid look-ahead leakage. A postponed kickoff does not
+rewrite an old snapshot: a new observation gets a new row/event time.
+
+Use separate domain tables when snapshot writers are introduced, for example
+`club_rating_snapshots`, `player_rating_snapshots`, `lineup_snapshots`,
+`match_prediction_snapshots`, `paper_strategy_snapshots`, and eventually
+`fantasy_prediction_snapshots`. Only `match_prediction_snapshots` is implemented below; the other names are future
+design conventions, not tables created now.
+Each should have domain/entity keys, typed output columns, an FK to
+`model_versions(model_version_id)` with restricted deletion, the three timestamps,
+and explicit live/backfill/source provenance. Validate the referenced model type
+at the domain writer boundary (an FK alone does not validate type). Define a
+retry/idempotency key per domain/observation; do not use only event ID plus version,
+since multiple observations of the same event must coexist. Snapshots are append-only;
+mutable latest-state projections remain separate. Avoid a universal JSON snapshot table.
+
+Current `fixture_predictions`, `predicted_lineups`, `fixture_team_ratings`,
+`team_rankings` and similar mutable/rebuilt tables are not silently reclassified as
+immutable snapshots. Existing `updated_at`, `placed_at`, `kickoff`, settlement and
+backfill semantics stay intact. Paper betting `early`/`late` describes placement
+timing, not model identity; future paper snapshots should reference the betting
+version and the match/lineup versions whose outputs were used.
+
+Tests: `python -m unittest discover -s tests`. The optional real PostgreSQL migration
+test requires `MODEL_VERSION_TEST_DSN` pointing at a disposable test database with
+schema-creation privileges; it tests reapplication, deduplication, immutability,
+DB creation time and preservation of unrelated history, then rolls back its schema.
+
+### Immutable match prediction capture
+
+`match_prediction_snapshots` is now the domain-specific historical store.
+`fixture_predictions` continues serving current website state. Apply the registry
+migration first, then `db/migrations/20260926_match_prediction_snapshots.sql`, before
+running the updated prediction code. Both are included in `db/schema.sql`. No old
+prediction rows are copied, rewritten, or claimed as genuinely captured snapshots.
+
+Nightly, matchday and `predict` all capture through `update_predictions`; the existing
+nightly reconstruction path captures through `backfill_predictions`. Current output
+and snapshot inserts share one transaction and commit together. Missing snapshot
+schema or a failed insert fails the prediction stage rather than silently losing
+history. Apply the migration before deploying these writers.
+
+Each row preserves fixture/teams/league, registry version, all W/D/L probabilities,
+projected xG, expected margin, likely score, over-2.5 and BTTS probabilities, observed
+kickoff (`effective_at`), capture time, DB insertion time and seconds to kickoff
+(divide by 60 or 3600 for minutes/hours). `model_reference_at` separately records the
+clock used for the rank blend and history window: live computation start or the
+historical kickoff for a reconstruction. Capture time is taken after inputs were
+read and the prediction computed; it is never backdated to the historical event.
+
+The match-specific `inputs` object records actual calculation arguments:
+
+- Current ranks, LT ALGO baseline ranks, blended match ranks; live reliability,
+  fallback starting rank and whether a team's default rank was used.
+- Home-at-home and away-at-away goal/xG form pairs, and competition goal averages.
+- `sides`, in existing function order: home/away attack splits, home/away home-edge
+  adjustments, home/away competition goal bases. The attack split is
+  `(attack - current_rank) / 2`; edge is `home_rating - current_rank`.
+- `predicted_lines`: home and away `[GK, DEF, MID, FWD]` averages, or null. Partial
+  lines remain partial; the existing model uses them only when all are present.
+- Home/away missing strengths, preserving null versus measured zero. The model's
+  actual fallback to zero stays unchanged.
+
+The registry captures the actual match constants, including home advantage,
+European bonus, injury beta, home-edge and attack/defence weights, line weights,
+Poisson and market calibration constants, plus source-file digests. These constants
+and stored arguments permit the existing `predict_match` calculation to be replayed
+without querying today's mutable inputs. No artificial explanation components or
+unavailable upstream version IDs are invented. Source digests distinguish changed
+code even when a working tree has no trustworthy clean Git SHA.
+
+`source` has three explicit values:
+
+- `prospective`: captured **and inserted** before the kickoff known at observation.
+- `reconstruction`: historical/backfilled calculation made later; never eligible
+  as genuine pre-event evidence, regardless of its calculated inputs.
+- `late_observation`: current-state calculation at/after kickoff. The current model
+  can process stale `NS`/`TBD` fixtures up to three hours late; those never become
+  prospective snapshots. A DB trigger also downgrades a prospective insert that
+  crosses kickoff while the batch is being written.
+
+Normal writers use INSERT with conflict DO NOTHING. Database triggers prohibit
+UPDATE, DELETE and TRUNCATE, validate match-model references, and generate insertion
+time. The content key includes fixture, model version, source, kickoff, actual inputs
+and outputs, but excludes observation/reference clock metadata. An identical retry
+keeps the first row and timestamp. A changed prediction, model, input or kickoff
+creates a new row. The existing rank blend varies with time-to-kickoff; those input
+and output changes are scientifically relevant and are retained. This is a history
+of distinct prediction states, not a heartbeat log of every computation.
+
+For prospective evaluation, explicitly filter rather than combining sources:
+
+```sql
+SELECT fixture_id, captured_at, effective_at AS kickoff,
+       seconds_to_kickoff / 3600 AS hours_to_kickoff, model_version_id,
+       p_home, p_draw, p_away, home_xg, away_xg, likely_score
+FROM match_prediction_snapshots
+WHERE source = 'prospective'
+ORDER BY fixture_id, captured_at;
+```
+
+Prospective means pre-scheduled-kickoff capture based on the fixture state then
+available; it does not certify upstream vendor data timeliness or the actual start
+of a rescheduled match. Snapshot capture begins with deployment. The existing
+backfill still fills only missing current predictions; it does not manufacture a
+retrospective snapshot history for every already-populated fixture.
