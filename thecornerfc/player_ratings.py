@@ -83,6 +83,7 @@ import math
 from collections import Counter, defaultdict, deque
 from datetime import timedelta
 
+from .health import monitored
 from . import config
 from .cache import WEEK, cached_rows, rank_history
 from .positions import FALLBACK, group as role_group
@@ -902,6 +903,7 @@ def _by_line(ranked):
     return [_mean(r for r, l in ranked if l == line) for line in LINES]
 
 
+@monitored("player_ratings", conn_index=0)
 def compute_player_ratings(conn):
     appearances = _appearances(conn)
     retired = retired_players(conn, appearances)

@@ -17,7 +17,7 @@ import logging
 import os
 import sys
 
-from . import usage
+from . import usage, health
 from . import config
 from .api import ApiFootball, QuotaExhausted
 
@@ -38,6 +38,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="thecornerfc")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser("health", help="Show recorded dataset and pipeline health (no API calls)")
     sub.add_parser("usage", help="Report persistent API usage without network access")
     preflight = sub.add_parser("preflight", help="Check manual backfill budget against live daily quota")
     preflight.add_argument("--leagues", type=int, nargs="+", required=True)
@@ -68,6 +69,16 @@ def main(argv=None):
         usage.publish()
         return 0
 
+    if args.command == "health":
+        return health.publish()
+
+    with health.pipeline(os.environ["API_PROCESS_LABEL"]) as run:
+        result = _execute(args)
+        run['exit_code'] = result or 0
+        return result
+
+
+def _execute(args):
     if args.command == "preflight":
         minimum = len(set(args.leagues)) * (1 + 3 * len(set(args.seasons)))
         print(f"Backfill minimum: {minimum} calls for leagues/teams/fixtures/standings; "

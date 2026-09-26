@@ -58,6 +58,7 @@ import statistics
 from dataclasses import dataclass
 from datetime import date
 
+from .health import monitored
 from . import config
 from .cache import finished_fixtures
 
@@ -203,6 +204,7 @@ def summarise(history, changes=None):
 
 # --------------------------------------------------------------------------- database
 
+@monitored("club_ratings", conn_index=0)
 def update_rankings(conn):
     """Replay every finished fixture in kickoff order and rebuild both ranking tables.
 

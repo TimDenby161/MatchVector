@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .health import monitored
 from . import config, positions
 from .cache import WEEK, cached_rows, finished_fixtures, rank_history
 from .betting import BOOKMAKER, CAUTIOUS_RULE, MAX_ODDS, MIN_EDGE, is_cautious
@@ -66,6 +67,7 @@ def _xi_lines(vals):
     return vals if any(v is not None for v in vals) else None
 
 
+@monitored("exports", conn_index=0)
 def export_site_data(conn, out_dir=OUT_DIR):
     """Build, validate and publish the static site export without clobbering old data."""
     _publish_export(lambda staged: _write_site_data(conn, staged), out_dir)

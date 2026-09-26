@@ -183,3 +183,10 @@ API_RUN_BUDGET = int(os.getenv("API_RUN_BUDGET", "0"))  # 0 = no additional cap
 
 if API_RUN_BUDGET < 0:
     raise ValueError("API_RUN_BUDGET must be non-negative")
+
+HEALTH_COLLAPSE_RATIO = float(os.getenv("HEALTH_COLLAPSE_RATIO", "0.2"))
+HEALTH_MIN_BASELINE = int(os.getenv("HEALTH_MIN_BASELINE", "100"))
+HEALTH_STALE_HOURS = int(os.getenv("HEALTH_STALE_HOURS", "72"))
+
+if not 0 < HEALTH_COLLAPSE_RATIO < 1 or HEALTH_MIN_BASELINE < 1 or HEALTH_STALE_HOURS < 1:
+    raise ValueError("Health ratio must be between 0 and 1; baseline and stale hours must be positive")

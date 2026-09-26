@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
+from .health import monitored, CURRENT
 from . import betting, config, positions
 from .api import QuotaExhausted
 from .db import upsert
@@ -71,6 +72,7 @@ def sync_leagues(api, conn, league_ids):
 
 # --------------------------------------------------------------------------- teams
 
+@monitored("teams", conn_index=1)
 def sync_teams(api, conn, league_ids, seasons):
     for league_id in league_ids:
         for season in seasons:
@@ -112,6 +114,7 @@ def _team_row(t, venue=None):
 
 # --------------------------------------------------------------------------- fixtures
 
+@monitored("fixtures", conn_index=1)
 def sync_fixtures(api, conn, league_ids, seasons):
     for league_id in league_ids:
         for season in seasons:
@@ -268,6 +271,7 @@ def _parse_stat(value):
 
 # --------------------------------------------------------------------------- standings
 
+@monitored("standings", conn_index=1)
 def sync_standings(api, conn, league_ids, seasons):
     for league_id in league_ids:
         for season in seasons:
@@ -315,6 +319,7 @@ def _standing_row(league_id, season, s):
 
 # --------------------------------------------------------------------------- odds
 
+@monitored("odds", conn_index=1)
 def sync_odds(api, conn, league_seasons, bet_ids=None):
     """Pull pre-match odds for upcoming fixtures, for (league_id, season) pairs.
 
@@ -327,6 +332,7 @@ def sync_odds(api, conn, league_seasons, bet_ids=None):
         log.info("Odds league=%s season=%s: %d fixtures, %d prices", league_id, season, len(resp), n)
 
 
+@monitored("odds", conn_index=1)
 def sync_odds_fixtures(api, conn, fixture_ids, bet_ids=None):
     """Refresh odds for specific fixtures (one call each) - used close to kickoff."""
     total = 0
@@ -422,6 +428,8 @@ def sync_nightly(api, conn, league_ids):
             # One bad league shouldn't stop the rest of the night's run.
             conn.rollback()
             failures += 1
+            if CURRENT.get() is not None:
+                CURRENT.get()["failed"].append(name)
             log.exception("Failed: %s %s", name, args)
 
     for league_id, season in pairs:
@@ -682,6 +690,7 @@ def _dedupe(rows, key):
 
 # --------------------------------------------------------------------------- players
 
+@monitored("players", conn_index=1)
 def sync_players(api, conn, league_ids, seasons):
     """Player profiles and per-season stats (/players, 20 per page)."""
     for league_id in league_ids:
@@ -753,6 +762,7 @@ def _player_season_row(player_id, league_id, season, st):
     }
 
 
+@monitored("injuries", conn_index=1)
 def sync_injuries(api, conn, league_ids, seasons):
     """Players listed as missing/doubtful per fixture (/injuries)."""
     for league_id in league_ids:
@@ -928,6 +938,7 @@ def sync_fixture_players(api, conn, league_ids, batch_size=20):
             log.info("Player minutes %d/%d", i + len(resp), len(pending))
 
 
+@monitored("injuries", conn_index=1)
 def sync_injuries_fixtures(api, conn, fixture_ids):
     """Refresh the injury list for specific fixtures (one call each) - used close to kickoff."""
     rows = {}

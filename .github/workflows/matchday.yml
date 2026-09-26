@@ -59,6 +59,10 @@ jobs:
         if: always()
         run: python -m thecornerfc usage
 
+      - name: Report pipeline and dataset health
+        if: always()
+        run: python -m thecornerfc health
+
       - name: Save API usage ledger
         if: always()
         uses: actions/cache/save@v4

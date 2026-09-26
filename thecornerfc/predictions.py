@@ -45,6 +45,7 @@ import math
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
+from .health import monitored
 from . import config
 from .cache import finished_fixtures, rank_history
 from .injuries import BETA as INJURY_BETA, missing_strengths
@@ -196,6 +197,7 @@ def _form(home_goals, away_goals, home_xg, away_xg):
     return (home_goals if home_xg is None else home_xg, away_goals if away_xg is None else away_xg)
 
 
+@monitored("predictions", conn_index=0)
 def update_predictions(conn, fixture_ids=None):
     """Project every upcoming fixture, or only those in fixture_ids (the match-day job, which
     then downloads only the involved teams' and competitions' results)."""
