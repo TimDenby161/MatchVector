@@ -17,7 +17,7 @@ import logging
 import os
 import sys
 
-from . import usage, health
+from . import usage, health, evaluation
 from . import config
 from .api import ApiFootball, QuotaExhausted
 
@@ -38,6 +38,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="thecornerfc")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    evaluation.add_parser(sub)
     sub.add_parser("health", help="Show recorded dataset and pipeline health (no API calls)")
     sub.add_parser("usage", help="Report persistent API usage without network access")
     preflight = sub.add_parser("preflight", help="Check manual backfill budget against live daily quota")
@@ -64,6 +65,9 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     os.environ["API_PROCESS_LABEL"] = args.command + (f" {args.target}" if args.command == "sync" else "")
     _guard_command(args)
+
+    if args.command == "evaluate":
+        return evaluation.run(evaluation.prepare(args))
 
     if args.command == "usage":
         usage.publish()
